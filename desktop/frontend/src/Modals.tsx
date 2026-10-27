@@ -347,21 +347,33 @@ export function NewKittyModal({
           )}
         </p>
       )}
+      {runtime === "boat" && containers && (
+        <p class="text-xs text-[var(--t4)] mt-1">
+          {t(
+            "A private cloud computer that keeps files, browser sessions and installed apps between tasks.",
+          )}
+        </p>
+      )}
       {!containers && (
         <p class="text-xs text-[var(--t4)] mt-1">
-          {runtime === "lima"
-            ? runtimeError || t("Lima is unavailable on the gateway's machine.")
-            : dockerState === "not_installed"
-              ? t(
-                  "Docker is not installed on the gateway's machine. Install Docker Desktop to give kitties a computer; without it they still think, talk and use connections.",
-                )
-              : dockerState === "not_running"
+          {runtime === "boat"
+            ? runtimeError ||
+              t(
+                "The cloud computer service is unavailable. Check the gateway's Boat configuration.",
+              )
+            : runtime === "lima"
+              ? runtimeError || t("Lima is unavailable on the gateway's machine.")
+              : dockerState === "not_installed"
                 ? t(
-                    "Docker is installed but not running. Open Docker Desktop and wait for it to start; the option unlocks by itself.",
+                    "Docker is not installed on the gateway's machine. Install Docker Desktop to give kitties a computer; without it they still think, talk and use connections.",
                   )
-                : t(
-                    "Needs Docker running on the gateway's machine. Without it the kitty still thinks, talks and uses connections.",
-                  )}
+                : dockerState === "not_running"
+                  ? t(
+                      "Docker is installed but not running. Open Docker Desktop and wait for it to start; the option unlocks by itself.",
+                    )
+                  : t(
+                      "Needs Docker running on the gateway's machine. Without it the kitty still thinks, talks and uses connections.",
+                    )}
         </p>
       )}
       {err && <p class="text-sm text-[var(--c-red)] mt-2">{err}</p>}
@@ -604,6 +616,8 @@ export function KittyDrawer({
   onOpenChat: (id: string) => void;
 }) {
   const [err, setErr] = useState("");
+  const [viewOpen, setViewOpen] = useState(true);
+  const [acting, setActing] = useState(false);
   const mood: Mood =
     kitty.status === "running" ? "happy" : kitty.status === "error" ? "error" : "sleeping";
   const [models, setModels] = useState<ProviderInfo[]>([]);
@@ -622,14 +636,29 @@ export function KittyDrawer({
     }
   };
   const act = async (fn: () => Promise<unknown>) => {
+    setActing(true);
     setErr("");
     try {
       await fn();
       onChanged();
     } catch (e) {
       setErr((e as Error).message);
+    } finally {
+      setActing(false);
     }
   };
+  const rest = async (action: "sleep" | "stop") => {
+    setViewOpen(false);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return action === "sleep" ? api.sleepKitty(kitty.id) : api.stopKitty(kitty.id);
+  };
+  const start = () =>
+    act(async () => {
+      await api.startKitty(kitty.id);
+      setViewOpen(true);
+    });
+  const changing = kitty.status === "starting" || kitty.status === "stopping";
+  const kind = kitty.computer?.runtime || runtime;
   const soul = kitty.soul || {};
   const running = kitty.status === "running";
   const model = models.find((m) => m.name === kitty.provider);
@@ -654,7 +683,11 @@ export function KittyDrawer({
             {kitty.desktop && (
               <span class="tag max-w-full min-w-0">
                 <span class="truncate">
-                  {runtime === "lima" ? t("Lima VM · persistent disk") : kitty.container}
+                  {kind === "boat"
+                    ? t("Boat · cloud computer")
+                    : kind === "lima"
+                      ? t("Lima VM · persistent disk")
+                      : kitty.container}
                 </span>
               </span>
             )}
@@ -668,23 +701,45 @@ export function KittyDrawer({
               ))}
             </div>
           )}
-          {kitty.error && <p class="text-sm text-[var(--c-red)] mt-2">{kitty.error}</p>}
+          {changing && (
+            <p class="text-sm text-[var(--t3)] mt-2" role="status" data-testid="lifecycle-progress">
+              <span class="spinner" />{" "}
+              {kitty.status === "starting"
+                ? t("Starting the computer…")
+                : kitty.availability === "sleeping"
+                  ? t("Saving the computer before sleep…")
+                  : t("Saving and stopping the computer…")}
+            </p>
+          )}
+          {kitty.availability === "disabled" && !changing && (
+            <p class="text-xs text-[var(--t3)] mt-2">
+              {t("Stopped. Tasks will not wake this kitty until you choose Start.")}
+            </p>
+          )}
+          {kitty.error && (
+            <p class="text-sm text-[var(--c-red)] mt-2" role="alert">
+              {kitty.error}
+            </p>
+          )}
         </div>
         <div class="flex gap-2 flex-wrap shrink-0 max-w-full" data-testid="kitty-actions">
           <button class="btn-accent px-3 py-2 text-sm" onClick={onChat}>
             {t("Chat with {name}", { name: kitty.name })}
           </button>
-          {running ? (
+          {(running || kitty.status === "sleeping") && (
             <button
               class="btn-ghost px-3 py-2 text-sm flex items-center gap-2"
-              onClick={() => act(() => api.stopKitty(kitty.id))}
+              disabled={acting || changing}
+              onClick={() => act(() => rest("stop"))}
             >
               <IconStop size={14} /> {t("Stop")}
             </button>
-          ) : (
+          )}
+          {!running && (
             <button
               class="btn-ghost px-3 py-2 text-sm flex items-center gap-2"
-              onClick={() => act(() => api.startKitty(kitty.id))}
+              disabled={acting || changing}
+              onClick={start}
             >
               <IconPlay size={14} /> {t("Start")}
             </button>
@@ -696,14 +751,33 @@ export function KittyDrawer({
       {kitty.desktop && (
         <div class="min-w-0">
           <div class="section-title !mx-0 mt-5">{t("Desktop")}</div>
-          {running ? (
-            <LiveDesktop kitty={kitty} inline onClose={() => undefined} />
+          {viewOpen && (running || kitty.status === "starting") ? (
+            <>
+              <button
+                class="plain text-xs text-[var(--t3)] mb-2"
+                onClick={() => setViewOpen(false)}
+              >
+                {t("Close desktop view")}
+              </button>
+              <LiveDesktop kitty={kitty} inline onClose={() => setViewOpen(false)} />
+            </>
           ) : (
-            <p class="text-sm text-[var(--t3)]" data-testid="desktop-off">
-              {t("Start {name} to see its desktop live and take control of it.", {
-                name: kitty.name,
-              })}
-            </p>
+            <div class="text-sm text-[var(--t3)]" data-testid="desktop-off">
+              <p>
+                {changing
+                  ? t("The desktop will be available when this operation finishes.")
+                  : t("Open the desktop to view and control this computer.")}
+              </p>
+              {!changing && (
+                <button
+                  class="btn-ghost px-3 py-2 text-sm mt-2"
+                  disabled={acting}
+                  onClick={() => (running ? setViewOpen(true) : start())}
+                >
+                  {t("Open desktop")}
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -717,7 +791,12 @@ export function KittyDrawer({
       </div>
       {kitty.desktop && (
         <div class="min-w-0 mt-5">
-          <DesktopCare kitty={kitty} runtime={runtime} onChanged={onChanged} />
+          <DesktopCare
+            kitty={kitty}
+            runtime={runtime}
+            onChanged={onChanged}
+            onSleep={() => rest("sleep")}
+          />
         </div>
       )}
       <details class="config mt-5" data-testid="kitty-config">
@@ -748,9 +827,11 @@ export function KittyDrawer({
                 onClick={async () =>
                   (await ask(
                     t(
-                      runtime === "lima" && kitty.desktop
-                        ? "Remove {name} and permanently delete its VM disk, including its files and installed apps?"
-                        : "Remove {name} and its container?",
+                      kind === "boat" && kitty.desktop
+                        ? "Remove {name} and its cloud computer? Its saved recovery checkpoint will be kept."
+                        : kind === "lima" && kitty.desktop
+                          ? "Remove {name} and permanently delete its VM disk, including its files and installed apps?"
+                          : "Remove {name} and its container?",
                       { name: kitty.name },
                     ),
                   )) && act(() => api.removeKitty(kitty.id).then(onClose))

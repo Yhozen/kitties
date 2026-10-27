@@ -90,6 +90,7 @@ export default function App() {
   const [waiting, setWaiting] = useState<number | null>(null);
   // Whether this page holds a session that can be ended (a gateway served on a network).
   const [canSignOut, setCanSignOut] = useState(false);
+  const logoutURL = useRef("");
   // The models (to guide a first run) and whether the gateway can give kitties a desktop.
   const [models, setModels] = useState<ProviderInfo[]>([]);
   const [containers, setContainers] = useState(true);
@@ -123,7 +124,10 @@ export default function App() {
       if (cookieLogin()) {
         api
           .session()
-          .then((s) => setCanSignOut(s.signed_in && !s.local_token))
+          .then((s) => {
+            setCanSignOut(s.signed_in && !s.local_token);
+            logoutURL.current = s.logout_url === "/cdn-cgi/access/logout" ? s.logout_url : "";
+          })
           .catch(() => setCanSignOut(false));
       }
     } catch (e) {
@@ -244,15 +248,19 @@ export default function App() {
       }
     });
   }, [current, refresh]);
+  const fleetChanging = kitties.some((k) => k.status === "starting" || k.status === "stopping");
   useEffect(() => {
-    const id = setInterval(() => {
-      refresh();
-      if (current) {
-        loadSession(current);
-      }
-    }, 15000);
+    const id = setInterval(
+      () => {
+        refresh();
+        if (current) {
+          loadSession(current);
+        }
+      },
+      fleetChanging ? 2000 : 15000,
+    );
     return () => clearInterval(id);
-  }, [current, refresh, loadSession]);
+  }, [current, refresh, loadSession, fleetChanging]);
 
   const workingChats = useMemo(() => {
     const set = new Set<string>();
@@ -299,6 +307,10 @@ export default function App() {
 
   const signOut = async () => {
     await api.logout().catch(() => {});
+    if (logoutURL.current) {
+      location.assign(logoutURL.current);
+      return;
+    }
     setCanSignOut(false);
     setSession(null);
     setChats([]);

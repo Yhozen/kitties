@@ -387,10 +387,12 @@ select:focus {
   background: var(--c-red);
   box-shadow: 0 0 8px rgba(255, 107, 107, 0.7);
 }
-.dot.stopped {
+.dot.stopped,
+.dot.sleeping {
   background: var(--c-amber);
 }
-.dot.starting {
+.dot.starting,
+.dot.stopping {
   background: var(--color-accent);
   animation: dot-pulse 1.2s ease-in-out infinite;
 }
