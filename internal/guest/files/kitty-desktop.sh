@@ -6,7 +6,7 @@ Xvfb "$DISPLAY" -screen 0 1280x800x24 -nolisten tcp -ac -noreset +extension RAND
 display_pid=$!
 trap 'kill "$display_pid" 2>/dev/null || true' EXIT INT TERM
 ready=false
-for attempt in $(seq 1 50); do
+for _ in $(seq 1 50); do
     if xdpyinfo >/dev/null 2>&1; then
         ready=true
         break

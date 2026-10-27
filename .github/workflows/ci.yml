@@ -180,12 +180,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: shell scripts parse
         run: |
-          for f in docker/kitty-desktop/*.sh docker/kitty-desktop/test/*.sh; do sh -n "$f"; done
-          python3 -m py_compile docker/kitty-desktop/kitty-page.py
+          for f in docker/kitty-desktop/*.sh docker/kitty-desktop/test/*.sh internal/guest/*.sh internal/guest/files/*.sh; do sh -n "$f"; done
+          python3 -m py_compile internal/guest/files/kitty-page.py
       - name: the desktop's fonts are the app's
         run: for f in docker/kitty-desktop/fonts/*.woff2; do cmp "$f" "desktop/frontend/public/$(basename "$f")"; done
       - name: build the image
-        run: docker build -t kitty-desktop:ci docker/kitty-desktop
+        run: docker build -t kitty-desktop:ci -f docker/kitty-desktop/Dockerfile .
       - name: the shelf's weather and player feeds, and its font
         run: docker run --rm --entrypoint sh -v "$PWD/docker/kitty-desktop/test:/test:ro" kitty-desktop:ci /test/shelf-feeds.sh
       - name: the display comes up and a screenshot is a PNG
@@ -413,7 +413,8 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          context: docker/kitty-desktop
+          context: .
+          file: docker/kitty-desktop/Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |

@@ -108,7 +108,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: shellcheck --severity=warning docker/kitty-desktop/*.sh scripts/*.sh
+      - run: shellcheck --severity=warning docker/kitty-desktop/*.sh internal/guest/*.sh internal/guest/files/*.sh scripts/*.sh
 
   # The images: the operating system packages and the libraries inside them. Trivy is fetched from
   # its release and checked against a checksum kept here, not run through a third-party action. The
@@ -124,7 +124,7 @@ jobs:
           - image: gateway
             build: docker build --pull -f docker/gateway/Dockerfile -t scan:image .
           - image: kitty-desktop
-            build: docker build --pull -t scan:image docker/kitty-desktop
+            build: docker build --pull -t scan:image -f docker/kitty-desktop/Dockerfile .
     env:
       TRIVY_VERSION: "0.69.3"
       TRIVY_SHA256: "1816b632dfe529869c740c0913e36bd1629cb7688bd5634f4a858c1d57c88b75"

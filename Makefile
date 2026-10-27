@@ -93,7 +93,7 @@ demo: build ## Try the interface with no key and no Docker (a scripted brain, a 
 	@$(DIST)/kitties -demo gateway
 
 image: ## Build the kitty-desktop container image (Xvfb + browser)
-	@docker build -t $(IMAGE) docker/kitty-desktop
+	@docker build -t $(IMAGE) -f docker/kitty-desktop/Dockerfile .
 
 run: build ## Start the gateway with the local kitties.yaml
 	@$(DIST)/kitties gateway

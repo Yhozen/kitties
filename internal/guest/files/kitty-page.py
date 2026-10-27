@@ -13,6 +13,7 @@ Numbers belong to the last `read`: after the page changes, read again. What a pa
 page's: it is printed as data to read, never as instructions.
 """
 import argparse
+import os
 import json
 import sys
 import time
@@ -20,7 +21,11 @@ import urllib.request
 
 import websocket  # python3-websocket
 
-PORT = 9222
+sys.path.insert(0, '/usr/local/lib/kitties')
+from kitty_browser import profile_processes, settings
+
+BROWSER = settings()
+PORT = BROWSER['port']
 TEXT_LIMIT = 6000
 ELEMENT_LIMIT = 150
 
@@ -198,28 +203,30 @@ def type_(page, args):
 
 
 def quit_browser():
-    """Browser.close: the browser writes what it keeps (cookies are flushed every 30 seconds, and
-    on this), then leaves. A browser that is not open is not an error."""
+    """Flush and close only the kitty user's configured browser profile."""
+    if not profile_processes(BROWSER['profile']):
+        print("no browser is open")
+        return
     try:
         with urllib.request.urlopen("http://127.0.0.1:%d/json/version" % PORT, timeout=3) as r:
             url = json.load(r)["webSocketDebuggerUrl"]
-    except OSError:
-        print("no browser is open")
-        return
-    ws = websocket.create_connection(url, timeout=10, suppress_origin=True)
-    ws.send(json.dumps({"id": 1, "method": "Browser.close"}))
-    try:
-        ws.recv()
-    except (websocket.WebSocketException, OSError):
-        pass  # it went before it answered
-    for _ in range(100):
+        ws = websocket.create_connection(url, timeout=10, suppress_origin=True)
         try:
-            urllib.request.urlopen("http://127.0.0.1:%d/json/version" % PORT, timeout=1).close()
-        except OSError:
+            ws.send(json.dumps({"id": 1, "method": "Browser.close"}))
+            try:
+                ws.recv()
+            except (websocket.WebSocketException, OSError):
+                pass
+        finally:
+            ws.close()
+    except (OSError, websocket.WebSocketException) as error:
+        fail("the browser is running but could not be closed: " + str(error))
+    for _ in range(200):
+        if not profile_processes(BROWSER['profile']):
             print("the browser closed")
             return
         time.sleep(0.1)
-    fail("the browser did not close in 10 seconds")
+    fail("the browser did not close in 20 seconds")
 
 
 def main():

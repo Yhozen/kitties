@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/madkoding/kitties/internal/container"
-	"github.com/madkoding/kitties/internal/lima/guest"
+	"github.com/madkoding/kitties/internal/guest"
 )
 
 var environmentKey = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
