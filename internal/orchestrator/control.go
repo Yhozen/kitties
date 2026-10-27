@@ -114,7 +114,7 @@ func (m *Manager) Stream(ctx context.Context, ref string, fps, quality int) (io.
 	if !k.Desktop {
 		return nil, fmt.Errorf("%s has no desktop", k.Name)
 	}
-	return m.ctr().Stream(ctx, k.Container, fps, quality)
+	return m.ctr().Stream(ctx, computerID(k), fps, quality)
 }
 
 // MaxClipboard is the most text the clipboard of a display takes from the person at once.
@@ -149,5 +149,5 @@ func (m *Manager) applyTheme(ctx context.Context, k *kitty.Kitty, reset bool) {
 	if !k.Desktop || name == "" || m.ctr() == nil {
 		return
 	}
-	_, _ = m.ctr().Exec(ctx, k.Container, "kitty-theme", name)
+	_, _ = m.ctr().Exec(ctx, computerID(k), "kitty-theme", name)
 }

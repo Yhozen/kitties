@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/madkoding/kitties/internal/computer"
 	"github.com/madkoding/kitties/internal/config"
 	"github.com/madkoding/kitties/internal/keep"
 	"github.com/madkoding/kitties/internal/kitty"
@@ -41,10 +42,10 @@ func (m *Manager) busy(id string) bool { return m.busyFn != nil && m.busyFn(id) 
 // staleForAutoUpdate tells whether a stopped container is of an older image than the newest one
 // and the gateway keeps desktops up to date by itself.
 func (m *Manager) staleForAutoUpdate(ctx context.Context, k *kitty.Kitty) bool {
-	if !m.cfg.Containers.AutoUpdate {
+	if !m.cfg.Containers.AutoUpdate || !m.capabilities().ImageUpdates {
 		return false
 	}
-	stale, _ := m.ctr().ImageStale(ctx, k.Container, m.cfg.Containers.Image)
+	stale, _ := m.ctr().ImageStale(ctx, computerID(k), m.cfg.Containers.Image)
 	return stale
 }
 
@@ -68,7 +69,7 @@ func (m *Manager) WatchUpdates(ctx context.Context, first, every time.Duration, 
 // holds, is left for the next round; one whose desktop is stopped is made anew when it is started.
 func (m *Manager) CheckUpdates(ctx context.Context, updated func(k *kitty.Kitty), warn func(format string, args ...any)) {
 	c := m.ctr()
-	if c == nil || !m.cfg.Containers.AutoUpdate {
+	if c == nil || !m.cfg.Containers.AutoUpdate || !m.capabilities().ImageUpdates {
 		return
 	}
 	// A reference that is only built here has nothing to pull: what is on this machine is the news.
@@ -81,7 +82,7 @@ func (m *Manager) CheckUpdates(ctx context.Context, updated func(k *kitty.Kitty)
 		if !k.Desktop || k.Status != kitty.StatusRunning {
 			continue
 		}
-		if stale, _ := c.ImageStale(ctx, k.Container, m.cfg.Containers.Image); !stale {
+		if stale, _ := c.ImageStale(ctx, computerID(k), m.cfg.Containers.Image); !stale {
 			continue
 		}
 		switch err := m.renew(ctx, k, true); {
@@ -103,7 +104,8 @@ var sessionsTimeout = 60 * time.Second
 // DesktopInfo is what is known about a kitty's desktop beyond its status.
 type DesktopInfo struct {
 	// Image is the image the desktop is made from, by its reference.
-	Image string `json:"image"`
+	Image        string                `json:"image"`
+	Capabilities computer.Capabilities `json:"capabilities"`
 	// UpdateAvailable is true when a newer image than the container's is on this machine.
 	UpdateAvailable bool `json:"update_available"`
 	// AutoUpdate is true when the gateway moves the desktop to a newer image by itself, when idle.
@@ -129,9 +131,9 @@ func (m *Manager) DesktopInfo(ctx context.Context, ref string) (DesktopInfo, err
 	if err != nil {
 		return DesktopInfo{}, err
 	}
-	info := DesktopInfo{Image: m.cfg.Containers.Image, AutoUpdate: m.cfg.Containers.AutoUpdate}
-	if exists, _, err := m.containerState(ctx, k.Container); err == nil && exists {
-		info.UpdateAvailable, _ = m.ctr().ImageStale(ctx, k.Container, info.Image)
+	info := DesktopInfo{Image: m.cfg.Containers.Image, AutoUpdate: m.cfg.Containers.AutoUpdate && m.capabilities().ImageUpdates, Capabilities: m.capabilities()}
+	if exists, _, err := m.computerState(ctx, k); err == nil && exists && m.capabilities().ImageUpdates {
+		info.UpdateAvailable, _ = m.ctr().ImageStale(ctx, computerID(k), info.Image)
 	}
 	if m.keeper != nil {
 		if b, ok := m.keeper.Info(k.ID); ok {
@@ -151,7 +153,7 @@ func (m *Manager) Backup(ctx context.Context, ref string) (keep.Info, error) {
 	if m.keeper == nil {
 		return keep.Info{}, errors.New("this gateway keeps no backups")
 	}
-	if _, running, err := m.containerState(ctx, k.Container); err != nil {
+	if _, running, err := m.computerState(ctx, k); err != nil {
 		return keep.Info{}, err
 	} else if !running {
 		return keep.Info{}, fmt.Errorf("%s is not running: start it to back it up", k.Name)
@@ -162,7 +164,7 @@ func (m *Manager) Backup(ctx context.Context, ref string) (keep.Info, error) {
 func (m *Manager) backup(ctx context.Context, k *kitty.Kitty) (keep.Info, error) {
 	ctx, cancel := context.WithTimeout(ctx, sessionsTimeout)
 	defer cancel()
-	out, err := m.ctr().Exec(ctx, k.Container, "kitty-backup")
+	out, err := m.ctr().Exec(ctx, computerID(k), "kitty-backup")
 	if err != nil {
 		return keep.Info{}, errors.New("this desktop's image cannot back up yet: update the desktop")
 	}
@@ -189,7 +191,7 @@ func (m *Manager) saveSessions(ctx context.Context, k *kitty.Kitty) {
 		return
 	}
 	quit, cancel := context.WithTimeout(ctx, sessionsTimeout)
-	_, _ = m.ctr().Exec(quit, k.Container, "kitty-page", "quit")
+	_, _ = m.ctr().Exec(quit, computerID(k), "kitty-page", "quit")
 	cancel()
 	_, _ = m.backup(ctx, k)
 }
@@ -205,7 +207,7 @@ func (m *Manager) restoreSessions(ctx context.Context, k *kitty.Kitty) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, sessionsTimeout)
 	defer cancel()
-	_, _ = m.ctr().ExecInput(ctx, k.Container, string(data), "kitty-restore")
+	_, _ = m.ctr().ExecInput(ctx, computerID(k), string(data), "kitty-restore")
 }
 
 // UpdateInBackground moves a kitty's desktop to the newest image without making the caller wait
@@ -213,8 +215,8 @@ func (m *Manager) restoreSessions(ctx context.Context, k *kitty.Kitty) {
 // reason on it. Its sessions are backed up first and given back to the new container; its
 // workspace is untouched.
 func (m *Manager) UpdateInBackground(ref string) (*kitty.Kitty, error) {
-	if m.cfg.Containers.Runtime == "lima" {
-		return nil, errors.New("Lima desktops keep their own disk; update packages inside the VM instead of replacing its image")
+	if !m.capabilities().ImageUpdates {
+		return nil, errors.New("this runtime keeps persistent disks; update packages inside the computer instead of replacing its image")
 	}
 	k, err := m.desktopKitty(ref)
 	if err != nil {
@@ -251,12 +253,15 @@ func (m *Manager) update(ctx context.Context, id string) error {
 // renew makes a kitty's container anew from the newest image when it is of an older one. In auto
 // mode it gives way, before touching anything, to a kitty that is working or that the person holds.
 func (m *Manager) renew(ctx context.Context, k *kitty.Kitty, auto bool) error {
-	exists, running, err := m.containerState(ctx, k.Container)
+	if !m.capabilities().ImageUpdates {
+		return errors.New("this runtime does not support image replacement")
+	}
+	exists, running, err := m.computerState(ctx, k)
 	if err != nil {
 		return m.fail(k.ID, err)
 	}
 	if exists {
-		if stale, _ := m.ctr().ImageStale(ctx, k.Container, m.cfg.Containers.Image); !stale {
+		if stale, _ := m.ctr().ImageStale(ctx, computerID(k), m.cfg.Containers.Image); !stale {
 			if auto {
 				return nil
 			}
@@ -273,7 +278,7 @@ func (m *Manager) renew(ctx context.Context, k *kitty.Kitty, auto bool) error {
 		if running {
 			m.saveSessions(ctx, k)
 		}
-		if err := m.ctr().Remove(ctx, k.Container); err != nil {
+		if err := m.ctr().Remove(ctx, computerID(k)); err != nil {
 			return m.fail(k.ID, err)
 		}
 	}

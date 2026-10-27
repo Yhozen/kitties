@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/madkoding/kitties/internal/computer"
 	"github.com/madkoding/kitties/internal/container"
 )
 
@@ -29,6 +30,10 @@ type Manager struct {
 
 // New uses home as the dedicated Lima state directory.
 func New(home string) *Manager { return &Manager{home: home, command: exec.CommandContext} }
+
+func (m *Manager) Capabilities() computer.Capabilities {
+	return computer.Capabilities{Kind: "lima", PersistentDisk: true, GuestWorkspace: true}
+}
 
 func limaBinary() (string, error) {
 	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {

@@ -372,7 +372,7 @@ func TestExistingOrDamagedOwnershipCannotBeReplaced(t *testing.T) {
 		t.Fatal("persistent disk allowed image replacement")
 	}
 	stale, err := m.ImageStale(context.Background(), "kitty-mimi", "new-image")
-	if err != nil || stale {
+	if err != nil || stale || m.Capabilities().ImageUpdates {
 		t.Fatal("persistent disk scheduled automatic replacement")
 	}
 }

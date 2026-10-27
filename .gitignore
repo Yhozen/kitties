@@ -38,3 +38,8 @@ internal/web/dist/*
 desktop/frontend/e2e/.hooks.log
 desktop/frontend/test-results/
 desktop/frontend/e2e/.data-login/
+
+# Local API credentials
+.env
+.env.*
+!.env.example

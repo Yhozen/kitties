@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/madkoding/kitties/internal/computer"
 	"github.com/madkoding/kitties/internal/soul"
 )
 
@@ -15,6 +16,7 @@ const (
 	// StatusStarting is a desktop coming up: its image may be downloading for minutes.
 	StatusStarting = "starting"
 	StatusStopped  = "stopped"
+	StatusSleeping = "sleeping"
 	StatusError    = "error"
 )
 
@@ -36,12 +38,16 @@ type Kitty struct {
 	BodyLater bool `json:"body_later,omitempty"`
 	// Theme is the look of its desktop, one of Themes; empty is the image's own (Numix, dark).
 	Theme string `json:"theme,omitempty"`
-	// Container is the container name, empty without a desktop.
+	// Computer records the runtime identity independently of the AI provider.
+	Computer     computer.Reference `json:"computer"`
+	Availability string             `json:"availability,omitempty"`
+	Operation    Operation          `json:"operation,omitempty"`
+	// Container is the stable logical name, retained for older API clients; empty without a desktop.
 	Container string    `json:"container,omitempty"`
 	Status    string    `json:"status"`
 	Error     string    `json:"error,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
-	// Workspace is the host folder mounted into the container.
+	// Workspace is the host mount for containers, or the guest path for persistent computers.
 	Workspace string `json:"workspace,omitempty"`
 	// Limits bound what one task of this kitty may spend; a zero field takes the default.
 	Limits Limits `json:"limits"`
@@ -51,6 +57,12 @@ type Kitty struct {
 	// only by the limits the person set; "ask": an action that reaches other people waits for a
 	// yes until the kitty has earned the right to do it alone.
 	Approvals string `json:"approvals,omitempty"`
+}
+
+// Operation records lifecycle work before the runtime is changed.
+type Operation struct {
+	Kind      string    `json:"kind,omitempty"`
+	StartedAt time.Time `json:"started_at,omitempty"`
 }
 
 // NoConnectors, as a kitty's only connection, means it may use none: an empty list means all

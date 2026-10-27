@@ -49,7 +49,7 @@ func (f *fakeContainers) Up(_ context.Context, s container.Spec) (string, error)
 		return "", err
 	}
 	f.exists[s.Name], f.running[s.Name] = true, true
-	return "id", nil
+	return s.Name, nil
 }
 func (f *fakeContainers) Start(_ context.Context, n string) error {
 	if err := f.op("start"); err != nil {
@@ -104,7 +104,7 @@ func (f *fakeContainers) List(context.Context) ([]container.Info, error) {
 	}
 	var out []container.Info
 	for n := range f.exists {
-		out = append(out, container.Info{Name: n, Running: f.running[n]})
+		out = append(out, container.Info{ID: n, Name: n, Running: f.running[n]})
 	}
 	return out, nil
 }

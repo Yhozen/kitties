@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/madkoding/kitties/internal/computer"
 	"github.com/madkoding/kitties/internal/config"
 	"github.com/madkoding/kitties/internal/connector"
 	"github.com/madkoding/kitties/internal/container"
@@ -52,6 +53,8 @@ var ErrNotFound = errors.New("no such kitty")
 
 // Manager is the orchestrator.
 type Manager struct {
+	opMu       sync.Mutex
+	operations map[string]*sync.Mutex
 	cfg        config.Config
 	providers  *provider.Registry
 	connectors *connector.Registry
@@ -110,9 +113,6 @@ func WithProviders(r *provider.Registry) Option {
 
 // New builds the manager from cfg, building the providers and connectors it names.
 func New(cfg config.Config, opts ...Option) (*Manager, error) {
-	if cfg.Containers.Runtime == "lima" {
-		cfg.Containers.AutoUpdate = false
-	}
 	m := &Manager{
 		cfg: cfg, connectors: connector.NewRegistry(), kitties: map[string]*kitty.Kitty{},
 		path: filepath.Join(cfg.DataDirOr(), "kitties.json"), now: time.Now, newID: randomID,
@@ -120,6 +120,9 @@ func New(cfg config.Config, opts ...Option) (*Manager, error) {
 	}
 	for _, o := range opts {
 		o(m)
+	}
+	if !m.capabilities().ImageUpdates {
+		m.cfg.Containers.AutoUpdate = false
 	}
 	m.oauth = oauth.New(m)
 	m.accounts = llmauth.New(filepath.Join(cfg.DataDirOr(), "accounts"))
@@ -343,6 +346,7 @@ func (m *Manager) FindRuntime(ctx context.Context) bool {
 		k.BodyLater, k.Desktop = false, true
 		k.Container = kitty.ContainerName(k.Name)
 		k.Workspace = m.workspaceFor(k.Name)
+		k.Computer.Runtime = m.capabilities().Kind
 		if k.Status == kitty.StatusRunning {
 			running = append(running, k.ID)
 		}
@@ -371,12 +375,15 @@ func (m *Manager) load() error {
 	}
 	for _, k := range list {
 		// A desktop that was still coming up when the gateway stopped is started again.
-		if k.Status == kitty.StatusStarting {
+		if k.Status == kitty.StatusStarting && k.Operation.Kind == "" {
 			k.Status = kitty.StatusRunning
+		}
+		if err := m.migrateComputer(k); err != nil {
+			return err
 		}
 		m.kitties[k.ID] = k
 	}
-	return nil
+	return m.saveLocked()
 }
 
 // saveLocked writes the list; the caller holds the lock.
@@ -477,11 +484,12 @@ func (m *Manager) Create(ctx context.Context, s Spec) (*kitty.Kitty, error) {
 	k := &kitty.Kitty{
 		ID: m.newID(), Name: s.Name, Provider: prov, Soul: personality, Connectors: s.Connectors,
 		Desktop: desktop, BodyLater: wants && !desktop, Status: kitty.StatusCreated, CreatedAt: m.now(), Avatar: avatar,
-		Limits: s.Limits, Backup: s.Backup, Approvals: s.Approvals,
+		Limits: s.Limits, Backup: s.Backup, Approvals: s.Approvals, Availability: computer.Enabled,
 	}
 	if desktop {
 		k.Container = kitty.ContainerName(s.Name)
 		k.Workspace = m.workspaceFor(s.Name)
+		k.Computer.Runtime = m.capabilities().Kind
 	}
 	m.kitties[k.ID] = k
 	if err := m.saveLocked(); err != nil {
@@ -496,7 +504,7 @@ func (m *Manager) Create(ctx context.Context, s Spec) (*kitty.Kitty, error) {
 // folder itself is open to everyone, inside a root that is the gateway's alone (0700): no other
 // user of the host reaches it.
 func (m *Manager) makeWorkspace(dir string) error {
-	if m.cfg.Containers.Runtime == "lima" {
+	if m.capabilities().GuestWorkspace {
 		return nil
 	}
 	root := filepath.Dir(dir)
@@ -516,7 +524,7 @@ func (m *Manager) makeWorkspace(dir string) error {
 }
 
 func (m *Manager) workspaceFor(name string) string {
-	if m.cfg.Containers.Runtime == "lima" {
+	if m.capabilities().GuestWorkspace {
 		return container.Workdir
 	}
 	return filepath.Join(m.workspaceRoot(), name)
@@ -609,49 +617,67 @@ func (m *Manager) Start(ctx context.Context, ref string) error {
 	if err != nil {
 		return err
 	}
-	if !k.Desktop {
-		return m.setStatus(k.ID, kitty.StatusRunning, "")
+	unlock := m.lockComputer(k.ID)
+	defer unlock()
+	k, err = m.Get(k.ID)
+	if err != nil {
+		return err
 	}
-	// Made, or opened to the container when an older version made it closed.
+	if err := m.checkRuntime(k); err != nil {
+		return m.fail(k.ID, err)
+	}
+	if err := m.beginOperation(k.ID, "start", computer.Enabled); err != nil {
+		return err
+	}
+	if !k.Desktop {
+		return m.finishOperation(k.ID, kitty.StatusRunning)
+	}
 	if err := m.makeWorkspace(k.Workspace); err != nil {
 		return m.fail(k.ID, fmt.Errorf("create the workspace: %w", err))
 	}
-	exists, running, err := m.containerState(ctx, k.Container)
+	exists, running, err := m.computerState(ctx, k)
 	if err != nil {
 		return m.fail(k.ID, err)
 	}
 	switch {
 	case running:
-		if m.cfg.Containers.Runtime == "lima" {
-			if err := m.ctr().Start(ctx, k.Container); err != nil {
+		if m.capabilities().PersistentDisk {
+			if err := m.ctr().Start(ctx, computerID(k)); err != nil {
 				return m.fail(k.ID, err)
 			}
 		}
-	case exists && !m.staleForAutoUpdate(ctx, k):
-		if err := m.ctr().Start(ctx, k.Container); err != nil {
+	case exists && !m.staleForAutoUpdate(ctx, k), m.capabilities().PersistentDisk && k.Computer.ID != "":
+		// A missing persistent computer must be recovered by its runtime from known
+		// durable state. Up would risk replacing the kitty's work with a blank disk.
+		if err := m.ctr().Start(ctx, computerID(k)); err != nil {
 			return m.fail(k.ID, err)
 		}
 	default:
-		// A stopped container of an older image is made anew with the newest (its sessions were
-		// backed up when it stopped, and are put back below).
 		if exists {
-			if err := m.ctr().Remove(ctx, k.Container); err != nil {
+			if err := m.ctr().Remove(ctx, computerID(k)); err != nil {
 				return m.fail(k.ID, err)
 			}
 		}
 		c := m.cfg.Containers
-		spec := container.Spec{
-			Name: k.Container, KittyName: k.Name, Image: c.Image, MemoryMB: c.MemoryMB, CPUs: c.CPUs,
-			Network: c.Network, Workspace: k.Workspace, Env: c.Env,
-		}
-		if _, err := m.ctr().Up(ctx, spec); err != nil {
+		spec := container.Spec{Name: k.Container, KittyName: k.Name, Image: c.Image, MemoryMB: c.MemoryMB, CPUs: c.CPUs, Network: c.Network, Workspace: k.Workspace, Env: c.Env}
+		id, err := m.ctr().Up(ctx, spec)
+		if err != nil {
 			return m.fail(k.ID, err)
 		}
-		// A container made anew gets back what its kitty's browser knew.
-		m.restoreSessions(ctx, k)
+		if err := m.rememberComputer(k.ID, computer.Reference{Runtime: m.capabilities().Kind, ID: id}); err != nil {
+			return m.fail(k.ID, err)
+		}
+		k, _ = m.Get(k.ID)
+		if !m.capabilities().PersistentDisk {
+			m.restoreSessions(ctx, k)
+		}
 	}
+	if err := m.refreshComputer(ctx, k); err != nil {
+		return m.fail(k.ID, err)
+	}
+	k, _ = m.Get(k.ID)
 	m.applyTheme(ctx, k, false)
-	return m.setStatus(k.ID, kitty.StatusRunning, "")
+	return m.finishOperation(k.ID, kitty.StatusRunning)
 }
 
 // startTimeout is how long a desktop may take to come up in the background: the first start
@@ -672,7 +698,7 @@ func (m *Manager) StartInBackground(ref string) (*kitty.Kitty, error) {
 		}
 		return m.Get(k.ID)
 	}
-	if err := m.setStatus(k.ID, kitty.StatusStarting, ""); err != nil {
+	if err := m.beginOperation(k.ID, "start", computer.Enabled); err != nil {
 		return nil, err
 	}
 	// The answer is taken before the start begins: a desktop that comes up at once would
@@ -689,52 +715,78 @@ func (m *Manager) StartInBackground(ref string) (*kitty.Kitty, error) {
 	return starting, nil
 }
 
-func (m *Manager) containerState(ctx context.Context, name string) (exists, running bool, err error) {
-	infos, err := m.ctr().List(ctx)
-	if err != nil {
-		return false, false, err
-	}
-	for _, i := range infos {
-		if i.Name == name {
-			return true, i.Running, nil
-		}
-	}
-	return false, false, nil
-}
-
 // Stop stops the kitty's container, keeping it.
 func (m *Manager) Stop(ctx context.Context, ref string) error {
+	return m.stop(ctx, ref, computer.Disabled)
+}
+
+func (m *Manager) stop(ctx context.Context, ref, availability string) error {
 	k, err := m.Get(ref)
 	if err != nil {
 		return err
 	}
+	unlock := m.lockComputer(k.ID)
+	defer unlock()
+	k, err = m.Get(k.ID)
+	if err != nil {
+		return err
+	}
+	if err := m.checkRuntime(k); err != nil {
+		return m.fail(k.ID, err)
+	}
+	if err := m.beginOperation(k.ID, "stop", availability); err != nil {
+		return err
+	}
 	if k.Desktop {
-		if exists, running, err := m.containerState(ctx, k.Container); err != nil {
+		exists, running, err := m.computerState(ctx, k)
+		if err != nil {
 			return m.fail(k.ID, err)
-		} else if exists {
-			// The browser is closed in an orderly way and its sessions are kept before the stop.
-			if running {
+		}
+		if exists || m.capabilities().PersistentDisk && k.Computer.ID != "" {
+			if running && !m.capabilities().PersistentDisk {
 				m.saveSessions(ctx, k)
 			}
-			if err := m.ctr().Stop(ctx, k.Container); err != nil {
+			if err := m.ctr().Stop(ctx, computerID(k)); err != nil {
+				return m.fail(k.ID, err)
+			}
+			if err := m.refreshComputer(ctx, k); err != nil {
 				return m.fail(k.ID, err)
 			}
 		}
 	}
-	return m.setStatus(k.ID, kitty.StatusStopped, "")
+	status := kitty.StatusStopped
+	if availability == computer.Sleeping {
+		status = kitty.StatusSleeping
+	}
+	return m.finishOperation(k.ID, status)
 }
 
-// Remove deletes the kitty and its container. The workspace stays on disk.
+// Remove deletes a kitty and its live computer. Runtime recovery data follows
+// the runtime's retention policy and is not implicitly purged.
 func (m *Manager) Remove(ctx context.Context, ref string) error {
 	k, err := m.Get(ref)
 	if err != nil {
 		return err
 	}
+	unlock := m.lockComputer(k.ID)
+	defer unlock()
+	k, err = m.Get(k.ID)
+	if err != nil {
+		return err
+	}
+	if err := m.checkRuntime(k); err != nil {
+		return m.fail(k.ID, err)
+	}
+	if err := m.beginOperation(k.ID, "remove", computer.Disabled); err != nil {
+		return err
+	}
 	if k.Desktop {
-		if exists, _, err := m.containerState(ctx, k.Container); err != nil {
+		exists, _, err := m.computerState(ctx, k)
+		if err != nil {
 			return m.fail(k.ID, err)
-		} else if exists {
-			if err := m.ctr().Remove(ctx, k.Container); err != nil {
+		}
+		if exists || m.capabilities().PersistentDisk && k.Computer.ID != "" {
+			if err := m.ctr().Remove(ctx, computerID(k)); err != nil {
 				return m.fail(k.ID, err)
 			}
 		}
@@ -1002,29 +1054,45 @@ func (m *Manager) Check(ctx context.Context, recovered func(k *kitty.Kitty, what
 	running := map[string]bool{}
 	for _, i := range infos {
 		running[i.Name] = i.Running
+		if i.ID != "" {
+			running[i.ID] = i.Running
+		}
 	}
 	for _, k := range m.List() {
 		if !k.Desktop {
 			continue
 		}
-		switch {
-		case k.Status == kitty.StatusRunning && !running[k.Container]:
-			what := "its container had stopped"
-			if _, exists := running[k.Container]; !exists {
-				what = "its container was gone"
-			}
-			if err := m.Start(ctx, k.ID); err != nil {
-				warn("watchdog: %s: %v", k.Name, err)
-				continue
-			}
-			recovered(k, what)
-		case k.Status == kitty.StatusError:
-			if err := m.Start(ctx, k.ID); err != nil {
-				warn("watchdog: %s still fails: %v", k.Name, err)
-				continue
-			}
-			recovered(k, "it was in error: "+k.Error)
+		var recovery func() error
+		what := "its container had stopped"
+		if _, exists := running[computerID(k)]; !exists {
+			what = "its container was gone"
 		}
+		if k.Status == kitty.StatusError {
+			what = "it was in error: " + k.Error
+		}
+		switch {
+		case k.Operation.Kind == "remove":
+			recovery = func() error { return m.Remove(ctx, k.ID) }
+			what = "its pending removal completed"
+		case k.Operation.Kind == "stop":
+			recovery = func() error { return m.stop(ctx, k.ID, k.Availability) }
+			what = "its pending stop completed"
+		case k.Availability == computer.Disabled || k.Availability == computer.Sleeping:
+			continue
+		case k.Operation.Kind == "start", k.Status == kitty.StatusRunning && !running[computerID(k)], k.Status == kitty.StatusError:
+			recovery = func() error { return m.Start(ctx, k.ID) }
+		default:
+			continue
+		}
+		if err := recovery(); err != nil {
+			if k.Status == kitty.StatusError {
+				warn("watchdog: %s still fails: %v", k.Name, err)
+			} else {
+				warn("watchdog: %s: %v", k.Name, err)
+			}
+			continue
+		}
+		recovered(k, what)
 	}
 }
 
@@ -1054,7 +1122,7 @@ func (m *Manager) Exec(ctx context.Context, ref string, argv ...string) (string,
 	if !k.Desktop {
 		return "", fmt.Errorf("%s has no container", k.Name)
 	}
-	return m.ctr().Exec(ctx, k.Container, argv...)
+	return m.ctr().Exec(ctx, computerID(k), argv...)
 }
 
 // ExecInput runs a command in the kitty's container with text on its input.
@@ -1066,7 +1134,7 @@ func (m *Manager) ExecInput(ctx context.Context, ref, stdin string, argv ...stri
 	if !k.Desktop {
 		return "", fmt.Errorf("%s has no container", k.Name)
 	}
-	return m.ctr().ExecInput(ctx, k.Container, stdin, argv...)
+	return m.ctr().ExecInput(ctx, computerID(k), stdin, argv...)
 }
 
 // Screenshot captures the kitty's display.
@@ -1078,7 +1146,7 @@ func (m *Manager) Screenshot(ctx context.Context, ref string) ([]byte, error) {
 	if !k.Desktop {
 		return nil, fmt.Errorf("%s has no container", k.Name)
 	}
-	return m.ctr().Screenshot(ctx, k.Container)
+	return m.ctr().Screenshot(ctx, computerID(k))
 }
 
 // StopAll stops every running kitty; used on shutdown when the operator asks for it.

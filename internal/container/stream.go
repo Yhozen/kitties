@@ -54,7 +54,7 @@ func (s *stream) Close() error {
 
 // Stream follows the kitty's display: read its pictures with ReadFrame, and close it to stop.
 func (m *Manager) Stream(ctx context.Context, name string, fps, quality int) (io.ReadCloser, error) {
-	if !nameRe.MatchString(name) {
+	if !validReference(name) {
 		return nil, fmt.Errorf("container name %q is not valid", name)
 	}
 	return startStream(ctx, m.rt.Bin, "exec", "-i", name, "kitty-stream", "--stdin", strconv.Itoa(fps), strconv.Itoa(quality))
