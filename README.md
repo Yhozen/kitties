@@ -12,6 +12,10 @@
 
 </div>
 
+This branch adds an experimental **Lima VM per kitty**: a persistent Debian computer
+with its own kernel and disk. Run `scripts/run-lima.sh`, or use `--demo` for a scripted
+brain with a real VM. See the [Lima PoC guide](docs/LIMA-POC.md) for setup and boundaries.
+
 Kitties is a Go framework for running **NNN bots** at once. Every kitty has a **soul** (a
 personality, yours to shape), a **brain** (the AI provider you pick for it: OpenAI, Anthropic,
 Gemini, Ollama, Groq, OpenRouter, DeepSeek, Qwen, Mistral, Copilot or any OpenAI-compatible server,

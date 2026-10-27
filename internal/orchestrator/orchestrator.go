@@ -110,6 +110,9 @@ func WithProviders(r *provider.Registry) Option {
 
 // New builds the manager from cfg, building the providers and connectors it names.
 func New(cfg config.Config, opts ...Option) (*Manager, error) {
+	if cfg.Containers.Runtime == "lima" {
+		cfg.Containers.AutoUpdate = false
+	}
 	m := &Manager{
 		cfg: cfg, connectors: connector.NewRegistry(), kitties: map[string]*kitty.Kitty{},
 		path: filepath.Join(cfg.DataDirOr(), "kitties.json"), now: time.Now, newID: randomID,
@@ -298,6 +301,8 @@ func (m *Manager) HasContainers() (bool, error) {
 	return m.containers != nil, m.runtimeErr
 }
 
+func (m *Manager) RuntimeName() string { return m.cfg.Containers.Runtime }
+
 // ctr is the container runtime, nil when there is none.
 func (m *Manager) ctr() Containers {
 	m.rtMu.RLock()
@@ -337,7 +342,7 @@ func (m *Manager) FindRuntime(ctx context.Context) bool {
 		}
 		k.BodyLater, k.Desktop = false, true
 		k.Container = kitty.ContainerName(k.Name)
-		k.Workspace = filepath.Join(m.workspaceRoot(), k.Name)
+		k.Workspace = m.workspaceFor(k.Name)
 		if k.Status == kitty.StatusRunning {
 			running = append(running, k.ID)
 		}
@@ -476,7 +481,7 @@ func (m *Manager) Create(ctx context.Context, s Spec) (*kitty.Kitty, error) {
 	}
 	if desktop {
 		k.Container = kitty.ContainerName(s.Name)
-		k.Workspace = filepath.Join(m.workspaceRoot(), s.Name)
+		k.Workspace = m.workspaceFor(s.Name)
 	}
 	m.kitties[k.ID] = k
 	if err := m.saveLocked(); err != nil {
@@ -491,6 +496,9 @@ func (m *Manager) Create(ctx context.Context, s Spec) (*kitty.Kitty, error) {
 // folder itself is open to everyone, inside a root that is the gateway's alone (0700): no other
 // user of the host reaches it.
 func (m *Manager) makeWorkspace(dir string) error {
+	if m.cfg.Containers.Runtime == "lima" {
+		return nil
+	}
 	root := filepath.Dir(dir)
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return err
@@ -505,6 +513,13 @@ func (m *Manager) makeWorkspace(dir string) error {
 		return err
 	}
 	return os.Chmod(dir, 0o777) //nolint:gosec // see above: the root keeps everyone else out
+}
+
+func (m *Manager) workspaceFor(name string) string {
+	if m.cfg.Containers.Runtime == "lima" {
+		return container.Workdir
+	}
+	return filepath.Join(m.workspaceRoot(), name)
 }
 
 func (m *Manager) workspaceRoot() string {
@@ -607,6 +622,11 @@ func (m *Manager) Start(ctx context.Context, ref string) error {
 	}
 	switch {
 	case running:
+		if m.cfg.Containers.Runtime == "lima" {
+			if err := m.ctr().Start(ctx, k.Container); err != nil {
+				return m.fail(k.ID, err)
+			}
+		}
 	case exists && !m.staleForAutoUpdate(ctx, k):
 		if err := m.ctr().Start(ctx, k.Container); err != nil {
 			return m.fail(k.ID, err)

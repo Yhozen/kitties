@@ -12,7 +12,15 @@ import { t } from "./i18n";
 // programs are backed up first, sealed and away from the container, and put back into the new one.
 // The backup is also made whenever the desktop stops, and here on request.
 
-export default function DesktopCare({ kitty, onChanged }: { kitty: Kitty; onChanged: () => void }) {
+export default function DesktopCare({
+  kitty,
+  runtime = "container",
+  onChanged,
+}: {
+  kitty: Kitty;
+  runtime?: string;
+  onChanged: () => void;
+}) {
   const [info, setInfo] = useState<DesktopInfo | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -56,7 +64,14 @@ export default function DesktopCare({ kitty, onChanged }: { kitty: Kitty; onChan
   };
   return (
     <div class="mt-3 flex flex-col gap-2 text-sm" data-testid="desktop-care">
-      {info.update_available && (
+      {runtime === "lima" && (
+        <p class="text-xs text-[var(--t3)]">
+          {t(
+            "Files and installed apps stay on this VM's disk when it stops. The backups below cover browser sessions, not the whole computer.",
+          )}
+        </p>
+      )}
+      {runtime !== "lima" && info.update_available && (
         <div class="callout flex items-center gap-2" data-testid="update-callout">
           <span class="flex-1">
             {t("A newer desktop is available for {name}.", { name: kitty.name })}
@@ -88,7 +103,7 @@ export default function DesktopCare({ kitty, onChanged }: { kitty: Kitty; onChan
           {t("Back up now")}
         </button>
       </div>
-      {info.auto_update && (
+      {runtime !== "lima" && info.auto_update && (
         <p class="text-xs text-[var(--t3)]" data-testid="auto-update">
           {t(
             "Newer desktops are downloaded and installed by themselves when {name} is idle; its cookies, sessions and passwords come along.",
@@ -96,11 +111,13 @@ export default function DesktopCare({ kitty, onChanged }: { kitty: Kitty; onChan
           )}
         </p>
       )}
-      <p class="text-xs text-[var(--t4)]">
-        {t(
-          "The backup is sealed and kept away from the desktop, and goes back into it when it is made anew. It is also made when the desktop stops.",
-        )}
-      </p>
+      {runtime !== "lima" && (
+        <p class="text-xs text-[var(--t4)]">
+          {t(
+            "The backup is sealed and kept away from the desktop, and goes back into it when it is made anew. It is also made when the desktop stops.",
+          )}
+        </p>
+      )}
       {err && (
         <p class="text-sm text-[var(--c-red)]" role="alert">
           {err}

@@ -29,6 +29,7 @@ import (
 	"github.com/madkoding/kitties/internal/gateway"
 	"github.com/madkoding/kitties/internal/keep"
 	"github.com/madkoding/kitties/internal/kitty"
+	"github.com/madkoding/kitties/internal/lima"
 	"github.com/madkoding/kitties/internal/memory"
 	"github.com/madkoding/kitties/internal/notify"
 	"github.com/madkoding/kitties/internal/orchestrator"
@@ -56,7 +57,7 @@ Commands:
   start|stop|rm <name>      manage one kitty
   scale <name> <n>          run n replicas of a configured kitty (name-1 ... name-n)
   chat <name>[,<name>...]   talk to one kitty, or to a group of them, from the terminal
-  exec <name> <cmd...>      run a command inside the kitty's container
+  exec <name> <cmd...>      run a command inside the kitty's computer
   shot <name> <file.png>    save a screenshot of the kitty's display
   providers                 list the configured AI profiles and the supported kinds
   version                   print the version
@@ -65,6 +66,7 @@ Commands:
 
 Flags: -config file picks the configuration; -demo needs no key and no Docker (a scripted brain
 and a drawn desktop) and is the quickest way to see the interface: kitties -demo gateway.
+-vm-demo uses a scripted brain with a REAL persistent Lima VM; try asking it to open a URL.
 
 Environment: KITTIES_CONFIG names the configuration file (default ./kitties.yaml or ~/.kitties/kitties.yaml).
 A gateway without a configuration file starts empty: add models and kitties from the web page.
@@ -79,6 +81,7 @@ func main() {
 // app is the state every command shares.
 type app struct {
 	demo   bool
+	vmDemo bool
 	cfg    config.Config
 	fleet  *orchestrator.Manager
 	chats  *chat.Service
@@ -117,8 +120,13 @@ func run(args []string, in io.Reader, out, errOut io.Writer) int {
 	fs.SetOutput(errOut)
 	configPath := fs.String("config", "", "configuration file (default: KITTIES_CONFIG, ./kitties.yaml or ~/.kitties/kitties.yaml)")
 	demoMode := fs.Bool("demo", false, "no AI key and no Docker: a scripted brain and a drawn desktop, to try the interface")
+	vmDemo := fs.Bool("vm-demo", false, "scripted brain with a real persistent Lima desktop (no AI key needed)")
 	fs.Usage = func() { fmt.Fprintf(errOut, usage, version) }
 	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *vmDemo && (*demoMode || *configPath != "") {
+		fmt.Fprintln(errOut, "-vm-demo cannot be combined with -demo or -config")
 		return 2
 	}
 	rest := fs.Args()
@@ -154,6 +162,20 @@ func run(args []string, in io.Reader, out, errOut io.Writer) int {
 	}
 	cfg, err := config.Load(path)
 	switch {
+	case *vmDemo:
+		cfg, err = demoConfig()
+		cfg.Kitties = cfg.Kitties[:1]
+		cfg.Containers.Runtime = "lima"
+		cfg.Containers.Image = "lima:debian-13"
+		cfg.Containers.MemoryMB = 4096
+		cfg.Containers.AutoUpdate = false
+		cfg.Updates.Gateway = "off"
+		cfg.Gateway.Listen = "127.0.0.1:7489"
+		if home, homeErr := os.UserHomeDir(); homeErr == nil {
+			cfg.DataDir = filepath.Join(home, ".kitties-lima-demo")
+		} else {
+			err = homeErr
+		}
 	case err != nil && *demoMode && *configPath == "":
 		// No file of their own: the demo brings its kitties. A file that was named must load.
 		cfg, err = demoConfig()
@@ -172,7 +194,7 @@ func run(args []string, in io.Reader, out, errOut io.Writer) int {
 	if cmd == "token" {
 		return cmdToken(cfg, out, errOut)
 	}
-	a := &app{cfg: cfg, in: in, out: out, err: errOut, demo: *demoMode, booted: booted}
+	a := &app{cfg: cfg, in: in, out: out, err: errOut, demo: *demoMode, vmDemo: *vmDemo, booted: booted}
 	if err := a.open(cmd); err != nil {
 		fmt.Fprintf(errOut, "kitties: %v\n", err)
 		return 1
@@ -188,18 +210,30 @@ func run(args []string, in io.Reader, out, errOut io.Writer) int {
 // commands that never touch a container.
 func (a *app) open(cmd string) error {
 	var opts []orchestrator.Option
-	if a.demo {
+	if a.demo || a.vmDemo {
 		reg := provider.NewRegistry()
 		reg.Add("demo", demo.NewBrain(), provider.Options{Kind: "demo", Model: "scripted"})
 		for name := range a.cfg.Providers {
 			reg.Add(name, demo.NewBrain(), provider.Options{Kind: "demo", Model: "scripted"})
 		}
-		opts = append(opts, orchestrator.WithProviders(reg), orchestrator.WithContainers(demo.NewDesktop(), nil))
+		opts = append(opts, orchestrator.WithProviders(reg))
 		if a.cfg.DefaultProvider == "" {
 			a.cfg.DefaultProvider = "demo"
 		}
+	}
+	if a.demo {
+		opts = append(opts, orchestrator.WithContainers(demo.NewDesktop(), nil))
 		a.cfg.DataDir = filepath.Join(a.cfg.DataDirOr(), "demo")
 		fmt.Fprintln(a.err, "kitties: demo mode, a scripted brain and a drawn desktop; nothing here is real")
+	} else if cmd != "providers" && a.cfg.Containers.Runtime == "lima" {
+		if err := lima.Detect(context.Background()); err != nil {
+			return err
+		}
+		a.cfg.Containers.AutoUpdate = false
+		opts = append(opts, orchestrator.WithContainers(lima.New(filepath.Join(a.cfg.DataDirOr(), "lima")), nil))
+		if a.vmDemo {
+			fmt.Fprintln(a.err, "kitties: VM demo — the brain is scripted; the Linux computer and all desktop actions are real")
+		}
 	} else if cmd != "providers" {
 		rt, err := detectRuntime(context.Background(), a.cfg.Containers.Runtime)
 		if err != nil {

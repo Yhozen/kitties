@@ -52,6 +52,38 @@ func sessionsManager(t *testing.T) (*Manager, *fakeContainers, *memKeeper) {
 	return m, f, keeper
 }
 
+func TestLimaDiskCannotBeReplacedByDesktopUpdates(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.Containers.Runtime = "lima"
+	cfg.Containers.AutoUpdate = true
+	f := newFake()
+	f.stale = true
+	m, err := New(cfg, WithContainers(f, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	k, err := m.Create(context.Background(), Spec{Name: "mimi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.exists[k.Container], f.running[k.Container] = true, true
+	if _, err := m.UpdateInBackground(k.ID); err == nil {
+		t.Fatal("manual image replacement accepted for a persistent VM")
+	}
+	m.CheckUpdates(context.Background(), func(*kitty.Kitty) { t.Fatal("VM updated") }, t.Logf)
+	if len(f.calls) != 0 {
+		t.Fatalf("an update touched the VM: %v", f.calls)
+	}
+	f.fail = "start"
+	if err := m.Start(context.Background(), k.ID); err == nil {
+		t.Fatal("running VM with an unavailable desktop was accepted as ready")
+	}
+	got, _ := m.Get(k.ID)
+	if got.Status != kitty.StatusError {
+		t.Fatalf("failed desktop readiness left status %s", got.Status)
+	}
+}
+
 func waitStatus(t *testing.T, m *Manager, id, want string) *kitty.Kitty {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)

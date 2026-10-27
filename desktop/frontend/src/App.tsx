@@ -94,6 +94,8 @@ export default function App() {
   const [models, setModels] = useState<ProviderInfo[]>([]);
   const [containers, setContainers] = useState(true);
   const [dockerState, setDockerState] = useState<"not_installed" | "not_running" | undefined>();
+  const [runtime, setRuntime] = useState("container");
+  const [runtimeError, setRuntimeError] = useState("");
 
   const user = t("You");
 
@@ -105,6 +107,8 @@ export default function App() {
       setVersion(h.version || "");
       setContainers(h.containers !== false);
       setDockerState(h.containers_state);
+      setRuntime(h.runtime || "container");
+      setRuntimeError(h.containers_error || "");
       api
         .providers()
         .then(setModels)
@@ -496,6 +500,8 @@ export default function App() {
         <NewKittyModal
           containers={containers}
           dockerState={dockerState}
+          runtime={runtime}
+          runtimeError={runtimeError}
           taken={kitties.map((k) => k.name)}
           onNeedModel={() => {
             go("#new-models-add");
@@ -577,6 +583,7 @@ export default function App() {
         <KittyDrawer
           kitty={kitty}
           kitties={kitties}
+          runtime={runtime}
           onOpenChat={openChat}
           onClose={() => {
             location.hash = lastChat.current ? `#chat/${lastChat.current}` : "";

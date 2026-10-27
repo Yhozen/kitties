@@ -552,6 +552,10 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	has, err := s.fleet.HasContainers()
 	out := map[string]any{"ok": true, "version": s.version, "uptime": time.Since(s.started).Round(time.Second).String(),
 		"kitties": len(s.fleet.List()), "containers": has}
+	out["runtime"] = "container"
+	if fleet, ok := s.fleet.(interface{ RuntimeName() string }); ok {
+		out["runtime"] = fleet.RuntimeName()
+	}
 	if err != nil {
 		out["containers_error"] = err.Error()
 		switch {

@@ -118,7 +118,7 @@ type Goal struct {
 
 // Containers is the container runtime block.
 type Containers struct {
-	// Runtime is docker, podman or auto.
+	// Runtime is docker, podman, auto, or lima for a persistent VM per kitty.
 	Runtime string `yaml:"runtime"`
 	// Image is the image every kitty runs: a headless X display (Xvfb) with a browser and the
 	// usual desktop tools; see docker/kitty-desktop.
@@ -427,12 +427,15 @@ func (c *Config) Validate() error {
 		}
 	}
 	switch c.Containers.Runtime {
-	case "auto", "docker", "podman":
+	case "auto", "docker", "podman", "lima":
 	default:
-		return fmt.Errorf("containers.runtime: %q is not auto, docker or podman", c.Containers.Runtime)
+		return fmt.Errorf("containers.runtime: %q is not auto, docker, podman or lima", c.Containers.Runtime)
 	}
 	if c.Containers.Image == "" {
 		return errors.New("containers.image cannot be empty")
+	}
+	if c.Containers.Runtime == "lima" && (c.Containers.Workspace != "" || c.Containers.Network != "") {
+		return errors.New("Lima desktops use a private guest disk and Lima networking; containers.workspace and containers.network must be empty")
 	}
 	if err := c.Updates.validate(); err != nil {
 		return err

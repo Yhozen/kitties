@@ -213,6 +213,9 @@ func (m *Manager) restoreSessions(ctx context.Context, k *kitty.Kitty) {
 // reason on it. Its sessions are backed up first and given back to the new container; its
 // workspace is untouched.
 func (m *Manager) UpdateInBackground(ref string) (*kitty.Kitty, error) {
+	if m.cfg.Containers.Runtime == "lima" {
+		return nil, errors.New("Lima desktops keep their own disk; update packages inside the VM instead of replacing its image")
+	}
 	k, err := m.desktopKitty(ref)
 	if err != nil {
 		return nil, err

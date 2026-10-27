@@ -637,7 +637,15 @@ export async function shotData(path: string, mime = "image/png"): Promise<string
 }
 
 export const api = {
-  health: () => request<{ ok: boolean; version: string; containers: boolean; containers_state?: "not_installed" | "not_running" }>("GET", "/v1/health"),
+  health: () =>
+    request<{
+      ok: boolean;
+      version: string;
+      containers: boolean;
+      containers_state?: "not_installed" | "not_running";
+      containers_error?: string;
+      runtime?: string;
+    }>("GET", "/v1/health"),
   kitties: () => request<{ kitties: Kitty[] }>("GET", "/v1/kitties").then((r) => r.kitties || []),
   kitty: (ref: string) =>
     request<{ kitty: Kitty }>("GET", `/v1/kitties/${ref}`).then((r) => r.kitty),

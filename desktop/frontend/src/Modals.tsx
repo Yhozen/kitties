@@ -149,6 +149,8 @@ export function NewKittyModal({
   onNeedModel,
   containers = true,
   dockerState,
+  runtime = "container",
+  runtimeError,
   taken = [],
 }: {
   onClose: () => void;
@@ -159,6 +161,8 @@ export function NewKittyModal({
   containers?: boolean;
   // dockerState says why there are no containers: Docker is not installed, or it is closed.
   dockerState?: "not_installed" | "not_running";
+  runtime?: string;
+  runtimeError?: string;
   // taken are the names of the kitties there are already.
   taken?: string[];
 }) {
@@ -336,19 +340,28 @@ export function NewKittyModal({
         />
         {t("Give it a computer of its own (a desktop with a browser it can use)")}
       </label>
+      {runtime === "lima" && containers && (
+        <p class="text-xs text-[var(--t4)] mt-1">
+          {t(
+            "A separate Linux VM with a persistent disk. Its first start downloads and prepares the desktop.",
+          )}
+        </p>
+      )}
       {!containers && (
         <p class="text-xs text-[var(--t4)] mt-1">
-          {dockerState === "not_installed"
-            ? t(
-                "Docker is not installed on the gateway's machine. Install Docker Desktop to give kitties a computer; without it they still think, talk and use connections.",
-              )
-            : dockerState === "not_running"
+          {runtime === "lima"
+            ? runtimeError || t("Lima is unavailable on the gateway's machine.")
+            : dockerState === "not_installed"
               ? t(
-                  "Docker is installed but not running. Open Docker Desktop and wait for it to start; the option unlocks by itself.",
+                  "Docker is not installed on the gateway's machine. Install Docker Desktop to give kitties a computer; without it they still think, talk and use connections.",
                 )
-              : t(
-                  "Needs Docker running on the gateway's machine. Without it the kitty still thinks, talks and uses connections.",
-                )}
+              : dockerState === "not_running"
+                ? t(
+                    "Docker is installed but not running. Open Docker Desktop and wait for it to start; the option unlocks by itself.",
+                  )
+                : t(
+                    "Needs Docker running on the gateway's machine. Without it the kitty still thinks, talks and uses connections.",
+                  )}
         </p>
       )}
       {err && <p class="text-sm text-[var(--c-red)] mt-2">{err}</p>}
@@ -576,6 +589,7 @@ function KittyBasics({
 export function KittyDrawer({
   kitty,
   kitties,
+  runtime = "container",
   onClose,
   onChanged,
   onChat,
@@ -583,6 +597,7 @@ export function KittyDrawer({
 }: {
   kitty: Kitty;
   kitties: Kitty[];
+  runtime?: string;
   onClose: () => void;
   onChanged: () => void;
   onChat: () => void;
@@ -638,7 +653,9 @@ export function KittyDrawer({
             </span>
             {kitty.desktop && (
               <span class="tag max-w-full min-w-0">
-                <span class="truncate">{kitty.container}</span>
+                <span class="truncate">
+                  {runtime === "lima" ? t("Lima VM · persistent disk") : kitty.container}
+                </span>
               </span>
             )}
           </div>
@@ -700,7 +717,7 @@ export function KittyDrawer({
       </div>
       {kitty.desktop && (
         <div class="min-w-0 mt-5">
-          <DesktopCare kitty={kitty} onChanged={onChanged} />
+          <DesktopCare kitty={kitty} runtime={runtime} onChanged={onChanged} />
         </div>
       )}
       <details class="config mt-5" data-testid="kitty-config">
@@ -729,8 +746,14 @@ export function KittyDrawer({
               <button
                 class="btn-danger px-3 py-2 text-sm flex items-center gap-2"
                 onClick={async () =>
-                  (await ask(t("Remove {name} and its container?", { name: kitty.name }))) &&
-                  act(() => api.removeKitty(kitty.id).then(onClose))
+                  (await ask(
+                    t(
+                      runtime === "lima" && kitty.desktop
+                        ? "Remove {name} and permanently delete its VM disk, including its files and installed apps?"
+                        : "Remove {name} and its container?",
+                      { name: kitty.name },
+                    ),
+                  )) && act(() => api.removeKitty(kitty.id).then(onClose))
                 }
               >
                 <IconTrash size={14} /> {t("Remove")}
