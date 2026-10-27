@@ -24,6 +24,12 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      - name: install restic for encrypted recovery tests
+        run: |
+          curl --fail --silent --show-error --location https://github.com/restic/restic/releases/download/v0.19.1/restic_0.19.1_linux_amd64.bz2 --output "$RUNNER_TEMP/restic.bz2"
+          echo "f415415624dcc452f2a02b8c33641791a8c6d6d3b65bbb3543fcf9a25151585c  $RUNNER_TEMP/restic.bz2" | sha256sum --check --strict
+          bzip2 --decompress "$RUNNER_TEMP/restic.bz2"
+          sudo install --mode=755 "$RUNNER_TEMP/restic" /usr/local/bin/restic
       - name: gofmt
         run: make fmt-check
       - name: go vet

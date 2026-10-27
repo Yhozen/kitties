@@ -24,9 +24,11 @@ import (
 	"github.com/madkoding/kitties/internal/container"
 	"github.com/madkoding/kitties/internal/kitty"
 	"github.com/madkoding/kitties/internal/llmauth"
+	"github.com/madkoding/kitties/internal/maintenance"
 	"github.com/madkoding/kitties/internal/oauth"
 	"github.com/madkoding/kitties/internal/provider"
 	"github.com/madkoding/kitties/internal/soul"
+	"github.com/madkoding/kitties/internal/statefs"
 )
 
 // Containers is what the orchestrator needs from the container package; a test fakes it.
@@ -53,13 +55,25 @@ var ErrNotFound = errors.New("no such kitty")
 
 // Manager is the orchestrator.
 type Manager struct {
-	opMu       sync.Mutex
-	operations map[string]*sync.Mutex
-	cfg        config.Config
-	providers  *provider.Registry
-	connectors *connector.Registry
-	containers Containers // nil when no runtime is available
-	runtimeErr error
+	recoveryMu       sync.Mutex
+	recoveryFreeze   recoveryFreeze
+	admission        maintenance.Gate
+	activityMu       sync.Mutex
+	activity         map[string]int
+	lastActivity     map[string]time.Time
+	lastRenew        map[string]time.Time
+	backgroundMu     sync.Mutex
+	background       context.Context
+	cancelBackground context.CancelFunc
+	backgroundWG     sync.WaitGroup
+	closing          bool
+	opMu             sync.Mutex
+	operations       map[string]chan struct{}
+	cfg              config.Config
+	providers        *provider.Registry
+	connectors       *connector.Registry
+	containers       Containers // nil when no runtime is available
+	runtimeErr       error
 	// rtMu guards containers and runtimeErr: a runtime found later (Docker Desktop opened after
 	// the gateway) is set while the kitties work.
 	rtMu sync.RWMutex
@@ -146,6 +160,9 @@ func New(cfg config.Config, opts ...Option) (*Manager, error) {
 		m.connectors.Add(name, m.buildConnector(name, c))
 	}
 	if err := m.load(); err != nil {
+		return nil, err
+	}
+	if err := m.loadRecoveryFreeze(); err != nil {
 		return nil, err
 	}
 	return m, nil
@@ -393,14 +410,14 @@ func (m *Manager) saveLocked() error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(m.path), 0o700); err != nil {
+	if err := statefs.MkdirAll(filepath.Dir(m.path), 0o700); err != nil {
 		return fmt.Errorf("create the data folder: %w", err)
 	}
 	tmp := m.path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	if err := statefs.WriteFile(tmp, data, 0o600); err != nil {
 		return fmt.Errorf("save the kitties: %w", err)
 	}
-	return os.Rename(tmp, m.path)
+	return statefs.Rename(tmp, m.path)
 }
 
 func (m *Manager) sortedLocked() []*kitty.Kitty {
@@ -613,15 +630,30 @@ func (m *Manager) Bootstrap(ctx context.Context) error {
 
 // Start brings the kitty up: its container when it has one.
 func (m *Manager) Start(ctx context.Context, ref string) error {
+	ctx, release, admissionErr := m.admission.Enter(ctx)
+	if admissionErr != nil {
+		return admissionErr
+	}
+	defer release()
 	k, err := m.Get(ref)
 	if err != nil {
 		return err
 	}
-	unlock := m.lockComputer(k.ID)
-	defer unlock()
-	k, err = m.Get(k.ID)
+	unlock, err := m.lockComputer(ctx, k.ID)
 	if err != nil {
 		return err
+	}
+	defer unlock()
+	return m.startComputer(ctx, k.ID)
+}
+
+func (m *Manager) startComputer(ctx context.Context, ref string) error {
+	k, err := m.Get(ref)
+	if err != nil {
+		return err
+	}
+	if m.capabilities().PersistentDisk && k.Operation.Kind != "" && k.Operation.Kind != "start" {
+		return ErrDraining
 	}
 	if err := m.checkRuntime(k); err != nil {
 		return m.fail(k.ID, err)
@@ -677,6 +709,7 @@ func (m *Manager) Start(ctx context.Context, ref string) error {
 	}
 	k, _ = m.Get(k.ID)
 	m.applyTheme(ctx, k, false)
+	m.touch(k.ID)
 	return m.finishOperation(k.ID, kitty.StatusRunning)
 }
 
@@ -688,31 +721,7 @@ var startTimeout = 20 * time.Minute
 // one is marked starting and comes up (or fails, with the reason on the kitty) on its own; one
 // without is started at once.
 func (m *Manager) StartInBackground(ref string) (*kitty.Kitty, error) {
-	k, err := m.Get(ref)
-	if err != nil {
-		return nil, err
-	}
-	if !k.Desktop {
-		if err := m.Start(context.Background(), k.ID); err != nil {
-			return nil, err
-		}
-		return m.Get(k.ID)
-	}
-	if err := m.beginOperation(k.ID, "start", computer.Enabled); err != nil {
-		return nil, err
-	}
-	// The answer is taken before the start begins: a desktop that comes up at once would
-	// otherwise be reported as running, or not, depending on which goroutine went first.
-	starting, err := m.Get(k.ID)
-	if err != nil {
-		return nil, err
-	}
-	go func(id string) {
-		ctx, cancel := context.WithTimeout(context.Background(), startTimeout)
-		defer cancel()
-		_ = m.Start(ctx, id)
-	}(k.ID)
-	return starting, nil
+	return m.LifecycleInBackground(ref, "start")
 }
 
 // Stop stops the kitty's container, keeping it.
@@ -721,13 +730,28 @@ func (m *Manager) Stop(ctx context.Context, ref string) error {
 }
 
 func (m *Manager) stop(ctx context.Context, ref, availability string) error {
+	ctx, release, admissionErr := m.admission.Enter(ctx)
+	if admissionErr != nil {
+		return admissionErr
+	}
+	defer release()
 	k, err := m.Get(ref)
 	if err != nil {
 		return err
 	}
-	unlock := m.lockComputer(k.ID)
+	unlock, err := m.lockComputer(ctx, k.ID)
+	if err != nil {
+		return err
+	}
 	defer unlock()
-	k, err = m.Get(k.ID)
+	if err := m.beginOperationIntent(k.ID, "stop", availability, true); err != nil {
+		return err
+	}
+	return m.stopComputer(ctx, k.ID, availability)
+}
+
+func (m *Manager) stopComputer(ctx context.Context, ref, availability string) error {
+	k, err := m.Get(ref)
 	if err != nil {
 		return err
 	}
@@ -736,6 +760,9 @@ func (m *Manager) stop(ctx context.Context, ref, availability string) error {
 	}
 	if err := m.beginOperation(k.ID, "stop", availability); err != nil {
 		return err
+	}
+	if err := m.drain(ctx, k.ID); err != nil {
+		return m.fail(k.ID, err)
 	}
 	if k.Desktop {
 		exists, running, err := m.computerState(ctx, k)
@@ -764,13 +791,25 @@ func (m *Manager) stop(ctx context.Context, ref, availability string) error {
 // Remove deletes a kitty and its live computer. Runtime recovery data follows
 // the runtime's retention policy and is not implicitly purged.
 func (m *Manager) Remove(ctx context.Context, ref string) error {
+	ctx, release, admissionErr := m.admission.Enter(ctx)
+	if admissionErr != nil {
+		return admissionErr
+	}
+	defer release()
 	k, err := m.Get(ref)
 	if err != nil {
 		return err
 	}
-	unlock := m.lockComputer(k.ID)
+	unlock, err := m.lockComputer(ctx, k.ID)
+	if err != nil {
+		return err
+	}
 	defer unlock()
-	k, err = m.Get(k.ID)
+	return m.removeComputer(ctx, k.ID)
+}
+
+func (m *Manager) removeComputer(ctx context.Context, ref string) error {
+	k, err := m.Get(ref)
 	if err != nil {
 		return err
 	}
@@ -779,6 +818,9 @@ func (m *Manager) Remove(ctx context.Context, ref string) error {
 	}
 	if err := m.beginOperation(k.ID, "remove", computer.Disabled); err != nil {
 		return err
+	}
+	if err := m.drain(ctx, k.ID); err != nil {
+		return m.fail(k.ID, err)
 	}
 	if k.Desktop {
 		exists, _, err := m.computerState(ctx, k)
@@ -867,7 +909,17 @@ func (m *Manager) setStatus(id, status, msg string) error {
 }
 
 func (m *Manager) fail(id string, err error) error {
-	_ = m.setStatus(id, kitty.StatusError, err.Error())
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if k, ok := m.kitties[id]; ok {
+		k.Status, k.Error = kitty.StatusError, err.Error()
+		if k.Operation.Kind != "" {
+			k.Operation.Attempts++
+			delay := min(time.Duration(1<<min(k.Operation.Attempts, 8))*time.Second, 5*time.Minute)
+			k.Operation.RetryAt = m.now().Add(delay)
+		}
+		_ = m.saveLocked()
+	}
 	return err
 }
 
@@ -1025,6 +1077,16 @@ func (m *Manager) edit(ref string, u Update) (*kitty.Kitty, error) {
 // has stopped is started again, and a kitty in error is tried once more. recovered hears
 // about each one brought back; warn about each one that could not be.
 func (m *Manager) Watch(ctx context.Context, every time.Duration, recovered func(k *kitty.Kitty, what string), warn func(format string, args ...any)) {
+	activityCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() { defer close(done); m.watchActivity(activityCtx, warn) }()
+	defer func() { cancel(); <-done }()
+	for _, k := range m.List() {
+		if k.ResumeAfterBackup {
+			m.Check(ctx, recovered, warn)
+			break
+		}
+	}
 	t := time.NewTicker(every)
 	defer t.Stop()
 	for {
@@ -1039,6 +1101,11 @@ func (m *Manager) Watch(ctx context.Context, every time.Duration, recovered func
 
 // Check is one round of Watch.
 func (m *Manager) Check(ctx context.Context, recovered func(k *kitty.Kitty, what string), warn func(format string, args ...any)) {
+	ctx, release, admissionErr := m.admission.Enter(ctx)
+	if admissionErr != nil {
+		return
+	}
+	defer release()
 	if m.FindRuntime(ctx) {
 		warn("watchdog: the container engine answers now: the kitties get their desktops")
 	}
@@ -1059,32 +1126,8 @@ func (m *Manager) Check(ctx context.Context, recovered func(k *kitty.Kitty, what
 		}
 	}
 	for _, k := range m.List() {
-		if !k.Desktop {
-			continue
-		}
-		var recovery func() error
-		what := "its container had stopped"
-		if _, exists := running[computerID(k)]; !exists {
-			what = "its container was gone"
-		}
-		if k.Status == kitty.StatusError {
-			what = "it was in error: " + k.Error
-		}
-		switch {
-		case k.Operation.Kind == "remove":
-			recovery = func() error { return m.Remove(ctx, k.ID) }
-			what = "its pending removal completed"
-		case k.Operation.Kind == "stop":
-			recovery = func() error { return m.stop(ctx, k.ID, k.Availability) }
-			what = "its pending stop completed"
-		case k.Availability == computer.Disabled || k.Availability == computer.Sleeping:
-			continue
-		case k.Operation.Kind == "start", k.Status == kitty.StatusRunning && !running[computerID(k)], k.Status == kitty.StatusError:
-			recovery = func() error { return m.Start(ctx, k.ID) }
-		default:
-			continue
-		}
-		if err := recovery(); err != nil {
+		changed, what, err := m.reconcileComputer(ctx, k.ID, running)
+		if err != nil {
 			if k.Status == kitty.StatusError {
 				warn("watchdog: %s still fails: %v", k.Name, err)
 			} else {
@@ -1092,8 +1135,58 @@ func (m *Manager) Check(ctx context.Context, recovered func(k *kitty.Kitty, what
 			}
 			continue
 		}
-		recovered(k, what)
+		if changed {
+			recovered(k, what)
+		}
 	}
+}
+
+func (m *Manager) reconcileComputer(ctx context.Context, id string, running map[string]bool) (bool, string, error) {
+	if ctx.Err() != nil {
+		return false, "", ctx.Err()
+	}
+	unlock, ok := m.tryLockComputer(id)
+	if !ok {
+		return false, "", nil
+	}
+	defer unlock()
+	k, err := m.Get(id)
+	if err != nil || !k.Desktop {
+		return false, "", err
+	}
+	if k.Operation.RetryAt.After(m.now()) {
+		return false, "", nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, startTimeout)
+	defer cancel()
+	switch {
+	case k.Operation.Kind == "remove":
+		return true, "its pending removal completed", m.removeComputer(ctx, k.ID)
+	case k.ResumeAfterBackup:
+		return true, "its interrupted backup suspension ended", m.resumeBackupComputer(ctx, k.ID)
+	case k.Operation.Kind == "stop":
+		return true, "its pending stop completed", m.stopComputer(ctx, k.ID, k.Availability)
+	case k.Availability == computer.Disabled || k.Availability == computer.Sleeping:
+		return false, "", nil
+	case k.Operation.Kind == "start":
+		return true, "its pending start completed", m.startComputer(ctx, k.ID)
+	case k.Status == kitty.StatusError:
+		return true, "it was in error: " + k.Error, m.startComputer(ctx, k.ID)
+	case k.Status == kitty.StatusRunning && !running[computerID(k)]:
+		exists, awake, err := m.computerState(ctx, k)
+		if err != nil {
+			return false, "", err
+		}
+		if awake {
+			return false, "", nil
+		}
+		what := "its container had stopped"
+		if !exists {
+			what = "its container was gone"
+		}
+		return true, what, m.startComputer(ctx, k.ID)
+	}
+	return false, "", nil
 }
 
 // InboundSecret is the secret a service must present to post events to a connector's hook
@@ -1122,6 +1215,17 @@ func (m *Manager) Exec(ctx context.Context, ref string, argv ...string) (string,
 	if !k.Desktop {
 		return "", fmt.Errorf("%s has no container", k.Name)
 	}
+	if !computer.HasActivity(ctx, k.ID) {
+		release, err := m.Acquire(ctx, k.ID)
+		if err != nil {
+			return "", err
+		}
+		defer release()
+		k, err = m.Get(k.ID)
+		if err != nil {
+			return "", err
+		}
+	}
 	return m.ctr().Exec(ctx, computerID(k), argv...)
 }
 
@@ -1133,6 +1237,17 @@ func (m *Manager) ExecInput(ctx context.Context, ref, stdin string, argv ...stri
 	}
 	if !k.Desktop {
 		return "", fmt.Errorf("%s has no container", k.Name)
+	}
+	if !computer.HasActivity(ctx, k.ID) {
+		release, err := m.Acquire(ctx, k.ID)
+		if err != nil {
+			return "", err
+		}
+		defer release()
+		k, err = m.Get(k.ID)
+		if err != nil {
+			return "", err
+		}
 	}
 	return m.ctr().ExecInput(ctx, computerID(k), stdin, argv...)
 }

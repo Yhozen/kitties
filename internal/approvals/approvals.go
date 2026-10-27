@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/madkoding/kitties/internal/connector"
+	"github.com/madkoding/kitties/internal/statefs"
 )
 
 // The states of a request.
@@ -146,10 +147,10 @@ func (s *Store) save() error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
+	if err := statefs.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(s.path, raw, 0o600)
+	return statefs.WriteFile(s.path, raw, 0o600)
 }
 
 func statKey(kitty, conn, action string) string { return kitty + "\x00" + conn + "\x00" + action }

@@ -16,6 +16,7 @@ const (
 	// StatusStarting is a desktop coming up: its image may be downloading for minutes.
 	StatusStarting = "starting"
 	StatusStopped  = "stopped"
+	StatusStopping = "stopping"
 	StatusSleeping = "sleeping"
 	StatusError    = "error"
 )
@@ -42,6 +43,8 @@ type Kitty struct {
 	Computer     computer.Reference `json:"computer"`
 	Availability string             `json:"availability,omitempty"`
 	Operation    Operation          `json:"operation,omitempty"`
+	// ResumeAfterBackup retains running intent across an interrupted maintenance capture.
+	ResumeAfterBackup bool `json:"resume_after_backup,omitempty"`
 	// Container is the stable logical name, retained for older API clients; empty without a desktop.
 	Container string    `json:"container,omitempty"`
 	Status    string    `json:"status"`
@@ -61,6 +64,8 @@ type Kitty struct {
 
 // Operation records lifecycle work before the runtime is changed.
 type Operation struct {
+	Attempts  int       `json:"attempts,omitempty"`
+	RetryAt   time.Time `json:"retry_at,omitempty"`
 	Kind      string    `json:"kind,omitempty"`
 	StartedAt time.Time `json:"started_at,omitempty"`
 }

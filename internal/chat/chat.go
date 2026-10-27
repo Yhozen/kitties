@@ -25,6 +25,7 @@ import (
 	"github.com/madkoding/kitties/internal/approvals"
 	"github.com/madkoding/kitties/internal/artifacts"
 	"github.com/madkoding/kitties/internal/budget"
+	"github.com/madkoding/kitties/internal/computer"
 	"github.com/madkoding/kitties/internal/connector"
 	"github.com/madkoding/kitties/internal/desktop"
 	"github.com/madkoding/kitties/internal/kitty"
@@ -34,6 +35,7 @@ import (
 	"github.com/madkoding/kitties/internal/replay"
 	"github.com/madkoding/kitties/internal/skills"
 	"github.com/madkoding/kitties/internal/soul"
+	"github.com/madkoding/kitties/internal/statefs"
 	"github.com/madkoding/kitties/internal/vault"
 )
 
@@ -54,7 +56,8 @@ type Turn struct {
 	// Skills names the skills it read or proposed in this turn.
 	Skills []string `json:"skills,omitempty"`
 	// Working is true while the kitty is still acting on its desktop for this turn.
-	Working bool `json:"working,omitempty"`
+	Working     bool `json:"working,omitempty"`
+	Interrupted bool `json:"interrupted,omitempty"`
 	// NeedsHelp is true when the kitty gave up on this turn and asked the person.
 	NeedsHelp bool `json:"needs_help,omitempty"`
 	// Resumable is true when the task stopped on its budget (time, tokens or rounds) and can go
@@ -133,6 +136,8 @@ type Session struct {
 	// one: a long thread keeps its early context in a few lines instead of dropping it.
 	Summary     string `json:"summary,omitempty"`
 	SummaryUpTo int    `json:"summary_up_to,omitempty"`
+	// Pending records the initial model/connector turn before it becomes a desktop task.
+	Pending string `json:"pending,omitempty"`
 }
 
 // NeedsHelp reports whether the last turn is a kitty asking the person for help.
@@ -145,6 +150,9 @@ func (s *Session) Group() bool { return len(s.Members) > 1 }
 
 // Working reports whether a kitty is still acting on its desktop in this session.
 func (s *Session) Working() bool {
+	if s.Pending != "" {
+		return true
+	}
 	for i := range s.Turns {
 		if s.Turns[i].Working {
 			return true
@@ -166,9 +174,13 @@ type Fleet interface {
 
 // Service runs and stores the sessions.
 type Service struct {
-	fleet Fleet
-	dir   string
-	user  string
+	shutdownCtx    context.Context
+	cancelShutdown context.CancelFunc
+	stopping       bool
+	turnWG         sync.WaitGroup
+	fleet          Fleet
+	dir            string
+	user           string
 
 	mu       sync.RWMutex
 	sessions map[string]*Session
@@ -284,7 +296,9 @@ func New(fleet Fleet, dir string) (*Service, error) {
 		now: time.Now, newID: randomID, MaxRounds: 4, MaxTurns: 60, MaxSteps: 25, tasks: map[string]*task{}, nativeTools: true,
 		DefaultLimits: kitty.Limits{MaxTokens: 400000, MaxSeconds: 1800, Retries: 1}, MaxDepth: 2, pollEvery: 200 * time.Millisecond,
 		distilling: map[string]bool{}, CompactAfter: 40, CompactKeep: 16}
+	s.shutdownCtx, s.cancelShutdown = context.WithCancel(context.Background())
 	if err := s.load(); err != nil {
+		s.cancelShutdown()
 		return nil, err
 	}
 	return s, nil
@@ -490,13 +504,36 @@ func (s *Service) load() error {
 		if err := json.Unmarshal(data, &sess); err != nil {
 			return fmt.Errorf("the chat %s is damaged: %w", e.Name(), err)
 		}
+		changed := false
+		for i := range sess.Turns {
+			if sess.Turns[i].Working {
+				t := &sess.Turns[i]
+				t.Working, t.Interrupted, t.NeedsHelp, t.Resumable = false, true, true, true
+				t.Detail = "Gateway restarted during this task. Review completed actions before continuing; nothing was replayed."
+				changed = true
+			}
+		}
+		if sess.Pending != "" {
+			name := sess.Pending
+			if k, err := s.fleet.Get(sess.Pending); err == nil {
+				name = k.Name
+			}
+			sess.Turns = append(sess.Turns, Turn{At: s.now(), From: name, Kitty: sess.Pending, Interrupted: true, NeedsHelp: true, Resumable: true, Text: "The gateway restarted while I was answering. Review any completed actions before asking me to continue."})
+			sess.Pending = ""
+			changed = true
+		}
 		s.sessions[sess.ID] = &sess
+		if changed {
+			if err := s.save(&sess); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
 
 func (s *Service) save(sess *Session) error {
-	if err := os.MkdirAll(s.dir, 0o700); err != nil {
+	if err := statefs.MkdirAll(s.dir, 0o700); err != nil {
 		return fmt.Errorf("create the chats folder: %w", err)
 	}
 	data, err := json.MarshalIndent(sess, "", "  ")
@@ -504,10 +541,10 @@ func (s *Service) save(sess *Session) error {
 		return err
 	}
 	path := filepath.Join(s.dir, sess.ID+".json")
-	if err := os.WriteFile(path+".tmp", data, 0o600); err != nil {
+	if err := statefs.WriteFile(path+".tmp", data, 0o600); err != nil {
 		return fmt.Errorf("save the chat: %w", err)
 	}
-	return os.Rename(path+".tmp", path)
+	return statefs.Rename(path+".tmp", path)
 }
 
 // Create opens a session with the given kitties (ids or names).
@@ -537,6 +574,9 @@ func (s *Service) Create(title string, members []string) (*Session, error) {
 	sess := &Session{ID: s.newID(), Title: title, Members: ids, Turns: []Turn{}, CreatedAt: now, UpdatedAt: now}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.stopping {
+		return nil, ErrShuttingDown
+	}
 	s.sessions[sess.ID] = sess
 	if err := s.save(sess); err != nil {
 		delete(s.sessions, sess.ID)
@@ -674,8 +714,8 @@ func (s *Service) Delete(id string) error {
 	}
 	delete(s.sessions, id)
 	s.emitLocked(Event{Type: "deleted", Session: id})
-	_ = os.RemoveAll(filepath.Join(s.dir, id))
-	err := os.Remove(filepath.Join(s.dir, id+".json"))
+	_ = statefs.RemoveAll(filepath.Join(s.dir, id))
+	err := statefs.Remove(filepath.Join(s.dir, id+".json"))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -701,6 +741,11 @@ func (s *Service) Send(ctx context.Context, id, text string) ([]Turn, error) {
 // send posts a message from someone (the person, the scheduler, or a kitty delegating) and has
 // the kitties answer it.
 func (s *Service) send(ctx context.Context, id, from, fromID, text string) ([]Turn, error) {
+	ctx, done, err := s.beginTurn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer done()
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil, errors.New("the message is empty")
@@ -708,6 +753,9 @@ func (s *Service) send(ctx context.Context, id, from, fromID, text string) ([]Tu
 	lock := s.lockFor(id)
 	lock.Lock()
 	defer lock.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	s.mu.Lock()
 	sess, ok := s.sessions[id]
@@ -723,7 +771,7 @@ func (s *Service) send(ctx context.Context, id, from, fromID, text string) ([]Tu
 	sess.UpdatedAt = s.now()
 	members := append([]string(nil), sess.Members...)
 	goal := sess.Goal
-	err := s.save(sess)
+	err = s.save(sess)
 	s.emitLocked(Event{Type: "turn", Session: id, Index: len(sess.Turns) - 1, Turn: &sess.Turns[len(sess.Turns)-1]})
 	s.mu.Unlock()
 	if err != nil {
@@ -744,11 +792,22 @@ func (s *Service) send(ctx context.Context, id, from, fromID, text string) ([]Tu
 	responders := s.responders(kitties, text)
 	var replies []Turn
 	for _, k := range responders {
-		turn, pending, err := s.answer(ctx, id, k, kitties)
+		if err := ctx.Err(); err != nil {
+			return replies, err
+		}
+		s.mu.Lock()
+		sess.Pending = k.ID
+		err := s.save(sess)
+		s.mu.Unlock()
+		if err != nil {
+			return replies, err
+		}
+		turn, pending, err := s.answerWithActivity(ctx, id, k, kitties)
 		if err != nil {
 			turn = Turn{At: s.now(), From: k.Name, Kitty: k.ID, Text: "(" + k.Name + " could not answer: " + Plain(err.Error()) + ")", Detail: err.Error()}
 		}
 		s.mu.Lock()
+		sess.Pending = ""
 		sess.Turns = append(sess.Turns, turn)
 		index := len(sess.Turns) - 1
 		sess.UpdatedAt = s.now()
@@ -756,6 +815,9 @@ func (s *Service) send(ctx context.Context, id, from, fromID, text string) ([]Tu
 		s.emitLocked(Event{Type: "turn", Session: id, Index: index, Turn: &sess.Turns[index]})
 		s.mu.Unlock()
 		if saveErr != nil {
+			if pending != nil && pending.release != nil {
+				pending.release()
+			}
 			return replies, saveErr
 		}
 		replies = append(replies, turn)
@@ -812,6 +874,9 @@ func (s *Service) AnyBusy() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, sess := range s.sessions {
+		if sess.Pending != "" {
+			return true
+		}
 		for _, t := range sess.Turns {
 			if t.Working {
 				return true
@@ -826,6 +891,9 @@ func (s *Service) KittyBusy(kittyID string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, sess := range s.sessions {
+		if sess.Pending == kittyID {
+			return true
+		}
 		for _, t := range sess.Turns {
 			if t.Working && t.Kitty == kittyID {
 				return true
@@ -900,14 +968,16 @@ func containsKitty(list []*kitty.Kitty, k *kitty.Kitty) bool {
 // pendingTask is a turn whose kitty asked to act on its desktop: the loop continues in the
 // background from these messages and actions.
 type pendingTask struct {
-	brain    provider.Client
-	messages []provider.Message
-	tools    []provider.Tool
-	native   bool
-	reply    provider.Reply
-	text     string
-	actions  []action
-	allowed  map[string]string
+	admissionContext context.Context
+	release          func()
+	brain            provider.Client
+	messages         []provider.Message
+	tools            []provider.Tool
+	native           bool
+	reply            provider.Reply
+	text             string
+	actions          []action
+	allowed          map[string]string
 	// pre are the outcomes of the batch's connector and library actions, already run in the
 	// call that answered the person, by their index in actions.
 	pre map[int]outcome
@@ -921,6 +991,37 @@ func ask(ctx context.Context, brain provider.Client, native bool, messages []pro
 		}
 	}
 	return brain.Complete(ctx, messages)
+}
+
+type activityFleet interface {
+	Acquire(context.Context, string) (func(), error)
+}
+
+func (s *Service) answerWithActivity(ctx context.Context, id string, k *kitty.Kitty, members []*kitty.Kitty) (Turn, *pendingTask, error) {
+	release := func() {}
+	if fleet, ok := s.fleet.(interface {
+		AcquireActivity(context.Context, string) (context.Context, func(), error)
+	}); ok {
+		var err error
+		ctx, release, err = fleet.AcquireActivity(ctx, k.ID)
+		if err != nil {
+			return Turn{}, nil, err
+		}
+	} else if fleet, ok := s.fleet.(activityFleet); ok {
+		var err error
+		release, err = fleet.Acquire(ctx, k.ID)
+		if err != nil {
+			return Turn{}, nil, err
+		}
+	}
+	turn, pending, err := s.answer(computer.WithActivity(ctx, k.ID), id, k, members)
+	if pending != nil {
+		pending.release = release
+		pending.admissionContext = ctx
+	} else {
+		release()
+	}
+	return turn, pending, err
 }
 
 // answer asks one kitty for its turn, running the connectors it calls. When the kitty asks to
@@ -1037,7 +1138,12 @@ func (s *Service) answer(ctx context.Context, id string, k *kitty.Kitty, members
 // startTask continues a turn in the background: the kitty acts on its desktop, sees the
 // screenshot, and goes on until it says done or the steps run out.
 func (s *Service) startTask(id string, index int, k *kitty.Kitty, p *pendingTask) {
-	ctx, cancel := context.WithCancel(context.Background())
+	parent := s.shutdownCtx
+	if p.admissionContext != nil {
+		parent = context.WithoutCancel(p.admissionContext)
+	}
+	ctx, cancel := context.WithCancel(parent)
+	stopShutdown := context.AfterFunc(s.shutdownCtx, cancel)
 	s.mu.Lock()
 	s.tasks[id] = &task{cancel: cancel}
 	s.mu.Unlock()
@@ -1045,7 +1151,11 @@ func (s *Service) startTask(id string, index int, k *kitty.Kitty, p *pendingTask
 	go func() {
 		defer s.wg.Done()
 		defer cancel()
-		s.runTask(ctx, id, index, k, p)
+		defer stopShutdown()
+		if p.release != nil {
+			defer p.release()
+		}
+		s.runTask(computer.WithActivity(ctx, k.ID), id, index, k, p)
 		s.mu.Lock()
 		delete(s.tasks, id)
 		s.mu.Unlock()
@@ -1482,7 +1592,7 @@ func (s *Service) closeTask(id string, index int, k *kitty.Kitty, text string, n
 // saveShot writes a screenshot under the session's folder and returns its name.
 func (s *Service) saveShot(id string, index int, png []byte) (string, error) {
 	dir := filepath.Join(s.dir, id)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := statefs.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
 	n := 0
@@ -1492,7 +1602,7 @@ func (s *Service) saveShot(id string, index int, png []byte) (string, error) {
 	}
 	s.mu.RUnlock()
 	name := fmt.Sprintf("%d-%d.png", index, n)
-	return name, os.WriteFile(filepath.Join(dir, name), png, 0o600)
+	return name, statefs.WriteFile(filepath.Join(dir, name), png, 0o600)
 }
 
 func workspaceOf(k *kitty.Kitty) string {

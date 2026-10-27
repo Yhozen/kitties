@@ -68,6 +68,11 @@ func (m *Manager) WatchUpdates(ctx context.Context, first, every time.Duration, 
 // CheckUpdates is one round of WatchUpdates. A kitty that is working, or whose desktop the person
 // holds, is left for the next round; one whose desktop is stopped is made anew when it is started.
 func (m *Manager) CheckUpdates(ctx context.Context, updated func(k *kitty.Kitty), warn func(format string, args ...any)) {
+	ctx, release, admissionErr := m.admission.Enter(ctx)
+	if admissionErr != nil {
+		return
+	}
+	defer release()
 	c := m.ctr()
 	if c == nil || !m.cfg.Containers.AutoUpdate || !m.capabilities().ImageUpdates {
 		return

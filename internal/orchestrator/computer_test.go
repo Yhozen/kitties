@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/madkoding/kitties/internal/computer"
 	"github.com/madkoding/kitties/internal/container"
@@ -160,6 +161,9 @@ func TestPendingStopIsResumedWithoutWakingDisabledComputer(t *testing.T) {
 		t.Fatalf("lost stop intent: %+v", k)
 	}
 	f.fail, f.calls = "", nil
+	m.Check(ctx, func(*kitty.Kitty, string) { t.Error("stop retried before backoff expired") }, t.Logf)
+	retryAt := k.Operation.RetryAt
+	m.now = func() time.Time { return retryAt.Add(time.Nanosecond) }
 	m.Check(ctx, func(*kitty.Kitty, string) {}, t.Logf)
 	k, _ = m.Get(k.ID)
 	if k.Status != kitty.StatusStopped || k.Operation.Kind != "" {

@@ -15,6 +15,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/madkoding/kitties/internal/statefs"
 )
 
 //go:embed builtin/*.md
@@ -190,13 +192,13 @@ func write(path, body string) error {
 	if len(body) > maxBody {
 		return fmt.Errorf("the skill is too long (%d bytes, at most %d)", len(body), maxBody)
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	if err := statefs.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create the skills folder: %w", err)
 	}
-	if err := os.WriteFile(path+".tmp", []byte(body), 0o600); err != nil {
+	if err := statefs.WriteFile(path+".tmp", []byte(body), 0o600); err != nil {
 		return fmt.Errorf("save the skill: %w", err)
 	}
-	return os.Rename(path+".tmp", path)
+	return statefs.Rename(path+".tmp", path)
 }
 
 // Save writes a skill the person accepted or wrote, replacing a proposal of the same name.
@@ -208,7 +210,7 @@ func (l *Library) Save(name, body string) (Skill, error) {
 	if err := write(l.path(name), body); err != nil {
 		return Skill{}, err
 	}
-	_ = os.Remove(l.proposalPath(name))
+	_ = statefs.Remove(l.proposalPath(name))
 	return l.Get(name)
 }
 
@@ -239,8 +241,8 @@ func (l *Library) Accept(name string) (Skill, error) {
 // Delete removes a skill or a proposal of the person's own; a built-in cannot be deleted.
 func (l *Library) Delete(name string) error {
 	name = Name(name)
-	err1 := os.Remove(l.path(name))
-	err2 := os.Remove(l.proposalPath(name))
+	err1 := statefs.Remove(l.path(name))
+	err2 := statefs.Remove(l.proposalPath(name))
 	if err1 != nil && err2 != nil {
 		if _, ok := builtins()[name]; ok {
 			return fmt.Errorf("%q is built in and cannot be deleted", name)

@@ -14,6 +14,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/madkoding/kitties/internal/statefs"
 )
 
 // Artifact is one file.
@@ -124,7 +126,7 @@ func (s *Store) setOwner(name, by string) {
 	for _, n := range names {
 		b.WriteString(n + "\t" + owners[n] + "\n")
 	}
-	_ = os.WriteFile(s.ownersPath(), []byte(b.String()), 0o600)
+	_ = statefs.WriteFile(s.ownersPath(), []byte(b.String()), 0o600)
 }
 
 // Get reads one artifact.
@@ -156,14 +158,14 @@ func (s *Store) Put(name string, data []byte, by string) (Artifact, error) {
 			return Artifact{}, fmt.Errorf("the library holds %d artifacts already; delete some first", maxFiles)
 		}
 	}
-	if err := os.MkdirAll(s.dir, 0o700); err != nil {
+	if err := statefs.MkdirAll(s.dir, 0o700); err != nil {
 		return Artifact{}, fmt.Errorf("create the artifacts folder: %w", err)
 	}
 	path := filepath.Join(s.dir, name)
-	if err := os.WriteFile(path+".tmp", data, 0o600); err != nil {
+	if err := statefs.WriteFile(path+".tmp", data, 0o600); err != nil {
 		return Artifact{}, fmt.Errorf("save the artifact: %w", err)
 	}
-	if err := os.Rename(path+".tmp", path); err != nil {
+	if err := statefs.Rename(path+".tmp", path); err != nil {
 		return Artifact{}, err
 	}
 	s.setOwner(name, by)
@@ -180,7 +182,7 @@ func (s *Store) Delete(name string) error {
 	if !ValidName(name) {
 		return fmt.Errorf("no such artifact %q", name)
 	}
-	if err := os.Remove(filepath.Join(s.dir, name)); err != nil {
+	if err := statefs.Remove(filepath.Join(s.dir, name)); err != nil {
 		return fmt.Errorf("no such artifact %q", name)
 	}
 	s.setOwner(name, "")

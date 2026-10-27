@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/madkoding/kitties/internal/config"
 	"github.com/madkoding/kitties/internal/kitty"
@@ -113,6 +114,12 @@ func TestWatchdog(t *testing.T) {
 	if len(warned) != 1 || !strings.Contains(warned[0], "solo") {
 		t.Errorf("warn: %v", warned)
 	}
+	m.Check(ctx, rec, warn)
+	if len(warned) != 1 {
+		t.Fatal("watchdog retried before the persisted backoff")
+	}
+	failed, _ := m.Get(solo.ID)
+	m.now = func() time.Time { return failed.Operation.RetryAt.Add(time.Nanosecond) }
 	m.Check(ctx, rec, warn)
 	if len(warned) != 2 || !strings.Contains(warned[1], "still fails") {
 		t.Errorf("still failing: %v", warned)

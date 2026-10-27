@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/madkoding/kitties/internal/statefs"
 	"github.com/madkoding/kitties/internal/vault"
 )
 
@@ -64,14 +65,14 @@ func (s *Store) Save(kitty string, data []byte) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(s.dir, 0o700); err != nil {
+	if err := statefs.MkdirAll(s.dir, 0o700); err != nil {
 		return err
 	}
 	tmp := p + ".tmp"
-	if err := os.WriteFile(tmp, sealed, 0o600); err != nil {
+	if err := statefs.WriteFile(tmp, sealed, 0o600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, p)
+	return statefs.Rename(tmp, p)
 }
 
 // Load opens the last backup of a kitty.
@@ -111,7 +112,7 @@ func (s *Store) Forget(kitty string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := statefs.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	return nil

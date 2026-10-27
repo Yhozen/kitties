@@ -3,7 +3,6 @@ package orchestrator
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	"github.com/madkoding/kitties/internal/computer"
 	"github.com/madkoding/kitties/internal/container"
@@ -78,22 +77,52 @@ func (m *Manager) migrateComputer(k *kitty.Kitty) error {
 	return nil
 }
 
-func (m *Manager) lockComputer(id string) func() {
+func (m *Manager) computerGate(id string) chan struct{} {
 	m.opMu.Lock()
+	defer m.opMu.Unlock()
 	if m.operations == nil {
-		m.operations = map[string]*sync.Mutex{}
+		m.operations = map[string]chan struct{}{}
 	}
-	lock := m.operations[id]
-	if lock == nil {
-		lock = &sync.Mutex{}
-		m.operations[id] = lock
+	gate := m.operations[id]
+	if gate == nil {
+		gate = make(chan struct{}, 1)
+		m.operations[id] = gate
 	}
-	m.opMu.Unlock()
-	lock.Lock()
-	return lock.Unlock
+	return gate
+}
+
+func (m *Manager) lockComputer(ctx context.Context, id string) (func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	gate := m.computerGate(id)
+	select {
+	case gate <- struct{}{}:
+		if err := ctx.Err(); err != nil {
+			<-gate
+			return nil, err
+		}
+		return func() { <-gate }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (m *Manager) tryLockComputer(id string) (func(), bool) {
+	gate := m.computerGate(id)
+	select {
+	case gate <- struct{}{}:
+		return func() { <-gate }, true
+	default:
+		return nil, false
+	}
 }
 
 func (m *Manager) beginOperation(id, kind, availability string) error {
+	return m.beginOperationIntent(id, kind, availability, false)
+}
+
+func (m *Manager) beginOperationIntent(id, kind, availability string, supersedeBackup bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	k, ok := m.kitties[id]
@@ -102,11 +131,16 @@ func (m *Manager) beginOperation(id, kind, availability string) error {
 	}
 	before := *k
 	k.Availability = availability
+	if kind == "remove" || supersedeBackup {
+		k.ResumeAfterBackup = false
+	}
 	if k.Operation.Kind != kind {
 		k.Operation = kitty.Operation{Kind: kind, StartedAt: m.now()}
 	}
 	if kind == "start" {
 		k.Status = kitty.StatusStarting
+	} else if kind == "stop" || kind == "remove" {
+		k.Status = kitty.StatusStopping
 	}
 	if err := m.saveLocked(); err != nil {
 		*k = before
@@ -125,6 +159,9 @@ func (m *Manager) finishOperation(id, status string) error {
 	before := *k
 	k.Operation = kitty.Operation{}
 	k.Status, k.Error = status, ""
+	if status == kitty.StatusRunning {
+		k.ResumeAfterBackup = false
+	}
 	if err := m.saveLocked(); err != nil {
 		*k = before
 		return err

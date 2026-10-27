@@ -146,7 +146,7 @@ func TestGatewayAsAServer(t *testing.T) {
 	t.Setenv("KITTIES_PUBLIC_URL", "https://kitties.example.com")
 	t.Setenv("KITTIES_TOKEN", "server-token-0123456789")
 	addr, out, _, stop := serve(t, "-config", cfg, "gateway", "-listen", "127.0.0.1:0")
-	if !strings.Contains(out.String(), "listening on https://kitties.example.com") || !strings.Contains(out.String(), "gateway token: server-token-0123456789") {
+	if !strings.Contains(out.String(), "listening on https://kitties.example.com") || strings.Contains(out.String(), "server-token-0123456789") {
 		t.Errorf("output: %s", out.String())
 	}
 	_ = addr
@@ -207,8 +207,12 @@ func TestGatewayGoalsAndWatchdog(t *testing.T) {
 	old := watchEvery
 	watchEvery = 20 * time.Millisecond
 	t.Cleanup(func() { watchEvery = old })
-	addr, out, _, stop := serve(t, "-config", cfg, "gateway")
-	tok := strings.TrimSpace(strings.SplitN(strings.SplitN(out.String(), "gateway token: ", 2)[1], " ", 2)[0])
+	addr, _, _, stop := serve(t, "-config", cfg, "gateway")
+	tokenConfig, err := config.Load(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok := strings.TrimSpace(mustRead(t, filepath.Join(tokenConfig.DataDirOr(), "gateway.token")))
 	req, _ := http.NewRequest("GET", "http://"+addr+"/v1/goals", nil)
 	req.Header.Set("Authorization", "Bearer "+tok)
 	resp, err := http.Get("http://" + addr + "/v1/goals?token=" + tok)
@@ -249,8 +253,12 @@ func TestGatewayGoalsAndWatchdog(t *testing.T) {
 func TestGatewayServesApprovalsMemoryAndNotifications(t *testing.T) {
 	withRuntime(t, false)
 	cfg := writeConfig(t, "http://127.0.0.1:1")
-	addr, out, _, stop := serve(t, "-config", cfg, "gateway")
-	tok := strings.TrimSpace(strings.SplitN(strings.SplitN(out.String(), "gateway token: ", 2)[1], " ", 2)[0])
+	addr, _, _, stop := serve(t, "-config", cfg, "gateway")
+	tokenConfig, err := config.Load(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok := strings.TrimSpace(mustRead(t, filepath.Join(tokenConfig.DataDirOr(), "gateway.token")))
 	get := func(path string) (int, string) {
 		resp, err := http.Get("http://" + addr + path + "?token=" + tok)
 		if err != nil {

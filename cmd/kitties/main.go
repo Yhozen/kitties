@@ -14,12 +14,15 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/madkoding/kitties/internal/agenda"
 	"github.com/madkoding/kitties/internal/approvals"
 	"github.com/madkoding/kitties/internal/artifacts"
+	"github.com/madkoding/kitties/internal/backup"
+	"github.com/madkoding/kitties/internal/boat"
 	"github.com/madkoding/kitties/internal/budget"
 	"github.com/madkoding/kitties/internal/chat"
 	"github.com/madkoding/kitties/internal/config"
@@ -37,6 +40,8 @@ import (
 	"github.com/madkoding/kitties/internal/selfupdate"
 	"github.com/madkoding/kitties/internal/skills"
 	"github.com/madkoding/kitties/internal/soul"
+	"github.com/madkoding/kitties/internal/statefs"
+	"github.com/madkoding/kitties/internal/statelock"
 	"github.com/madkoding/kitties/internal/vault"
 	"github.com/madkoding/kitties/internal/web"
 )
@@ -51,6 +56,7 @@ Usage: kitties [-config file] <command> [arguments]
 Commands:
   init                      write an example configuration (and a sample soul) to start from
   gateway [-listen addr]    bootstrap the fleet and serve the HTTP API and the web interface
+  restore <directory> [id] restore an encrypted recovery package into an empty directory
   token                     print the gateway's token (to sign in to the web interface)
   ls                        list the kitties and their state
   create <name> [flags]     create a kitty (-provider, -persona, -soul file, -avatar breed/color, -no-desktop)
@@ -80,12 +86,17 @@ func main() {
 
 // app is the state every command shares.
 type app struct {
-	demo   bool
-	vmDemo bool
-	cfg    config.Config
-	fleet  *orchestrator.Manager
-	chats  *chat.Service
-	agenda *agenda.Agenda
+	backups      *backup.Manager
+	configPath   string
+	closeRuntime func() error
+	stateLock    *statelock.Lock
+	remoteState  *statefs.Store
+	demo         bool
+	vmDemo       bool
+	cfg          config.Config
+	fleet        *orchestrator.Manager
+	chats        *chat.Service
+	agenda       *agenda.Agenda
 	// approvals hold the actions that wait for a yes; memory is what the kitties know of the
 	// person; notifier tells the person outside the interface.
 	approvals *approvals.Store
@@ -141,6 +152,16 @@ func run(args []string, in io.Reader, out, errOut io.Writer) int {
 		return 0
 	case "init":
 		return cmdInit(*configPath, out, errOut)
+	case "restore":
+		return cmdRestore(rest, out, errOut)
+	case "restore-gateway":
+		return cmdRestoreGateway(rest, out, errOut)
+	case "import-state":
+		return cmdImportState(rest, out, errOut)
+	case "verify-recovery":
+		return cmdVerifyRecovery(rest, out, errOut)
+	case "release-recovery":
+		return cmdReleaseRecovery(rest, out, errOut)
 	case "release-key", "release-sign", "release-verify":
 		return cmdRelease(cmd, rest, out, errOut)
 	case "help", "-h", "--help":
@@ -156,10 +177,32 @@ func run(args []string, in io.Reader, out, errOut io.Writer) int {
 			fmt.Fprintf(errOut, "kitties: %v\n", berr)
 		}
 	}
-	path := *configPath
-	if path == "" {
-		path = config.DefaultPath()
+	var remoteState *statefs.Store
+	if endpoint := strings.TrimSpace(os.Getenv("KITTIES_STATE_URL")); endpoint != "" {
+		dataDir := strings.TrimSpace(os.Getenv("KITTIES_DATA_DIR"))
+		if dataDir == "" {
+			fmt.Fprintln(errOut, "kitties: KITTIES_STATE_URL requires an explicit KITTIES_DATA_DIR for its disposable cache")
+			return 1
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		var err error
+		if err = prepareCloudRestore(ctx, endpoint); err == nil {
+			remoteState, err = statefs.Open(ctx, dataDir, endpoint)
+		}
+		if err == nil {
+			err = verifyCloudRestore(dataDir)
+		}
+		cancel()
+		if err != nil {
+			if remoteState != nil {
+				remoteState.Close()
+			}
+			fmt.Fprintf(errOut, "kitties: open durable gateway state: %v\n", err)
+			return 1
+		}
+		defer remoteState.Close()
 	}
+	path := restoredConfiguration(*configPath)
 	cfg, err := config.Load(path)
 	switch {
 	case *vmDemo:
@@ -194,7 +237,8 @@ func run(args []string, in io.Reader, out, errOut io.Writer) int {
 	if cmd == "token" {
 		return cmdToken(cfg, out, errOut)
 	}
-	a := &app{cfg: cfg, in: in, out: out, err: errOut, demo: *demoMode, vmDemo: *vmDemo, booted: booted}
+	a := &app{cfg: cfg, in: in, out: out, err: errOut, demo: *demoMode, vmDemo: *vmDemo, booted: booted, remoteState: remoteState, configPath: path}
+	defer func() { _ = a.close() }()
 	if err := a.open(cmd); err != nil {
 		fmt.Fprintf(errOut, "kitties: %v\n", err)
 		return 1
@@ -208,7 +252,25 @@ func run(args []string, in io.Reader, out, errOut io.Writer) int {
 
 // open builds the orchestrator and the chat service; the runtime is probed except for the
 // commands that never touch a container.
-func (a *app) open(cmd string) error {
+func (a *app) open(cmd string) (err error) {
+	defer func() {
+		if err != nil {
+			_ = a.close()
+		}
+	}()
+	cloud := !a.demo && a.cfg.Containers.Runtime == "boat"
+	if cloud {
+		if !statefs.Active(a.cfg.DataDirOr()) {
+			a.stateLock, err = statelock.Acquire(a.cfg.DataDirOr())
+			if err != nil {
+				return err
+			}
+		}
+		a.vault, a.keep, err = openCloudSecretStores(a.cfg.DataDirOr())
+		if err != nil {
+			return fmt.Errorf("cloud gateway secret stores are unavailable: %w", err)
+		}
+	}
 	var opts []orchestrator.Option
 	if a.demo || a.vmDemo {
 		reg := provider.NewRegistry()
@@ -225,6 +287,24 @@ func (a *app) open(cmd string) error {
 		opts = append(opts, orchestrator.WithContainers(demo.NewDesktop(), nil))
 		a.cfg.DataDir = filepath.Join(a.cfg.DataDirOr(), "demo")
 		fmt.Fprintln(a.err, "kitties: demo mode, a scripted brain and a drawn desktop; nothing here is real")
+	} else if cmd != "providers" && a.cfg.Containers.Runtime == "boat" {
+		remote, err := boat.New(boat.Options{
+			StateDir: filepath.Join(a.cfg.DataDirOr(), "boat"),
+			APIKey:   os.Getenv(a.cfg.Boat.APIKeyEnv), Size: a.cfg.Boat.Size,
+			TTL: time.Duration(a.cfg.Boat.TTLMinutes) * time.Minute, MaxRunning: a.cfg.Boat.MaxRunning,
+		})
+		if err != nil {
+			return fmt.Errorf("Boat runtime: %w", err)
+		}
+		a.closeRuntime = remote.Close
+		checkCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		accessErr := remote.Initialize(checkCtx)
+		cancel()
+		if accessErr != nil {
+			return fmt.Errorf("Boat account readiness: %w", accessErr)
+		}
+		a.cfg.Containers.AutoUpdate = false
+		opts = append(opts, orchestrator.WithContainers(remote, nil))
 	} else if cmd != "providers" && a.cfg.Containers.Runtime == "lima" {
 		if err := lima.Detect(context.Background()); err != nil {
 			return err
@@ -284,7 +364,10 @@ func (a *app) open(cmd string) error {
 	a.memory = memory.Open(filepath.Join(dataDir, "memory"))
 	// The saved secrets and the backups of the kitties' sessions need a key kept in the data
 	// folder: where it cannot be written (a read-only volume) they are off, and the rest runs.
-	if a.vault, a.keep = openSecretStores(dataDir, a.err); a.vault != nil {
+	if !cloud {
+		a.vault, a.keep = openSecretStores(dataDir, a.err)
+	}
+	if a.vault != nil {
 		chats.SetVault(a.vault)
 		fleet.SetKeeper(a.keep)
 	}
@@ -331,9 +414,14 @@ func (a *app) open(cmd string) error {
 		fmt.Fprintf(a.err, "kitties: tidying the chats: %v\n", err)
 	}
 	a.fleet, a.chats = fleet, chats
+	a.agenda.Scheduler.SetAdmission(fleet.Admission())
+	a.digest.SetAdmission(fleet.Admission())
+	fleet.OAuth().SetAdmission(fleet.Admission())
+	fleet.Accounts().SetAdmission(fleet.Admission())
 	a.updater = selfupdate.New(a.cfg.Updates, version)
-	a.updater.Idle = func() bool { return !a.chats.AnyBusy() && !a.fleet.AnyHeld() }
-	return nil
+	a.updater.Idle = func() bool { return !a.chats.AnyBusy() && !a.fleet.AnyHeld() && !a.fleet.Admission().Active() }
+	a.backups, err = backup.New(backup.Options{DataDir: dataDir, WriteCapture: a.captureRecovery})
+	return err
 }
 
 func (a *app) dispatch(cmd string, args []string) error {
@@ -429,6 +517,10 @@ func cmdToken(cfg config.Config, out, errOut io.Writer) int {
 }
 
 func (a *app) cmdGateway(ctx context.Context, args []string) error {
+	ctx, cancel := context.WithCancel(ctx)
+	var workers sync.WaitGroup
+	defer func() { cancel(); workers.Wait() }()
+	launch := func(work func()) { workers.Add(1); go func() { defer workers.Done(); work() }() }
 	fs := flag.NewFlagSet("gateway", flag.ContinueOnError)
 	fs.SetOutput(a.err)
 	listen := fs.String("listen", "", "address to listen on (default gateway.listen; 0.0.0.0:7488 serves the network)")
@@ -441,21 +533,21 @@ func (a *app) cmdGateway(ctx context.Context, args []string) error {
 			return err
 		}
 	}
+	token, tokenPath, _ := gatewayToken(a.cfg)
+	if err := saveGatewayToken(tokenPath, token); err != nil {
+		if a.cfg.Containers.Runtime == "boat" {
+			return fmt.Errorf("cloud gateway cannot persist its sign-in token: %w", err)
+		}
+		fmt.Fprintf(a.err, "kitties: could not keep the token in %s: %v\n", tokenPath, err)
+	} else {
+		fmt.Fprintf(a.out, "gateway token saved in %s; use `kitties token` to display it\n", tokenPath)
+	}
 	if err := a.fleet.Bootstrap(ctx); err != nil {
 		fmt.Fprintf(a.err, "kitties: some kitties did not start: %v\n", err)
 	}
 	if err := a.syncGoals(); err != nil {
 		fmt.Fprintf(a.err, "kitties: goals from the configuration: %v\n", err)
 	}
-	token, tokenPath, _ := gatewayToken(a.cfg)
-	// The token is left where a local program finds it (the desktop app, a script of the
-	// same user), so a local executable never asks for it.
-	if err := os.MkdirAll(filepath.Dir(tokenPath), 0o700); err == nil {
-		if err := os.WriteFile(tokenPath, []byte(token+"\n"), 0o600); err != nil {
-			fmt.Fprintf(a.err, "kitties: could not keep the token in %s: %v\n", tokenPath, err)
-		}
-	}
-	fmt.Fprintf(a.out, "gateway token: %s (also in %s)\n", token, tokenPath)
 	for _, k := range a.fleet.List() {
 		fmt.Fprintf(a.out, "  %-16s %-8s %s\n", k.Name, k.Status, k.Provider)
 	}
@@ -468,6 +560,7 @@ func (a *app) cmdGateway(ctx context.Context, args []string) error {
 	}
 	g := a.cfg.Gateway
 	srv := gateway.New(a.fleet, a.chats, token, version).WithLibrary(a.skills, a.arts).WithAgenda(a.agenda).
+		WithAdmission(a.fleet.Admission()).WithBackups(a.backups).
 		WithApprovals(a.chats).WithMemory(a.chats).WithMaintenance(a.fleet).WithUpdater(a.updater).WithNotifier(a.notifier).WithDigest(a.digest).
 		WithPublicURL(g.PublicURL).WithProxy(g.TrustProxy).WithLocalToken(g.LocalTokenAllowed()).WithTLS(g.TLSCert, g.TLSKey)
 	if a.vault != nil {
@@ -478,37 +571,47 @@ func (a *app) cmdGateway(ctx context.Context, args []string) error {
 	} else {
 		fmt.Fprintln(a.err, "kitties: this build has no web interface inside (make web); serving the built-in page")
 	}
+	var logMu sync.Mutex
 	logf := func(format string, args ...any) {
+		logMu.Lock()
+		defer logMu.Unlock()
 		fmt.Fprintf(a.out, format+"\n", args...)
 	}
 	// The signed-in connectors keep their tokens fresh in the background; the scheduler wakes
 	// the kitties up for their goals; the watchdog keeps their containers up.
-	go a.fleet.KeepTokensFresh(ctx, logf)
+	launch(func() { a.backups.Run(ctx) })
+	launch(func() { a.fleet.KeepTokensFresh(ctx, logf) })
 	a.agenda.Scheduler.SetLog(logf)
 	a.notifier.SetLog(logf)
-	go a.agenda.Run(ctx)
-	go a.digest.Run(ctx, logf)
-	go a.fleet.Watch(ctx, watchEvery, func(k *kitty.Kitty, what string) {
-		logf("watchdog: %s is back (%s)", k.Name, what)
-		_ = a.agenda.Note(agenda.Entry{Kitty: k.ID, Kind: agenda.KindRecovered, Text: what})
-		a.notifier.Notify(notify.Notification{Event: notify.Recovered, Kitty: k.Name, Title: "is back", Body: what})
-	}, logf)
+	launch(func() { a.agenda.Run(ctx) })
+	launch(func() { a.digest.Run(ctx, logf) })
+	launch(func() {
+		a.fleet.Watch(ctx, watchEvery, func(k *kitty.Kitty, what string) {
+			logf("watchdog: %s is back (%s)", k.Name, what)
+			_ = a.agenda.Note(agenda.Entry{Kitty: k.ID, Kind: agenda.KindRecovered, Text: what})
+			a.notifier.Notify(notify.Notification{Event: notify.Recovered, Kitty: k.Name, Title: "is back", Body: what})
+		}, logf)
+	})
 	// A newer desktop image is downloaded and put on the idle desktops, their sessions kept.
 	a.fleet.SetBusy(a.chats.KittyBusy)
-	go a.fleet.WatchUpdates(ctx, updateFirstCheck, time.Duration(a.cfg.Containers.UpdateCheckHours)*time.Hour, func(k *kitty.Kitty) {
-		logf("update: the desktop of %s is on the newest image", k.Name)
-		_ = a.agenda.Note(agenda.Entry{Kitty: k.ID, Kind: agenda.KindUpdated, Text: "its desktop was updated to the newest image; its sessions were kept"})
-		a.notifier.Notify(notify.Notification{Event: notify.Updated, Kitty: k.Name, Title: "its desktop was updated", Body: "It runs the newest image now; its cookies, sessions and passwords were kept."})
-	}, logf)
+	launch(func() {
+		a.fleet.WatchUpdates(ctx, updateFirstCheck, time.Duration(a.cfg.Containers.UpdateCheckHours)*time.Hour, func(k *kitty.Kitty) {
+			logf("update: the desktop of %s is on the newest image", k.Name)
+			_ = a.agenda.Note(agenda.Entry{Kitty: k.ID, Kind: agenda.KindUpdated, Text: "its desktop was updated to the newest image; its sessions were kept"})
+			a.notifier.Notify(notify.Notification{Event: notify.Updated, Kitty: k.Name, Title: "its desktop was updated", Body: "It runs the newest image now; its cookies, sessions and passwords were kept."})
+		}, logf)
+	})
 	// Kitties itself: told about (notify) or moved to (auto) a newer release, inside the window and
 	// when no kitty is working and no desktop is held.
-	go a.updater.Confirm(ctx)
+	launch(func() { a.updater.Confirm(ctx) })
 	if a.booted.RolledBack != "" {
 		logf("update: %s did not hold and Kitties went back to %s; it will not be offered again", a.booted.RolledBack, version)
 		a.notifier.Notify(rolledBackNote(a.booted.RolledBack, version))
 	}
 	window, _ := config.ParseWindow(a.cfg.Updates.Window)
-	go a.updater.Watch(ctx, updateFirstCheck, time.Duration(a.cfg.Updates.CheckHours)*time.Hour, updateHooks(a.notifier, func() bool { return window.Contains(time.Now()) }, logf))
+	launch(func() {
+		a.updater.Watch(ctx, updateFirstCheck, time.Duration(a.cfg.Updates.CheckHours)*time.Hour, updateHooks(a.notifier, func() bool { return window.Contains(time.Now()) }, logf))
+	})
 	return srv.Listen(ctx, g.Listen, logf)
 }
 

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/madkoding/kitties/internal/statefs"
 )
 
 // The kinds of entry a journal holds.
@@ -62,17 +64,14 @@ func (j *Journal) Add(e Entry) error {
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	if err := os.MkdirAll(j.dir, 0o700); err != nil {
+	if err := statefs.MkdirAll(j.dir, 0o700); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(j.file(e.Kitty), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	data, err := json.Marshal(e)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	data, _ := json.Marshal(e)
-	_, err = f.Write(append(data, '\n'))
-	return err
+	return statefs.AppendFile(j.file(e.Kitty), append(data, '\n'), 0o600)
 }
 
 // Recent returns the last n entries of a kitty, newest first.
@@ -106,7 +105,7 @@ func (j *Journal) Recent(kitty string, n int) []Entry {
 func (j *Journal) Forget(kitty string) error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	err := os.Remove(j.file(kitty))
+	err := statefs.Remove(j.file(kitty))
 	if os.IsNotExist(err) {
 		return nil
 	}

@@ -6,7 +6,7 @@
 //
 //   - chat:       POST /chat/completions (Bearer): openai, ollama, ollama-cloud, groq, openrouter,
 //     deepseek, qwen, mistral, copilot and any OpenAI-compatible server
-//   - responses:  POST /responses (Bearer): codex
+//   - responses:  POST /responses (Bearer): codex and OpenAI GPT-6 Luna
 //   - anthropic:  POST /v1/messages (x-api-key + anthropic-version)
 //   - gemini:     POST /v1beta/models/<model>:generateContent (x-goog-api-key)
 //   - cli:        the official `claude` program, on the person's own Claude subscription
@@ -341,6 +341,9 @@ func (c *HTTPClient) once(ctx context.Context, messages []Message, tools []Tool)
 	if err != nil {
 		return Reply{}, err
 	}
+	if c.kind.Name == "openai" && isLunaModel(c.opts.Model) {
+		return c.callResponses(ctx, t, messages, tools)
+	}
 	switch c.kind.Family {
 	case FamilyAnthropic:
 		return c.callAnthropic(ctx, t, messages, tools)
@@ -351,6 +354,18 @@ func (c *HTTPClient) once(ctx context.Context, messages []Message, tools []Tool)
 	default:
 		return c.callChat(ctx, t, messages, tools)
 	}
+}
+
+func isLunaModel(model string) bool {
+	if model == "gpt-6-luna" {
+		return true
+	}
+	date, snapshot := strings.CutPrefix(model, "gpt-6-luna-")
+	if !snapshot {
+		return false
+	}
+	_, err := time.Parse(time.DateOnly, date)
+	return err == nil
 }
 
 // target is where one request goes and the headers that carry its credentials.

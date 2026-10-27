@@ -3,6 +3,7 @@ package digest
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -170,4 +171,34 @@ func TestSendNowAndRun(t *testing.T) {
 	ctx2, cancel2 := context.WithCancel(context.Background())
 	cancel2()
 	g.r.Run(ctx2, nil)
+}
+
+func TestInterruptedDigestIsNotReplayedAfterRestart(t *testing.T) {
+	g := newRig(t)
+	deliveries := 0
+	g.r.src.Deliver = func(context.Context, notify.Notification) error {
+		deliveries++
+		panic("process stopped after delivery")
+	}
+	func() {
+		defer func() { _ = recover() }()
+		_, _ = g.r.Tick(context.Background())
+	}()
+	again := New(g.r.src, g.path)
+	again.now = g.r.now
+	if sent, err := again.Tick(context.Background()); sent || err != nil || deliveries != 1 {
+		t.Fatalf("interrupted digest replayed: sent=%v err=%v deliveries=%d", sent, err, deliveries)
+	}
+}
+
+func TestDigestClaimsDeliveryBeforeSending(t *testing.T) {
+	g := newRig(t)
+	blocker := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	g.r.path = filepath.Join(blocker, "digest.json")
+	if sent, err := g.r.Tick(context.Background()); sent || err == nil || len(g.sent) != 0 {
+		t.Fatalf("sent without durable claim: sent=%v err=%v messages=%d", sent, err, len(g.sent))
+	}
 }

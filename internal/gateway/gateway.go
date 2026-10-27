@@ -13,7 +13,6 @@ import (
 	"html"
 	"io"
 	"io/fs"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -27,6 +26,7 @@ import (
 	"github.com/madkoding/kitties/internal/desktop"
 	"github.com/madkoding/kitties/internal/kitty"
 	"github.com/madkoding/kitties/internal/llmauth"
+	"github.com/madkoding/kitties/internal/maintenance"
 	"github.com/madkoding/kitties/internal/notify"
 	"github.com/madkoding/kitties/internal/oauth"
 	"github.com/madkoding/kitties/internal/orchestrator"
@@ -104,14 +104,16 @@ type Chats interface {
 
 // Server is the HTTP API.
 type Server struct {
-	fleet   Fleet
-	chats   Chats
-	token   string
-	version string
-	started time.Time
-	mux     *http.ServeMux
-	skills  *skills.Library
-	arts    *artifacts.Store
+	admission *maintenance.Gate
+	backups   Backups
+	fleet     Fleet
+	chats     Chats
+	token     string
+	version   string
+	started   time.Time
+	mux       *http.ServeMux
+	skills    *skills.Library
+	arts      *artifacts.Store
 
 	// The web server side (serve.go).
 	web          fs.FS
@@ -241,6 +243,9 @@ func (s *Server) routes() {
 	s.memoryRoutes()
 	s.vaultRoutes()
 	s.desktopRoutes()
+	s.lifecycleRoutes()
+	s.recoveryOperatorRoutes()
+	s.backupRoutes()
 	s.updateRoutes()
 	s.mux.Handle("GET /v1/chats/{id}/events", api(s.handleEvents))
 	s.mux.Handle("POST /v1/oauth/{name}/start", api(s.handleOAuthStart))
@@ -507,7 +512,7 @@ func codeFor(err error) int {
 	switch {
 	case errors.Is(err, orchestrator.ErrNotFound), strings.HasPrefix(msg, "no such "):
 		return http.StatusNotFound
-	case errors.Is(err, chat.ErrBusy), strings.Contains(msg, "already running"), strings.Contains(msg, "already has an answer"), strings.Contains(msg, "has the desktop"), strings.Contains(msg, "is already approved"), strings.Contains(msg, "is already rejected"):
+	case errors.Is(err, orchestrator.ErrDisabled), errors.Is(err, orchestrator.ErrDraining), errors.Is(err, orchestrator.ErrLifecycleBusy), errors.Is(err, orchestrator.ErrRecoveryBusy), errors.Is(err, chat.ErrBusy), strings.Contains(msg, "already running"), strings.Contains(msg, "already has an answer"), strings.Contains(msg, "has the desktop"), strings.Contains(msg, "is already approved"), strings.Contains(msg, "is already rejected"):
 		return http.StatusConflict
 	case errors.Is(err, chat.ErrNoApprovals), errors.Is(err, chat.ErrNoMemory):
 		return http.StatusNotFound
@@ -649,9 +654,15 @@ func (s *Server) lifecycle(w http.ResponseWriter, r *http.Request, op func(conte
 }
 
 func (s *Server) handleStartKitty(w http.ResponseWriter, r *http.Request) {
+	if s.asyncLifecycle(w, r, "start") {
+		return
+	}
 	s.lifecycle(w, r, s.fleet.Start)
 }
 func (s *Server) handleStopKitty(w http.ResponseWriter, r *http.Request) {
+	if s.asyncLifecycle(w, r, "stop") {
+		return
+	}
 	s.lifecycle(w, r, s.fleet.Stop)
 }
 func (s *Server) handleRemoveKitty(w http.ResponseWriter, r *http.Request) {
@@ -688,6 +699,18 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleScreenshot(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Has("live") {
+		if fleet, ok := s.fleet.(interface {
+			Acquire(context.Context, string) (func(), error)
+		}); ok {
+			release, err := fleet.Acquire(r.Context(), r.PathValue("ref"))
+			if err != nil {
+				fail(w, codeFor(err), err)
+				return
+			}
+			defer release()
+		}
+	}
 	png, err := s.fleet.Screenshot(r.Context(), r.PathValue("ref"))
 	if err != nil {
 		fail(w, codeFor(err), err)
@@ -1028,46 +1051,4 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = io.WriteString(w, indexHTML)
-}
-
-// Listen serves on addr until ctx ends (https when a certificate was given). It says where the
-// page is, and warns when the token would cross a network in the clear.
-func (s *Server) Listen(ctx context.Context, addr string, logf func(string, ...any)) error {
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		return fmt.Errorf("listen on %s: %w", addr, err)
-	}
-	tls := s.tlsCert != ""
-	if !config.IsLoopbackAddr(addr) && !tls && !s.trustProxy && !strings.HasPrefix(s.publicURL, "https://") {
-		logf("warning: the gateway listens on %s without https; the token and the chats cross the network in the clear. Set gateway.tls_cert and tls_key, or put it behind a TLS proxy (trust_proxy)", addr)
-	}
-	srv := &http.Server{Handler: s, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute}
-	go func() {
-		<-ctx.Done()
-		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = srv.Shutdown(shutdown)
-	}()
-	scheme := "http"
-	if tls {
-		scheme = "https"
-	}
-	where := s.publicURL
-	if where == "" {
-		where = scheme + "://" + ln.Addr().String()
-	}
-	what := "gateway"
-	if s.web != nil {
-		what = "gateway and web interface"
-	}
-	logf("%s listening on %s", what, where)
-	if tls {
-		err = srv.ServeTLS(ln, s.tlsCert, s.tlsKey)
-	} else {
-		err = srv.Serve(ln)
-	}
-	if err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return err
-	}
-	return nil
 }

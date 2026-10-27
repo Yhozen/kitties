@@ -6,6 +6,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/madkoding/kitties/internal/computer"
 	"github.com/madkoding/kitties/internal/desktop"
 	"github.com/madkoding/kitties/internal/kitty"
 )
@@ -29,11 +30,34 @@ func (m *Manager) Hold(ref string, on bool) (bool, error) {
 	if on && !k.Desktop {
 		return false, fmt.Errorf("%s has no desktop", k.Name)
 	}
+	if on {
+		_, admitted, err := m.admission.Enter(context.Background())
+		if err != nil {
+			return false, err
+		}
+		defer admitted()
+		unlock, ok := m.tryLockComputer(k.ID)
+		if !ok {
+			return false, ErrLifecycleBusy
+		}
+		defer unlock()
+		k, err = m.Get(k.ID)
+		if err != nil {
+			return false, err
+		}
+		if k.Availability == computer.Disabled {
+			return false, ErrDisabled
+		}
+		if k.Operation.Kind == "stop" || k.Operation.Kind == "remove" {
+			return false, ErrDraining
+		}
+	}
 	m.holdMu.Lock()
 	defer m.holdMu.Unlock()
 	if m.holds == nil {
 		m.holds, m.holdStarted = map[string]time.Time{}, map[string]time.Time{}
 	}
+	_, wasHeld := m.holds[k.ID]
 	if on {
 		if _, held := m.holds[k.ID]; !held {
 			m.holdStarted[k.ID] = m.now()
@@ -41,6 +65,9 @@ func (m *Manager) Hold(ref string, on bool) (bool, error) {
 		m.holds[k.ID] = m.now()
 	} else {
 		delete(m.holds, k.ID)
+	}
+	if on || wasHeld {
+		m.touch(k.ID)
 	}
 	return on, nil
 }
@@ -114,7 +141,21 @@ func (m *Manager) Stream(ctx context.Context, ref string, fps, quality int) (io.
 	if !k.Desktop {
 		return nil, fmt.Errorf("%s has no desktop", k.Name)
 	}
-	return m.ctr().Stream(ctx, computerID(k), fps, quality)
+	release, err := m.Acquire(ctx, k.ID)
+	if err != nil {
+		return nil, err
+	}
+	k, err = m.Get(k.ID)
+	if err != nil {
+		release()
+		return nil, err
+	}
+	rc, err := m.ctr().Stream(ctx, computerID(k), fps, quality)
+	if err != nil {
+		release()
+		return nil, err
+	}
+	return &activityStream{ReadCloser: rc, release: release}, nil
 }
 
 // MaxClipboard is the most text the clipboard of a display takes from the person at once.

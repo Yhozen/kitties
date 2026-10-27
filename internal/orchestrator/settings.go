@@ -19,6 +19,7 @@ import (
 	"github.com/madkoding/kitties/internal/notify"
 	"github.com/madkoding/kitties/internal/oauth"
 	"github.com/madkoding/kitties/internal/provider"
+	"github.com/madkoding/kitties/internal/statefs"
 )
 
 // Settings are what the interface can change at run time: the AI profiles and the connectors.
@@ -108,14 +109,14 @@ func (m *Manager) saveSettings() error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(m.settingsPath()), 0o700); err != nil {
+	if err := statefs.MkdirAll(filepath.Dir(m.settingsPath()), 0o700); err != nil {
 		return fmt.Errorf("create the data folder: %w", err)
 	}
 	tmp := m.settingsPath() + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	if err := statefs.WriteFile(tmp, data, 0o600); err != nil {
 		return fmt.Errorf("save the settings: %w", err)
 	}
-	return os.Rename(tmp, m.settingsPath())
+	return statefs.Rename(tmp, m.settingsPath())
 }
 
 func without(list []string, name string) []string {
@@ -276,7 +277,7 @@ func (m *Manager) Settings() SettingsView {
 	for _, n := range names {
 		p := m.cfg.Providers[n]
 		_, fromOverlay := m.overlay.Providers[n]
-		v := ProviderView{Name: n, Kind: p.Kind, Model: p.Model, BaseURL: p.BaseURL, APIKeySet: p.Options().APIKey != "",
+		v := ProviderView{Name: n, Kind: p.Kind, Model: p.Model, BaseURL: p.BaseURL, APIKeySet: providerKeyAvailable(p),
 			APIKeyEnv: p.APIKeyEnv, Auth: p.Auth, MaxTokens: p.MaxTokens, Temperature: p.Temperature, Default: n == m.cfg.DefaultProvider, FromFile: !fromOverlay}
 		if c, err := m.providers.Get(n); err == nil {
 			v.Describe = c.Describe()
@@ -309,17 +310,28 @@ func (m *Manager) Settings() SettingsView {
 	return view
 }
 
+func providerKeyAvailable(p config.Provider) bool {
+	if p.Auth == provider.AuthLogin {
+		return false
+	}
+	if p.Options().APIKey != "" {
+		return true
+	}
+	kind, ok := provider.Lookup(p.Kind)
+	return ok && kind.KeyEnv != "" && os.Getenv(kind.KeyEnv) != ""
+}
+
 // SetProvider adds or replaces a profile, builds its client and saves the overlay. An empty key
-// keeps the one the profile had.
+// keeps the same provider kind's inline key or environment reference.
 func (m *Manager) SetProvider(name string, p config.Provider) error {
 	if err := config.ValidateProvider(name, p); err != nil {
 		return err
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if p.APIKey == "" && p.Auth == "" {
-		if old, ok := m.cfg.Providers[name]; ok {
-			p.APIKey = old.APIKey
+	if p.APIKey == "" && p.APIKeyEnv == "" && p.Auth == "" {
+		if old, ok := m.cfg.Providers[name]; ok && old.Kind == p.Kind && old.Auth == "" {
+			p.APIKey, p.APIKeyEnv = old.APIKey, old.APIKeyEnv
 		}
 	}
 	if m.overlay.Providers == nil {
