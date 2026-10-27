@@ -14,3 +14,7 @@ kitties.yaml
 kitties
 kitties.exe
 coverage*
+
+# Deployment state may contain secret resource outputs.
+**/.alchemy
+**/.wrangler

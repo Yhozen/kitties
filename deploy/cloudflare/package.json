@@ -1,0 +1,26 @@
+{
+  "name": "kitties-cloudflare",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/*.test.ts",
+    "plan": "alchemy plan --stage prod",
+    "deploy": "alchemy deploy --stage prod",
+    "smoke": "tsx scripts/smoke-cold-restart.ts",
+    "smoke:import": "tsx scripts/smoke-import.ts",
+    "smoke:backups": "tsx scripts/smoke-backups.ts"
+  },
+  "dependencies": {
+    "@alchemy.run/cloudflare": "2.0.0-beta.84",
+    "@effect/platform-node": "4.0.6",
+    "alchemy": "2.0.0-beta.84",
+    "effect": "4.0.6"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261027.1",
+    "@types/node": "26.6.5",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
+  }
+}
