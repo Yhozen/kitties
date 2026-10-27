@@ -21,7 +21,12 @@ boat:ubuntu:24.04)
 esac
 
 if [ -f "$KITTY_PROVISION_MARKER" ]; then
-    systemctl start kitties-desktop.service
+    desktop_pid=$(systemctl show --property=MainPID --value kitties-desktop.service)
+    if [ "$desktop_pid" != 0 ] && [ "$(stat -Lc '%d:%i' "/proc/$desktop_pid/cwd" 2>/dev/null || true)" != "$(stat -Lc '%d:%i' /home/kitty/work)" ]; then
+        systemctl restart kitties-desktop.service
+    else
+        systemctl start kitties-desktop.service
+    fi
     for _ in $(seq 1 60); do
         if sudo -n -H -u kitty env DISPLAY=:99 kitty-ready >/dev/null 2>&1; then
             exit 0

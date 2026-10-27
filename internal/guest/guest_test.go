@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -63,6 +64,61 @@ func TestMissingProvisioningAssetFailsBeforePublishingInstaller(t *testing.T) {
 				}
 			}()
 			_ = script(missingAsset{ReadFileFS: files, path: path}, "boat")
+		})
+	}
+}
+
+func TestHydratedDesktopRestartsOnlyWhenItsWorkspaceWasReplaced(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("sh unavailable")
+	}
+	setup, err := files.ReadFile("setup.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(setup)
+	start := strings.Index(text, "    desktop_pid=")
+	if start < 0 {
+		t.Fatal("desktop hydration guard missing")
+	}
+	end := strings.Index(text[start:], "    for ")
+	if end < 0 {
+		t.Fatal("desktop hydration guard missing")
+	}
+	guard := text[start : start+end]
+	for _, same := range []bool{false, true} {
+		t.Run(map[bool]string{false: "retired workspace", true: "current workspace"}[same], func(t *testing.T) {
+			dir := t.TempDir()
+			current := filepath.Join(dir, "current")
+			retired := filepath.Join(dir, "retired")
+			if err := os.Mkdir(current, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Mkdir(retired, 0700); err != nil {
+				t.Fatal(err)
+			}
+			cwd := retired
+			if same {
+				cwd = current
+			}
+			testGuard := strings.ReplaceAll(guard, "/proc/$desktop_pid/cwd", cwd)
+			testGuard = strings.ReplaceAll(testGuard, "/home/kitty/work", current)
+			script := "systemctl() { if [ \"$1\" = show ]; then echo 42; else echo \"$1\"; fi; }\n" + testGuard
+			if runtime.GOOS == "darwin" {
+				// The guest uses GNU stat; adapt its formatting option for the host BSD stat.
+				script = "stat() { shift; command stat -Lf \"$@\"; }\n" + script
+			}
+			cmd := exec.Command(sh)
+			cmd.Stdin = strings.NewReader(script)
+			out, err := cmd.CombinedOutput()
+			want := "restart"
+			if same {
+				want = "start"
+			}
+			if err != nil || strings.TrimSpace(string(out)) != want {
+				t.Fatalf("got %q %v; want %s", out, err, want)
+			}
 		})
 	}
 }
