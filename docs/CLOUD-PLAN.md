@@ -68,3 +68,10 @@ Vercel Sandbox/Drives, AgentFS, Fly Sprites can be evaluated later. AgentFS is a
 - The owner browser displayed the real 1280×800 rectangle stream and delivered desktop control input. The viewer now survives readiness transitions and reports live status only after a decoded frame. Inputs currently take about 7–8 seconds; the desktop parity and latency follow-up remains separate.
 - The approved seven archived test VMs and eight saved checkpoints were deleted and verified absent. Production resources were excluded.
 - The requested `gpt-6-luna` model accepted an image, correctly identified its colors, called a function with those observations, and completed the tool-result continuation through the Responses API.
+
+- The deployed `gpt-6-luna` profile passed Save and Test through the owner UI. A fresh Kitties chat invoked the screenshot tool and then finished with a correct description of the actual Boat desktop, including the visible terminal text “Kitties · persistent Linux VM”; the captured image was independently inspected. The verification kitty now has a 32,000-token, eight-round, five-minute task budget rather than the one-reply smoke limits.
+- Environment-backed model profiles preserve their key references across edits/restarts; Settings recognizes the same built-in credential fallback as the provider without persisting the secret.
+
+## Cua Spaces research
+
+See [CUA-RESEARCH.md](CUA-RESEARCH.md) for the dated, source-pinned comparison. The recommendation is to retain Kitties persistence, improve warm input sessions and workspace UX, and selectively evaluate MIT Driver components. Current Spaces applications, daemon and media implementation have nested FSL licenses; the root MIT license is not blanket permission to reuse them.
