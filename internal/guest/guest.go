@@ -7,10 +7,11 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io/fs"
+	"path"
 	"strings"
 )
 
-//go:embed setup.sh finish.sh files/*
+//go:embed setup.sh finish.sh files/* all:desktop
 var files embed.FS
 
 // Script provisions a persistent Debian 13 Lima guest as root.
@@ -48,6 +49,10 @@ func script(source fs.ReadFileFS, kind string) string {
 		{"kitty-clip.sh", "/usr/local/bin/kitty-clip"},
 		{"kitty-theme.sh", "/usr/local/bin/kitty-theme"},
 		{"kitty-desktop.sh", "/usr/local/bin/kitty-desktop"},
+		{"kitty-shelf-media.sh", "/usr/local/bin/kitty-shelf-media"},
+		{"kitty-shelf-weather.sh", "/usr/local/bin/kitty-shelf-weather"},
+		{"install-desktop.sh", "/usr/local/lib/kitties/install-desktop.sh"},
+		{"desktop-defaults.py", "/usr/local/lib/kitties/desktop-defaults.py"},
 		{"kitty-grab.c", "/usr/local/src/kitty-grab.c"},
 		{"chromium-policy.json", "/etc/chromium/policies/managed/kitties.json"},
 		{"chromium-policy.json", "/etc/opt/chrome/policies/managed/kitties.json"},
@@ -59,6 +64,23 @@ func script(source fs.ReadFileFS, kind string) string {
 			panic(err)
 		}
 		fmt.Fprintf(&body, "\nbase64 -d > %s <<'KITTY_FILE'\n%s\nKITTY_FILE\n", file.target, base64.StdEncoding.EncodeToString(data))
+	}
+	if err := fs.WalkDir(source, "desktop", func(name string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		data, err := source.ReadFile(name)
+		if err != nil {
+			return err
+		}
+		target := "/usr/local/share/kitties/" + name
+		fmt.Fprintf(&body, "\nmkdir -p %s\nbase64 -d > %s <<'KITTY_FILE'\n%s\nKITTY_FILE\n", path.Dir(target), target, base64.StdEncoding.EncodeToString(data))
+		return nil
+	}); err != nil {
+		panic(err)
 	}
 	body.Write(finish)
 	sum := sha256.Sum256([]byte(body.String()))

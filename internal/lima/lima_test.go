@@ -84,11 +84,27 @@ func TestLimaProcess(t *testing.T) {
 			fmt.Print("broken inventory")
 			os.Exit(0)
 		}
-		fmt.Println(`{"name":"kitty-mimi","status":"Running"}`)
+		status := "Running"
+		if os.Getenv("KITTIES_LIMA_STOPPED") == "1" {
+			status = "Stopped"
+		}
+		fmt.Printf("{\"name\":\"kitty-mimi\",\"status\":%q}\n", status)
 		fmt.Println(`{"name":"kitty-unowned","status":"Stopped"}`)
 		fmt.Println(`{"name":"personal","status":"Running"}`)
 	case "shell":
 		switch {
+		case slices.Contains(args, "KITTY_DESKTOP_RESTART=1"):
+			input, _ := io.ReadAll(os.Stdin)
+			if path := os.Getenv("KITTIES_LIMA_UPGRADE"); path != "" {
+				data, _ := json.Marshal(struct {
+					Args  []string
+					Input string
+				}{args, string(input)})
+				_ = os.WriteFile(path, data, 0o600)
+			}
+			if os.Getenv("KITTIES_LIMA_UPGRADE_FAIL") == "1" {
+				os.Exit(21)
+			}
 		case slices.Contains(args, desktopReadyCommand):
 			if path := os.Getenv("KITTIES_LIMA_READY_PROBES"); path != "" {
 				data, _ := os.ReadFile(path)

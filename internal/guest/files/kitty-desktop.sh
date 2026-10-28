@@ -18,9 +18,10 @@ if [ "$ready" != true ]; then
     exit 1
 fi
 
-xsetroot -solid '#17212b'
-openbox &
-tint2 &
-xterm -fa 'DejaVu Sans Mono' -fs 11 -geometry 88x22+180+140 -title 'Kitty virtual machine' -bg '#17212b' -fg '#e6edf3' \
-    -e /bin/bash -lc 'printf "Kitties · persistent Linux VM\n\n"; uname -sr; printf "\nWorkspace: /home/kitty/work\nUse sudo to install tools inside this machine.\n\n"; exec /bin/bash' &
+xrdb -nocpp -merge "$HOME/.Xresources" 2>/dev/null || true
+if [ -s "$HOME/work/.desktop/theme" ]; then
+    theme="$(head -n 1 "$HOME/work/.desktop/theme" | tr -cd 'A-Za-z0-9@._-')"
+    kitty-theme "$theme" >/dev/null
+fi
+/usr/local/bin/openbox-session >/tmp/lumen.log 2>&1 &
 wait "$display_pid"

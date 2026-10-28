@@ -18,6 +18,7 @@ import (
 
 	"github.com/madkoding/kitties/internal/computer"
 	"github.com/madkoding/kitties/internal/container"
+	"github.com/madkoding/kitties/internal/guest"
 )
 
 var instanceName = regexp.MustCompile(`^kitty-[a-z0-9][a-z0-9-]{0,56}$`)
@@ -117,8 +118,9 @@ func (m *Manager) runCommand(ctx context.Context, stdin string, textOutput bool,
 }
 
 type ownership struct {
-	Kitty string            `json:"kitty"`
-	Env   map[string]string `json:"env,omitempty"`
+	Kitty                 string            `json:"kitty"`
+	Env                   map[string]string `json:"env,omitempty"`
+	DesktopUpgradePending bool              `json:"desktop_upgrade_pending,omitempty"`
 }
 
 func (m *Manager) marker(name string) (string, error) {
@@ -142,6 +144,37 @@ func (m *Manager) owned(name string) (ownership, error) {
 		return owner, fmt.Errorf("read VM ownership: %w", err)
 	}
 	return owner, nil
+}
+
+func (m *Manager) saveOwner(name string, owner ownership) error {
+	path, err := m.marker(name)
+	if err != nil {
+		return err
+	}
+	data, _ := json.Marshal(owner)
+	file, err := os.CreateTemp(filepath.Dir(path), ".ownership-*")
+	if err != nil {
+		return err
+	}
+	tmp := file.Name()
+	defer os.Remove(tmp)
+	_, err = file.Write(data)
+	if err == nil {
+		err = file.Sync()
+	}
+	err = errors.Join(err, file.Close())
+	if err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+	dir, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
 }
 
 func (m *Manager) lock(name string) (func(), error) {
@@ -188,16 +221,7 @@ func (m *Manager) Up(ctx context.Context, spec container.Spec) (string, error) {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", err
 	}
-	data, err := json.Marshal(ownership{Kitty: spec.KittyName, Env: spec.Env})
-	if err != nil {
-		return "", err
-	}
-	tmp := path + ".tmp"
-	defer os.Remove(tmp)
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return "", err
-	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := m.saveOwner(spec.Name, ownership{Kitty: spec.KittyName, Env: spec.Env}); err != nil {
 		return "", err
 	}
 	if _, err := m.run(ctx, config, "create", "--name", spec.Name, "--mount-none", "-"); err != nil {
@@ -225,11 +249,39 @@ func (m *Manager) Start(ctx context.Context, name string) error {
 const desktopReadyCommand = "systemctl is-active --quiet kitties-desktop.service && xdpyinfo -display :99 >/dev/null && wmctrl -m >/dev/null"
 
 func (m *Manager) start(ctx context.Context, name string) error {
-	if _, err := m.owned(name); err != nil {
+	owner, err := m.owned(name)
+	if err != nil {
 		return err
+	}
+	instances, err := m.List(ctx)
+	if err != nil {
+		return err
+	}
+	cold := false
+	for _, instance := range instances {
+		if instance.Name == name {
+			cold = instance.Status == "Stopped"
+			break
+		}
+	}
+	if cold && !owner.DesktopUpgradePending {
+		owner.DesktopUpgradePending = true
+		if err := m.saveOwner(name, owner); err != nil {
+			return err
+		}
 	}
 	if _, err := m.run(ctx, "", "start", "--timeout=20m", name); err != nil {
 		return err
+	}
+	if owner.DesktopUpgradePending {
+		if _, err := m.runCommand(ctx, guest.Script, true, "shell", "--workdir", "/", name,
+			"sudo", "-n", "-H", "env", "KITTY_DESKTOP_RESTART=1", "bash", "-s"); err != nil {
+			return fmt.Errorf("update desktop %q: %w", name, err)
+		}
+		owner.DesktopUpgradePending = false
+		if err := m.saveOwner(name, owner); err != nil {
+			return err
+		}
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()

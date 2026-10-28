@@ -7,15 +7,11 @@ printf '%s\n' 'kitty ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/kitty
 chmod 440 /etc/sudoers.d/kitty
 visudo -cf /etc/sudoers.d/kitty
 
-if [ ! -f /home/kitty/.config/openbox/rc.xml ]; then
-    install -o kitty -g kitty -m 644 /etc/xdg/openbox/rc.xml /home/kitty/.config/openbox/rc.xml
-    sed -i '\|/var/lib/openbox/debian-menu.xml|d' /home/kitty/.config/openbox/rc.xml
-fi
-if [ ! -f /home/kitty/.config/openbox/menu.xml ]; then
-    install -o kitty -g kitty -m 644 /usr/local/share/kitties/menu.xml /home/kitty/.config/openbox/menu.xml
-fi
+sh /usr/local/lib/kitties/install-desktop.sh
+sudo -n -H -u kitty python3 /usr/local/lib/kitties/desktop-defaults.py
 systemctl daemon-reload
 systemctl enable kitties-desktop.service
+install -d -m 755 /var/lib/kitties-desktop
 systemctl restart kitties-desktop.service
 for _ in $(seq 1 60); do
     if systemctl is-active --quiet kitties-desktop.service && \

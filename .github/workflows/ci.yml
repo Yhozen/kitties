@@ -189,7 +189,7 @@ jobs:
           for f in docker/kitty-desktop/*.sh docker/kitty-desktop/test/*.sh internal/guest/*.sh internal/guest/files/*.sh; do sh -n "$f"; done
           python3 -m py_compile internal/guest/files/kitty-page.py
       - name: the desktop's fonts are the app's
-        run: for f in docker/kitty-desktop/fonts/*.woff2; do cmp "$f" "desktop/frontend/public/$(basename "$f")"; done
+        run: for f in internal/guest/desktop/fonts/*.woff2; do cmp "$f" "desktop/frontend/public/$(basename "$f")"; done
       - name: build the image
         run: docker build -t kitty-desktop:ci -f docker/kitty-desktop/Dockerfile .
       - name: the shelf's weather and player feeds, and its font

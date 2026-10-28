@@ -55,7 +55,7 @@ func (f missingAsset) ReadFile(path string) ([]byte, error) {
 }
 
 func TestMissingProvisioningAssetFailsBeforePublishingInstaller(t *testing.T) {
-	for _, path := range []string{"setup.sh", "finish.sh", "files/kitty-page.py"} {
+	for _, path := range []string{"setup.sh", "finish.sh", "files/kitty-page.py", "desktop/lumen/rc.xml"} {
 		t.Run(path, func(t *testing.T) {
 			defer func() {
 				failure, ok := recover().(error)
@@ -120,5 +120,46 @@ func TestHydratedDesktopRestartsOnlyWhenItsWorkspaceWasReplaced(t *testing.T) {
 				t.Fatalf("got %q %v; want %s", out, err, want)
 			}
 		})
+	}
+}
+
+func TestDesktopDefaultsPreserveExistingGuestState(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 unavailable")
+	}
+	cmd := exec.Command(python, "test/desktop_defaults_test.py")
+	cmd.Env = append(os.Environ(), "PYTHONDONTWRITEBYTECODE=1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("desktop migration: %v\n%s", err, out)
+	}
+}
+
+func TestChangedPayloadDefersUpdatesWhileDesktopIsActive(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("sh unavailable")
+	}
+	setup, err := files.ReadFile("setup.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(setup)
+	start := strings.Index(text, "if systemctl is-active")
+	end := strings.Index(text[start:], "apt-get")
+	guard := text[start : start+end]
+	for _, cold := range []bool{false, true} {
+		env := "0"
+		want := "checked\nDesktop update deferred until the computer is stopped and started.\n"
+		if cold {
+			env = "1"
+			want = "install\n"
+		}
+		cmd := exec.Command(sh)
+		cmd.Stdin = strings.NewReader("systemctl() { return 0; }\nsudo() { echo checked; }\nKITTY_DESKTOP_RESTART=" + env + "\n" + guard + "echo install\n")
+		out, err := cmd.CombinedOutput()
+		if err != nil || string(out) != want {
+			t.Fatalf("cold=%v: %q %v", cold, out, err)
+		}
 	}
 }

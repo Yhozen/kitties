@@ -37,16 +37,25 @@ if [ -f "$KITTY_PROVISION_MARKER" ]; then
     exit 1
 fi
 
+if systemctl is-active --quiet kitties-desktop.service && [ "${KITTY_DESKTOP_RESTART:-0}" != 1 ]; then
+    sudo -n -H -u kitty env DISPLAY=:99 kitty-ready
+    echo 'Desktop update deferred until the computer is stopped and started.'
+    exit 0
+fi
+
 apt-get -o DPkg::Lock::Timeout=300 update -qq
 apt-get -o DPkg::Lock::Timeout=300 install -y -qq --no-install-recommends \
     xvfb x11-utils x11-xserver-utils xdotool scrot wmctrl xclip \
-    openbox tint2 xterm pcmanfm dbus-x11 sudo \
+    openbox xterm pcmanfm dbus-x11 sudo playerctl gnome-themes-extra gtk2-engines-pixbuf \
     fonts-dejavu fonts-noto-color-emoji \
-    ca-certificates curl git jq python3 python3-websocket openssh-client \
+    ca-certificates curl git jq python3 python3-xdg python3-websocket openssh-client \
     libreoffice-writer libreoffice-calc libreoffice-impress libreoffice-gtk3 \
     inkscape imagemagick mtpaint mousepad numix-gtk-theme greybird-gtk-theme \
     tesseract-ocr tesseract-ocr-eng tesseract-ocr-spa \
-    gcc libc6-dev libx11-dev libxext-dev libjpeg-dev procps tzdata
+    gcc libc6-dev libx11-dev libxext-dev libjpeg-dev procps tzdata \
+    build-essential autoconf automake libtool pkg-config gettext autopoint \
+    libglib2.0-dev libxml2-dev libpango1.0-dev libcairo2-dev libxft-dev libxrandr-dev \
+    libxinerama-dev libxcursor-dev libxi-dev libsm-dev librsvg2-dev libimlib2-dev woff2 fontconfig
 if [ "$KITTY_GUEST_KIND" = lima ]; then
     apt-get -o DPkg::Lock::Timeout=300 install -y -qq --no-install-recommends chromium chromium-sandbox
 fi

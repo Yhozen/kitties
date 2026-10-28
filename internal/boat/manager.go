@@ -339,7 +339,11 @@ func (m *Manager) finishStart(ctx context.Context, r record) error {
 	if _, err := m.waitReady(ctx, r); err != nil {
 		return err
 	}
-	if _, err := m.runGuest(ctx, r, guest.BoatScript, true, "bash", "-s"); err != nil {
+	command := []string{"bash", "-s"}
+	if r.Pending != nil && (r.Pending.Kind == "bootstrap" || r.Pending.Kind == "resume") {
+		command = append([]string{"env", "KITTY_DESKTOP_RESTART=1"}, command...)
+	}
+	if _, err := m.runGuest(ctx, r, guest.BoatScript, true, command...); err != nil {
 		return fmt.Errorf("bootstrap Boat desktop: %w", err)
 	}
 	if _, err := m.runGuest(ctx, r, "", false, "kitty-ready"); err != nil {
