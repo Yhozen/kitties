@@ -74,4 +74,4 @@ Vercel Sandbox/Drives, AgentFS, Fly Sprites can be evaluated later. AgentFS is a
 
 ## Cua Spaces research
 
-See [CUA-RESEARCH.md](CUA-RESEARCH.md) for the dated, source-pinned comparison. The recommendation is to retain Kitties persistence, improve warm input sessions and workspace UX, and selectively evaluate MIT Driver components. Current Spaces applications, daemon and media implementation have nested FSL licenses; the root MIT license is not blanket permission to reuse them.
+See [CUA-RESEARCH.md](CUA-RESEARCH.md) for the dated, source-pinned comparison. For the owner-only personal deployment, evaluate both MIT components and selected FSL guest/media components with their terms and notices retained. Keep Kitties persistence and prioritize warm input sessions and workspace UX. Current Spaces applications, daemon and media implementation have nested FSL licenses; they must not be relabeled MIT.
