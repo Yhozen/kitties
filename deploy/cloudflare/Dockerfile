@@ -24,7 +24,7 @@ RUN apk add --no-cache ca-certificates openssh-client restic tzdata zstd \
  && chown kitties:kitties /var/lib/kitties
 COPY --from=binary /out/kitties /usr/local/bin/kitties
 COPY deploy/cloudflare/default.yaml /etc/kitties/default.yaml
-ARG KITTIES_IMAGE_REVISION=5
+ARG KITTIES_IMAGE_REVISION=6
 LABEL org.opencontainers.image.revision=$KITTIES_IMAGE_REVISION
 USER kitties
 EXPOSE 7488

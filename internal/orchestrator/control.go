@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/madkoding/kitties/internal/computer"
-	"github.com/madkoding/kitties/internal/desktop"
 	"github.com/madkoding/kitties/internal/kitty"
 )
 
@@ -64,7 +63,14 @@ func (m *Manager) Hold(ref string, on bool) (bool, error) {
 		}
 		m.holds[k.ID] = m.now()
 	} else {
-		delete(m.holds, k.ID)
+		if grant := m.controls[k.ID]; grant != nil {
+			grant.revoked = true
+			if grant.inFlight == 0 {
+				delete(m.holds, k.ID)
+			}
+		} else {
+			delete(m.holds, k.ID)
+		}
 	}
 	if on || wasHeld {
 		m.touch(k.ID)
@@ -78,6 +84,12 @@ func (m *Manager) Held(id string) bool {
 	defer m.holdMu.Unlock()
 	at, ok := m.holds[id]
 	if ok && m.now().Sub(at) > holdIdle {
+		if grant := m.controls[id]; grant != nil {
+			grant.revoked = true
+			if grant.inFlight > 0 {
+				return true
+			}
+		}
 		delete(m.holds, id)
 		return false
 	}
@@ -106,29 +118,6 @@ func (m *Manager) HoldStarted(id string) time.Time {
 	m.holdMu.Lock()
 	defer m.holdMu.Unlock()
 	return m.holdStarted[id]
-}
-
-// Input is what the person does on the display: a click, keys, text, the wheel or a drag. It
-// takes the display over, or keeps it taken.
-func (m *Manager) Input(ctx context.Context, ref string, a desktop.Action) error {
-	argv, err := desktop.Person(a)
-	if err != nil {
-		return err
-	}
-	k, err := m.Get(ref)
-	if err != nil {
-		return err
-	}
-	if _, err := m.Hold(k.ID, true); err != nil {
-		return err
-	}
-	// What the person types may be a password: it goes in on the input, not in the arguments.
-	if a.Name == "type" {
-		_, err = m.ExecInput(ctx, k.ID, fmt.Sprint(a.Args["text"]), desktop.TypeFromInput...)
-		return err
-	}
-	_, err = m.Exec(ctx, k.ID, argv...)
-	return err
 }
 
 // Stream follows the kitty's display live: pictures to read with container.ReadFrame, at most

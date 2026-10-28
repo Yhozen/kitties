@@ -84,8 +84,12 @@ type Manager struct {
 	// keeper keeps the backups of what a kitty's browser knows (sessions.go), nil when there is none.
 	keeper Keeper
 	// holds are the displays the person has taken over, by kitty id, with their last use.
-	holdMu sync.Mutex
-	holds  map[string]time.Time
+	holdMu        sync.Mutex
+	holds         map[string]time.Time
+	controls      map[string]*controlGrant
+	prepared      map[string]computer.Reference
+	controlEpoch  uint64
+	controlFrozen bool
 	// holdStarted is when the person last took each display, kept after they give it back.
 	holdStarted map[string]time.Time
 
@@ -710,7 +714,16 @@ func (m *Manager) startComputer(ctx context.Context, ref string) error {
 	k, _ = m.Get(k.ID)
 	m.applyTheme(ctx, k, false)
 	m.touch(k.ID)
-	return m.finishOperation(k.ID, kitty.StatusRunning)
+	if err := m.finishOperation(k.ID, kitty.StatusRunning); err != nil {
+		return err
+	}
+	m.holdMu.Lock()
+	if m.prepared == nil {
+		m.prepared = map[string]computer.Reference{}
+	}
+	m.prepared[k.ID] = k.Computer
+	m.holdMu.Unlock()
+	return nil
 }
 
 // startTimeout is how long a desktop may take to come up in the background: the first start
@@ -909,6 +922,7 @@ func (m *Manager) setStatus(id, status, msg string) error {
 }
 
 func (m *Manager) fail(id string, err error) error {
+	m.invalidateControl(id, true)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if k, ok := m.kitties[id]; ok {

@@ -180,3 +180,37 @@ test("an old canvas decode cannot mark a replacement view live", async ({ page }
   await expect(live.getByTestId("take-control")).toBeDisabled();
   await expect(live.getByTestId("live-frame")).not.toBeVisible();
 });
+
+test("a cold desktop waits for lifecycle readiness beyond the viewer deadline", async ({
+  page,
+}) => {
+  let status = "starting";
+  const attempts: string[] = [];
+  await page.clock.install();
+  await page.route("**/v1/kitties", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.kitties = body.kitties.map((kitty: { id: string }) =>
+      kitty.id === ids.tom
+        ? { ...kitty, status, computer: { runtime: "boat", id: "cold-fixture" } }
+        : kitty,
+    );
+    await route.fulfill({ json: body });
+  });
+  page.on("request", (request) => {
+    if (/\/(rects|stream|screenshot)(?:\?|$)/.test(request.url())) attempts.push(request.url());
+  });
+  await page.goto(`/?lang=en&motion=off#kitty/${ids.tom}`);
+  const live = page.getByTestId("live-desktop");
+  await expect(live.getByTestId("live-state")).toHaveText("Starting the computer…");
+  await page.clock.fastForward(35_000);
+  await expect(live.getByTestId("live-state")).toHaveText("Starting the computer…");
+  await expect(live.getByTestId("live-error")).toHaveCount(0);
+  await expect(live.getByTestId("take-control")).toBeDisabled();
+  expect(attempts).toEqual([]);
+  status = "running";
+  await page.clock.fastForward(5_000);
+  await expect(live.getByTestId("live-state")).toHaveText("Watching live");
+  await expect(live.getByTestId("live-frame")).toHaveAttribute("data-mode", "rects");
+  expect(attempts).toHaveLength(1);
+});

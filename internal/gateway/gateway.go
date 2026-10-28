@@ -49,10 +49,10 @@ type Fleet interface {
 	Scale(ctx context.Context, name string, n int) error
 	Exec(ctx context.Context, ref string, argv ...string) (string, error)
 	Screenshot(ctx context.Context, ref string) ([]byte, error)
-	// Hold gives the person a kitty's display, or gives it back; Input is a click, keys or text
+	// Control grants or releases the person's display receipt; Input is a click, keys or text
 	// of the person on it.
-	Hold(ref string, on bool) (bool, error)
-	Input(ctx context.Context, ref string, a desktop.Action) error
+	Control(context.Context, string, bool, string) (orchestrator.ControlState, error)
+	Input(ctx context.Context, ref, controlID string, a desktop.Action) error
 	// Stream follows a kitty's display (pictures for container.ReadFrame) until closed.
 	Stream(ctx context.Context, ref string, fps, quality int) (io.ReadCloser, error)
 	// Clipboard and SetClipboard are the text on a kitty's clipboard, both ways.
@@ -512,7 +512,7 @@ func codeFor(err error) int {
 	switch {
 	case errors.Is(err, orchestrator.ErrNotFound), strings.HasPrefix(msg, "no such "):
 		return http.StatusNotFound
-	case errors.Is(err, orchestrator.ErrDisabled), errors.Is(err, orchestrator.ErrDraining), errors.Is(err, orchestrator.ErrLifecycleBusy), errors.Is(err, orchestrator.ErrRecoveryBusy), errors.Is(err, chat.ErrBusy), strings.Contains(msg, "already running"), strings.Contains(msg, "already has an answer"), strings.Contains(msg, "has the desktop"), strings.Contains(msg, "is already approved"), strings.Contains(msg, "is already rejected"):
+	case errors.Is(err, orchestrator.ErrControlExpired), errors.Is(err, orchestrator.ErrDisabled), errors.Is(err, orchestrator.ErrDraining), errors.Is(err, orchestrator.ErrLifecycleBusy), errors.Is(err, orchestrator.ErrRecoveryBusy), errors.Is(err, chat.ErrBusy), strings.Contains(msg, "already running"), strings.Contains(msg, "already has an answer"), strings.Contains(msg, "has the desktop"), strings.Contains(msg, "is already approved"), strings.Contains(msg, "is already rejected"):
 		return http.StatusConflict
 	case errors.Is(err, chat.ErrNoApprovals), errors.Is(err, chat.ErrNoMemory):
 		return http.StatusNotFound
@@ -721,29 +721,30 @@ func (s *Server) handleScreenshot(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(png)
 }
 
-// handleControl takes a kitty's display over ({"hold": true}) or gives it back.
+// handleControl grants a display receipt or releases the named control_id.
 func (s *Server) handleControl(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Hold bool `json:"hold"`
+		Hold      bool   `json:"hold"`
+		ControlID string `json:"control_id"`
 	}
 	if err := decode(r, &body); err != nil {
 		fail(w, http.StatusBadRequest, err)
 		return
 	}
-	held, err := s.fleet.Hold(r.PathValue("ref"), body.Hold)
+	state, err := s.fleet.Control(r.Context(), r.PathValue("ref"), body.Hold, body.ControlID)
 	if err != nil {
 		fail(w, codeFor(err), err)
 		return
 	}
-	reply(w, http.StatusOK, map[string]any{"held": held})
+	reply(w, http.StatusOK, state)
 }
 
-// handleInput is the person's mouse and keys on a kitty's display: {"action": "click", "args":
-// {"x": 10, "y": 20}}.
+// handleInput dispatches one allowed mouse or keyboard action for its control_id.
 func (s *Server) handleInput(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Action string         `json:"action"`
-		Args   map[string]any `json:"args"`
+		Action    string         `json:"action"`
+		ControlID string         `json:"control_id"`
+		Args      map[string]any `json:"args"`
 	}
 	if err := decode(r, &body); err != nil {
 		fail(w, http.StatusBadRequest, err)
@@ -757,7 +758,7 @@ func (s *Server) handleInput(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, err)
 		return
 	}
-	if err := s.fleet.Input(r.Context(), r.PathValue("ref"), a); err != nil {
+	if err := s.fleet.Input(r.Context(), r.PathValue("ref"), body.ControlID, a); err != nil {
 		fail(w, codeFor(err), err)
 		return
 	}

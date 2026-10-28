@@ -119,11 +119,15 @@ export default function DesktopCare({
       )}
       <div class="flex items-center gap-2 flex-wrap">
         <span class="text-xs text-[var(--t3)] flex-1" data-testid="backup-state">
-          {info.backup
-            ? t("Cookies, sessions and passwords backed up {when}.", {
-                when: when(info.backup.saved),
-              })
-            : t("Cookies, sessions and passwords are not backed up yet.")}
+          {persistent
+            ? info.backup
+              ? t("Browser-session export saved {when}.", { when: when(info.backup.saved) })
+              : t("No separate browser-session export yet.")
+            : info.backup
+              ? t("Cookies, sessions and passwords backed up {when}.", {
+                  when: when(info.backup.saved),
+                })
+              : t("Cookies, sessions and passwords are not backed up yet.")}
         </span>
         <button
           class="btn-ghost px-2 py-1 text-xs"
@@ -131,7 +135,7 @@ export default function DesktopCare({
           onClick={() => act(() => api.backupKitty(kitty.id))}
           data-testid="backup-now"
         >
-          {t("Back up now")}
+          {persistent ? t("Export browser sessions") : t("Back up now")}
         </button>
       </div>
       {imageUpdates && info.auto_update && (

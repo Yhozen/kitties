@@ -33,3 +33,8 @@ const (
 	Sleeping = "sleeping"
 	Disabled = "disabled"
 )
+
+// PreparedInput executes human input only after validating the exact prepared identity.
+type PreparedInput interface {
+	ExecPreparedInput(context.Context, Reference, string, ...string) (string, error)
+}

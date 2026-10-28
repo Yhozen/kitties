@@ -205,6 +205,7 @@ func (m *Manager) Close() {
 		m.cancelBackground()
 	}
 	m.backgroundMu.Unlock()
+	m.invalidateAllControls()
 	m.backgroundWG.Wait()
 }
 

@@ -463,7 +463,13 @@ export default function App() {
             </button>
           </div>
         )}
-        {live && <LiveDesktop kitty={live} onClose={() => setLive(null)} />}
+        {live && (
+          <LiveDesktop
+            key={live.id}
+            kitty={kitties.find((k) => k.id === live.id) || live}
+            onClose={() => setLive(null)}
+          />
+        )}
         {current ? (
           <Conversation
             session={session}

@@ -1,6 +1,15 @@
 import type { Dictionary } from "../../i18n";
 
 const dict: Dictionary = {
+  "Too many inputs are waiting. Wait for them to finish.":
+    "Hay demasiadas acciones pendientes. Espera a que terminen.",
+  "Tasks are disabled until you choose Start.":
+    "Las tareas están desactivadas hasta que elijas Iniciar.",
+  "Browser-session export saved {when}.": "Exportación de sesiones del navegador guardada {when}.",
+  "No separate browser-session export yet.":
+    "Aún no hay una exportación independiente de las sesiones del navegador.",
+  "Export browser sessions": "Exportar sesiones del navegador",
+
   "Encrypted backups": "Copias de seguridad cifradas",
   "Recovery copies are saved separately from the live gateway and cloud computers. Seven daily and four weekly copies are kept.":
     "Las copias de recuperación se guardan separadas del gateway activo y de los ordenadores en la nube. Se conservan siete copias diarias y cuatro semanales.",

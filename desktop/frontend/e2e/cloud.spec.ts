@@ -11,6 +11,7 @@ test.afterEach(async ({ page }) => {
 test("cloud sleep stays distinct from Stop and persistent computers cannot be replaced", async ({
   page,
 }) => {
+  await page.clock.install();
   let status = "sleeping";
   let availability = "sleeping";
   let operation = "";
@@ -55,6 +56,10 @@ test("cloud sleep stays distinct from Stop and persistent computers cannot be re
   await page.goto(`/?lang=en&motion=off#kitty/${ids.mimi}`);
   const care = page.getByTestId("desktop-care");
   await expect(care.getByTestId("recovery-state")).toContainText(checkpoint);
+  await expect(care.getByTestId("backup-state")).toHaveText(
+    "No separate browser-session export yet.",
+  );
+  await expect(care).not.toContainText("Cookies, sessions and passwords are not backed up yet.");
   await expect(care.getByTestId("update-desktop")).toHaveCount(0);
   await expect(care.getByTestId("purge-recovery")).toHaveCount(0);
   await expect(page.getByTestId("live-desktop")).toHaveCount(0);
@@ -63,8 +68,16 @@ test("cloud sleep stays distinct from Stop and persistent computers cannot be re
     .getByRole("button", { name: "Stop", exact: true })
     .click();
   await expect(page.getByTestId("lifecycle-progress")).toContainText("Saving and stopping");
-  status = "stopped";
+  status = "error";
   operation = "";
+  await expect(
+    page.getByText("Tasks are disabled until you choose Start.", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Stopped. Tasks will not wake this kitty until you choose Start."),
+  ).toHaveCount(0);
+  status = "stopped";
+  await page.clock.fastForward(16_000);
   await expect(
     page.getByText("Stopped. Tasks will not wake this kitty until you choose Start."),
   ).toBeVisible();

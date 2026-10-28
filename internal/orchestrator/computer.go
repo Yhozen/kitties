@@ -146,6 +146,7 @@ func (m *Manager) beginOperationIntent(id, kind, availability string, supersedeB
 		*k = before
 		return err
 	}
+	m.invalidateControl(id, kind != "start")
 	return nil
 }
 
@@ -196,6 +197,9 @@ func (m *Manager) rememberComputer(id string, ref computer.Reference) error {
 	if err := m.saveLocked(); err != nil {
 		k.Computer = before
 		return err
+	}
+	if ref != before {
+		m.invalidateControl(id, true)
 	}
 	return nil
 }

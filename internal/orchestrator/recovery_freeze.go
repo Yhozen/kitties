@@ -85,6 +85,10 @@ func (m *Manager) PrepareRecovery(ctx context.Context, id string) error {
 			return err
 		}
 	}
+	m.holdMu.Lock()
+	m.controlFrozen = true
+	m.invalidateControlsLocked()
+	m.holdMu.Unlock()
 	if err := m.admission.Freeze(ctx); err != nil {
 		return err
 	}
@@ -127,5 +131,8 @@ func (m *Manager) ReleaseRecovery(id string) error {
 		return err
 	}
 	m.admission.Thaw()
+	m.holdMu.Lock()
+	m.controlFrozen = false
+	m.holdMu.Unlock()
 	return nil
 }

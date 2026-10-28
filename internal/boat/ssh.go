@@ -109,7 +109,11 @@ func (m *Manager) sshCommand(ctx context.Context, r record, root bool, argv ...s
 	if err != nil {
 		return nil, err
 	}
-	if err = m.checkOwner(r, s); err != nil {
+	return m.sshCommandForSandbox(ctx, r, s, root, true, argv...)
+}
+
+func (m *Manager) sshCommandForSandbox(ctx context.Context, r record, s sandbox, root, waitForAccess bool, argv ...string) (*exec.Cmd, error) {
+	if err := m.checkOwner(r, s); err != nil {
 		return nil, err
 	}
 	if !s.running() {
@@ -122,7 +126,7 @@ func (m *Manager) sshCommand(ctx context.Context, r record, root bool, argv ...s
 	var access sshAccess
 	for {
 		err = m.json(ctx, "POST", "/sandboxes/"+url.PathEscape(r.RemoteID)+"/sshkey", map[string]string{"key": strings.TrimSpace(string(public))}, nil, &access)
-		if !isCode(err, "sandbox_restoring") && !isCode(err, "sandbox_securing") {
+		if !waitForAccess || (!isCode(err, "sandbox_restoring") && !isCode(err, "sandbox_securing")) {
 			break
 		}
 		if err = m.delay(ctx); err != nil {

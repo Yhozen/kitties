@@ -863,7 +863,14 @@ export default function Conversation({ session, kitties, user, pending, waiting,
                 />
               ) : null;
             })}
-          {helping && <LiveDesktop kitty={helping} autoControl onClose={() => setHelping(null)} />}
+          {helping && (
+            <LiveDesktop
+              key={helping.id}
+              kitty={byId.get(helping.id) || helping}
+              autoControl
+              onClose={() => setHelping(null)}
+            />
+          )}
         </div>
         {strip && stripStep && (
           <div class="desk-strip" data-testid="desk-strip">

@@ -32,9 +32,6 @@ func (m *Manager) AcquireActivity(ctx context.Context, ref string) (context.Cont
 
 // BeginMaintenance closes admission, then drains tasks and desktop viewers without cancelling them.
 func (m *Manager) BeginMaintenance(ctx context.Context, idleOnly bool) (context.Context, func(), error) {
-	if idleOnly && m.AnyHeld() {
-		return ctx, nil, maintenance.ErrBusy
-	}
 	var release func()
 	var err error
 	if idleOnly {
@@ -45,6 +42,11 @@ func (m *Manager) BeginMaintenance(ctx context.Context, idleOnly bool) (context.
 	if err != nil {
 		return ctx, nil, err
 	}
+	if idleOnly && m.AnyHeld() {
+		release()
+		return ctx, nil, maintenance.ErrBusy
+	}
+	m.invalidateAllControls()
 	timer := time.NewTicker(50 * time.Millisecond)
 	defer timer.Stop()
 	for m.AnyHeld() {

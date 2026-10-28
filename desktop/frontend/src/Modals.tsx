@@ -713,7 +713,9 @@ export function KittyDrawer({
           )}
           {kitty.availability === "disabled" && !changing && (
             <p class="text-xs text-[var(--t3)] mt-2">
-              {t("Stopped. Tasks will not wake this kitty until you choose Start.")}
+              {kitty.status === "stopped"
+                ? t("Stopped. Tasks will not wake this kitty until you choose Start.")
+                : t("Tasks are disabled until you choose Start.")}
             </p>
           )}
           {kitty.error && (
@@ -759,7 +761,7 @@ export function KittyDrawer({
               >
                 {t("Close desktop view")}
               </button>
-              <LiveDesktop kitty={kitty} inline onClose={() => setViewOpen(false)} />
+              <LiveDesktop key={kitty.id} kitty={kitty} inline onClose={() => setViewOpen(false)} />
             </>
           ) : (
             <div class="text-sm text-[var(--t3)]" data-testid="desktop-off">

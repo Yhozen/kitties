@@ -690,10 +690,13 @@ export const api = {
   startKitty: (ref: string) => request("POST", `/v1/kitties/${ref}/start`),
   // controlKitty takes a kitty's display over (hold) or gives it back; inputKitty is a click,
   // keys or text of the person on it.
-  controlKitty: (ref: string, hold: boolean) =>
-    request<{ held: boolean }>("POST", `/v1/kitties/${ref}/control`, { hold }).then((r) => r.held),
-  inputKitty: (ref: string, action: string, args: Record<string, unknown>) =>
-    request("POST", `/v1/kitties/${ref}/input`, { action, args }),
+  controlKitty: (ref: string, hold: boolean, control_id = "") =>
+    request<{ held: boolean; control_id?: string }>("POST", `/v1/kitties/${ref}/control`, {
+      hold,
+      control_id,
+    }),
+  inputKitty: (ref: string, control_id: string, action: string, args: Record<string, unknown>) =>
+    request("POST", `/v1/kitties/${ref}/input`, { control_id, action, args }),
   // answerHelp is what the person answers a kitty that asked for help: told to it, or (secret)
   // typed on its desktop without showing it.
   answerHelp: (

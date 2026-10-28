@@ -152,16 +152,22 @@ func (f *fakeFleet) SetClipboard(_ context.Context, ref, text string) error {
 	f.clip = text
 	return nil
 }
-func (f *fakeFleet) Hold(ref string, on bool) (bool, error) {
+func (f *fakeFleet) Control(_ context.Context, ref string, on bool, id string) (orchestrator.ControlState, error) {
 	if _, err := f.Get(ref); err != nil {
-		return false, err
+		return orchestrator.ControlState{}, err
+	}
+	if !on && id == "" {
+		return orchestrator.ControlState{}, orchestrator.ErrControlExpired
 	}
 	f.calls = append(f.calls, fmt.Sprintf("hold %v", on))
-	return on, nil
+	return orchestrator.ControlState{Held: on, ID: "control-fixture"}, nil
 }
-func (f *fakeFleet) Input(_ context.Context, ref string, a desktop.Action) error {
+func (f *fakeFleet) Input(_ context.Context, ref, id string, a desktop.Action) error {
 	if _, err := f.Get(ref); err != nil {
 		return err
+	}
+	if id != "control-fixture" {
+		return orchestrator.ErrControlExpired
 	}
 	f.calls = append(f.calls, "input "+a.Name)
 	return nil
@@ -510,11 +516,17 @@ func TestKittyRoutes(t *testing.T) {
 	if code, _, _ := call(t, srv, "GET", "/v1/kitties/zz/screenshot", "tok", nil); code != 404 {
 		t.Error("screenshot unknown")
 	}
+	if code, _, _ := call(t, srv, "POST", "/v1/kitties/ana/input", "tok", map[string]any{"action": "key", "args": map[string]any{"keys": "Return"}}); code != 409 {
+		t.Fatalf("tokenless input: %d", code)
+	}
+	if code, _, _ := call(t, srv, "POST", "/v1/kitties/ana/control", "tok", map[string]any{"hold": false}); code != 409 {
+		t.Fatalf("tokenless release: %d", code)
+	}
 	// The person takes the display over, clicks and types in it, and gives it back.
-	if code, m, _ := call(t, srv, "POST", "/v1/kitties/ana/control", "tok", map[string]any{"hold": true}); code != 200 || m["held"] != true {
+	if code, m, _ := call(t, srv, "POST", "/v1/kitties/ana/control", "tok", map[string]any{"hold": true}); code != 200 || m["held"] != true || m["control_id"] != "control-fixture" {
 		t.Errorf("control = %d %v", code, m)
 	}
-	if code, _, _ := call(t, srv, "POST", "/v1/kitties/ana/input", "tok", map[string]any{"action": "click", "args": map[string]any{"x": 3, "y": 4}}); code != 200 {
+	if code, _, _ := call(t, srv, "POST", "/v1/kitties/ana/input", "tok", map[string]any{"control_id": "control-fixture", "action": "click", "args": map[string]any{"x": 3, "y": 4}}); code != 200 {
 		t.Error("input click")
 	}
 	if code, _, _ := call(t, srv, "POST", "/v1/kitties/ana/input", "tok", map[string]any{"action": "key"}); code != 400 {
@@ -529,7 +541,7 @@ func TestKittyRoutes(t *testing.T) {
 	if code, _, _ := call(t, srv, "POST", "/v1/kitties/ana/input", "tok", "nope"); code != 400 {
 		t.Error("input bad body")
 	}
-	if code, m, _ := call(t, srv, "POST", "/v1/kitties/ana/control", "tok", map[string]any{"hold": false}); code != 200 || m["held"] != false {
+	if code, m, _ := call(t, srv, "POST", "/v1/kitties/ana/control", "tok", map[string]any{"hold": false, "control_id": "control-fixture"}); code != 200 || m["held"] != false {
 		t.Errorf("give back = %d %v", code, m)
 	}
 	if code, _, _ := call(t, srv, "POST", "/v1/kitties/zz/control", "tok", map[string]any{"hold": true}); code != 404 {
