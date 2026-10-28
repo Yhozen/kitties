@@ -13,6 +13,7 @@ Approved design: a private always-on gateway managing one to five persistent Boa
 7. `codex/cloud-ui`: async lifecycle progress, retained recovery inventory, independent backup status/actions, and Cloudflare Access logout.
 8. `codex/cloud-deploy`: Alchemy-managed Cloudflare Container, Worker, Durable Objects, private R2 state and independent encrypted backups. Access protects `kitties.rccpr.tech` for `gabriel@garox.org`. No Docker socket or host-shell connectors. Prove container replacement, recovery and image upgrades preserve gateway state.
 9. `codex/desktop-parity`: share Lumen, wallpaper, fonts, icons and desktop defaults across Docker, Boat and Lima. Preserve user preferences, defer active-session upgrades, and make failed cold upgrades retryable.
+10. `codex/warm-desktop-input`: bind human input to revocable control receipts, reuse prepared desktops for guarded input, and bound the ordered browser input queue. Preserve fresh owner, remote ID, generation, hydration and expiry checks; never replay a failed or ambiguous action.
 
 Each layer includes contract tests and documentation. Use `gh stack` for topology and draft PR submission. Do not deploy until the core path and failure recovery pass.
 
@@ -47,7 +48,9 @@ Cloud configuration disables local-token retrieval, bearer-token logging and hos
 
 ## Follow-ups, not first-stack substitutes
 
-Desktop parity is implemented in the ninth stack layer. Local Debian 13/arm64, Ubuntu 24.04/amd64 and production Docker fixtures pass appearance, application launch and preference/browser persistence checks. The production checkpoint-and-upgrade canary remains the deployment acceptance gate. A separate input follow-up will reduce repeated preparation while preserving fresh ownership, generation, expiry and pending-operation checks.
+Desktop parity is implemented in the ninth stack layer. Local Debian 13/arm64, Ubuntu 24.04/amd64 and production Docker fixtures pass appearance, application launch and preference/browser persistence checks. Deployed revision 5 also passed visual, launcher and persistence checks on the production canary. Repeated normal Stop and continuous desktop streaming remain live acceptance gates.
+
+The tenth stack layer implements warm human input and revocable control receipts. Its tests cover input ordering, bounded queues, stale control grants, recovery and shutdown. Ordinary agent and viewer preparation remains unchanged. Live input latency and control acceptance are still pending; the implementation and fixture results do not establish a production speedup.
 
 Vercel Sandbox/Drives, AgentFS, Fly Sprites can be evaluated later. AgentFS is a filesystem layer, not a VM disk/RAM snapshot. Cross-architecture Lima/cloud transfer is an explicit cold file handoff, not a memory or executable migration.
 
@@ -66,12 +69,18 @@ Vercel Sandbox/Drives, AgentFS, Fly Sprites can be evaluated later. AgentFS is a
 - The real Go gateway image persisted settings and encrypted vault data through the TypeScript/SQLite/R2 protocol, lost its local cache, then recovered both in a fresh container.
 - A live `gpt-5.4-mini` request succeeded through Kitties after correcting OpenAI's completion-limit parameter. The request used 14 input and nine output tokens.
 - Cloudflare owner login, anonymous denial, native private state/backup transport, a real model reply, cold restart, image replacement, encrypted backup and fresh-generation gateway recovery passed. The retired writer exited successfully and could not restart. Backup took about 2m15s; recovery took about 2m8s, including roughly 21 seconds replacing the active route.
-- The owner browser displayed the real 1280×800 rectangle stream and delivered desktop control input. The viewer now survives readiness transitions and reports live status only after a decoded frame. Inputs currently take about 7–8 seconds; the desktop parity and latency follow-up remains separate.
+- The owner browser displayed the real 1280×800 rectangle stream and delivered desktop control input. The viewer survives readiness transitions and reports live status only after a decoded frame. Inputs took about 7–8 seconds in this 2026-10-27 baseline, before the warm-input follow-up. This observed stream session did not prove continuous streaming reliability; later results below qualify that evidence.
 - The approved seven archived test VMs and eight saved checkpoints were deleted and verified absent. Production resources were excluded.
 - The requested `gpt-6-luna` model accepted an image, correctly identified its colors, called a function with those observations, and completed the tool-result continuation through the Responses API.
 
 - The deployed `gpt-6-luna` profile passed Save and Test through the owner UI. A fresh Kitties chat invoked the screenshot tool and then finished with a correct description of the actual Boat desktop, including the visible terminal text “Kitties · persistent Linux VM”; the captured image was independently inspected. The verification kitty now has a 32,000-token, eight-round, five-minute task budget rather than the one-reply smoke limits.
 - Environment-backed model profiles preserve their key references across edits/restarts; Settings recognizes the same built-in credential fallback as the provider without persisting the secret.
+
+## Deployment follow-up verification
+
+- Deployed revision 5 passed visual parity, launcher and persistence checks on the production canary. The live desktop screenshot is retained in `.kitties/evidence/kitties-parity-live.jpg`.
+- Later live checks observed repeated fallback from rectangle streaming to the alternate stream and then polling (`rects → stream → poll`). A displayed frame or working polling fallback does not close continuous-stream acceptance. Diagnosis and a sustained live stream check remain pending.
+- Repeated normal Stop after the guest upgrade and live warm-input/control acceptance remain pending. Record the final checkpoint outcome and measured input latency before marking those gates complete.
 
 ## Cua Spaces research
 
@@ -89,6 +98,7 @@ rollback to an older checkpoint was used.
 The shared `kitty-quiesce` now checks mount type and ownership, normally unmounts
 only that private GVFS mount, verifies its absence, and syncs. Busy mounts, foreign
 mounts and failed inspection fail preparation. Its regression suite and actual
-Ubuntu/Debian fixture execution pass; ShellCheck also passes. A production guest
-upgrade and repeated stop are still required before claiming this regression is
-closed end to end.
+Ubuntu/Debian fixture execution pass; ShellCheck also passes. The production guest
+upgrade is deployed in revision 5 and its visual, launcher and persistence checks
+passed. A repeated normal Stop is still required before claiming this regression
+is closed end to end.
