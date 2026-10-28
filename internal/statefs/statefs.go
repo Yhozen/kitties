@@ -125,7 +125,7 @@ func (s *Store) request(ctx context.Context, method, path string, data io.Reader
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		response.Body.Close()
-		return nil, fmt.Errorf("state service returned HTTP %d", response.StatusCode)
+		return nil, &statusError{status: response.StatusCode}
 	}
 	return response, nil
 }
@@ -262,11 +262,16 @@ func (s *Store) download(ctx context.Context, part Part, out io.Writer) error {
 func (s *Store) upload(ctx context.Context, data []byte) (Part, error) {
 	digest := sha256.Sum256(data)
 	part := Part{SHA256: hex.EncodeToString(digest[:]), Size: int64(len(data))}
-	response, err := s.request(ctx, http.MethodPut, "/v1/blob/"+part.SHA256, bytes.NewReader(data))
+	err := retryWrite(ctx, func() error {
+		response, err := s.request(ctx, http.MethodPut, "/v1/blob/"+part.SHA256, bytes.NewReader(data))
+		if err == nil {
+			response.Body.Close()
+		}
+		return err
+	})
 	if err != nil {
 		return Part{}, err
 	}
-	response.Body.Close()
 	return part, nil
 }
 func (s *Store) commit(ctx context.Context, mutations []Mutation) error {
@@ -279,26 +284,25 @@ func (s *Store) commit(ctx context.Context, mutations []Mutation) error {
 		return err
 	}
 	// Retrying the same request resolves an acknowledgement lost after commit.
-	for attempt := 0; attempt < 3; attempt++ {
-		response, requestErr := s.request(ctx, http.MethodPost, "/v1/commit", bytes.NewReader(payload))
-		if requestErr != nil {
-			err = requestErr
-			continue
+	return retryWrite(ctx, func() error {
+		response, err := s.request(ctx, http.MethodPost, "/v1/commit", bytes.NewReader(payload))
+		if err != nil {
+			return err
 		}
 		var result struct {
 			Revision int64 `json:"revision"`
 		}
 		err = json.NewDecoder(io.LimitReader(response.Body, 4096)).Decode(&result)
 		response.Body.Close()
-		if err == nil {
-			if result.Revision != s.revision+1 {
-				return errors.New("state service acknowledged an unexpected revision")
-			}
-			s.revision = result.Revision
-			return nil
+		if err != nil {
+			return err
 		}
-	}
-	return err
+		if result.Revision != s.revision+1 {
+			return errors.New("state service acknowledged an unexpected revision")
+		}
+		s.revision = result.Revision
+		return nil
+	})
 }
 
 // A remote persistence failure is fatal: several legacy stores ignore write

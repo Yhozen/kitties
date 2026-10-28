@@ -106,10 +106,13 @@ export class DurableFiles {
   }
 
   async handle(request: Request, epoch: number): Promise<Response> {
+    const progress = { operation: "unknown", stage: "epoch" };
     try {
       this.assertEpoch(epoch);
       const url = new URL(request.url);
       if (request.method === "GET" && url.pathname === "/v1/manifest") {
+        progress.operation = "manifest";
+        progress.stage = "read";
         return Response.json(this.manifest(), {
           headers: { "Cache-Control": "no-store" },
         });
@@ -119,6 +122,8 @@ export class DurableFiles {
         : "";
       if (isHash(sha)) {
         if (request.method === "GET") {
+          progress.operation = "blob_read";
+          progress.stage = "download";
           const object = await this.bucket.get(this.objectKey(sha));
           this.assertEpoch(epoch);
           if (!object) return new Response("Blob not found", { status: 404 });
@@ -130,6 +135,8 @@ export class DurableFiles {
           });
         }
         if (request.method === "PUT") {
+          progress.operation = "blob_upload";
+          progress.stage = "validate";
           const length = Number(request.headers.get("Content-Length"));
           if (
             !request.headers.has("Content-Length") ||
@@ -142,6 +149,7 @@ export class DurableFiles {
               413,
             );
           }
+          progress.stage = "upload";
           await this.bucket.put(
             this.objectKey(sha),
             request.body ?? new Uint8Array(),
@@ -156,6 +164,9 @@ export class DurableFiles {
         (url.pathname === "/v1/commit" ||
           url.pathname.startsWith("/v1/import/"))
       ) {
+        progress.operation =
+          url.pathname === "/v1/commit" ? "commit" : "import";
+        progress.stage = "decode";
         const raw = await readCommitBody(request);
         let input: unknown;
         try {
@@ -164,12 +175,13 @@ export class DurableFiles {
           throw new ProtocolError("Invalid JSON");
         }
         if (url.pathname.startsWith("/v1/import/")) {
+          progress.stage = "import";
           return await this.exclusive(() =>
             this.imports.handle(url.pathname.slice(11), input, epoch),
           );
         }
         const commit = decodeCommit(input);
-        return await this.exclusive(() => this.commit(commit, epoch));
+        return await this.exclusive(() => this.commit(commit, epoch, progress));
       }
       return new Response("Not found", { status: 404 });
     } catch (error) {
@@ -179,10 +191,10 @@ export class DurableFiles {
           { status: error.status },
         );
       // The client must stop after an unacknowledged state write. Never return success here.
-      console.error(
-        "Durable state request failed",
-        error instanceof Error ? error.name : "unknown",
-      );
+      console.error("Durable state request failed", {
+        ...progress,
+        name: error instanceof Error ? error.name : "unknown",
+      });
       return Response.json(
         { error: "Durable storage is unavailable" },
         { status: 503 },
@@ -190,10 +202,16 @@ export class DurableFiles {
     }
   }
 
-  private async commit(commit: Commit, epoch: number): Promise<Response> {
+  private async commit(
+    commit: Commit,
+    epoch: number,
+    progress: { stage: string },
+  ): Promise<Response> {
     this.assertEpoch(epoch);
+    progress.stage = "digest";
     const digest = await sha256(JSON.stringify(commit));
     this.assertEpoch(epoch);
+    progress.stage = "receipt";
     const previous = this.storage.sql
       .exec<{
         digest: string;
@@ -206,14 +224,18 @@ export class DurableFiles {
           "Commit id was reused with different content",
           409,
         );
+      progress.stage = "sync";
       await this.storage.sync();
       return Response.json({ revision: previous.revision });
     }
+    progress.stage = "manifest";
     const before = this.manifest();
     const after = applyCommit(before, commit);
     if (this.imports.pending())
       throw new ProtocolError("A recovery import is in progress", 409);
+    progress.stage = "verify_blobs";
     await this.verifyParts(commit.mutations);
+    progress.stage = "transaction";
     this.storage.transactionSync(() => {
       this.assertEpoch(epoch);
       if (this.meta("revision") !== before.revision)
@@ -274,6 +296,7 @@ export class DurableFiles {
         after.revision - 1024,
       );
     });
+    progress.stage = "sync";
     await this.storage.sync();
     return Response.json({ revision: after.revision });
   }

@@ -14,6 +14,8 @@ Approved design: a private always-on gateway managing one to five persistent Boa
 8. `codex/cloud-deploy`: Alchemy-managed Cloudflare Container, Worker, Durable Objects, private R2 state and independent encrypted backups. Access protects `kitties.rccpr.tech` for `gabriel@garox.org`. No Docker socket or host-shell connectors. Prove container replacement, recovery and image upgrades preserve gateway state.
 9. `codex/desktop-parity`: share Lumen, wallpaper, fonts, icons and desktop defaults across Docker, Boat and Lima. Preserve user preferences, defer active-session upgrades, and make failed cold upgrades retryable.
 10. `codex/warm-desktop-input`: bind human input to revocable control receipts, reuse prepared desktops for guarded input, and bound the ordered browser input queue. Preserve fresh owner, remote ID, generation, hydration and expiry checks; never replay a failed or ambiguous action.
+11. `codex/desktop-checkpoints`: quiesce the owned document-portal mount as well as GVFS before durable checkpoints.
+12. `codex/durable-state-recovery`: retry transient immutable state uploads and idempotent commits with bounded backoff, and stop waiting for readiness when the gateway process exits.
 
 Each layer includes contract tests and documentation. Use `gh stack` for topology and draft PR submission. Do not deploy until the core path and failure recovery pass.
 
@@ -102,3 +104,30 @@ Ubuntu/Debian fixture execution pass; ShellCheck also passes. The production gue
 upgrade is deployed in revision 5 and its visual, launcher and persistence checks
 passed. A repeated normal Stop is still required before claiming this regression
 is closed end to end.
+
+## Gateway availability incident on 2026-10-28
+
+At 04:00:29 UTC, a private immutable-blob upload returned HTTP 503. The gateway
+correctly stopped before allowing further effects with unacknowledged state, but
+that upload had no retry. A readiness attempt then kept waiting on the exited
+process until its ten-minute deadline; automatic recovery began at 04:10:29 UTC.
+The provider's underlying storage exception was not retained, so its cause is
+unknown. This incident interrupted the desktop stream.
+
+The recovery layer retries identical blob bytes and commit receipts up to three
+times, with cancellable one- and two-second waits. Permanent rejection and retry
+exhaustion still fail closed. Readiness now observes container exit after a failed
+health probe and cancels its outstanding request or delay; normal wake performs
+the next fenced start. Healthy probes attach no exit observer. Safe operation and
+stage diagnostics identify future storage failures without logging state contents.
+
+A later eleven-action counter test on revision 5 delivered nine actions and
+rejected two during a lifecycle transition. Successful request durations were
+6.329–8.728 seconds, with a 6.809-second median. The stream disconnected during
+this test, so these are interrupted baseline results, not a clean streaming
+benchmark or measurements of the warm-input implementation.
+
+The reviewed checkpoint helper ran successfully on the production canary and its
+normal Stop completed in 1.710 seconds. A new permanent checkpoint became ready at
+04:19:12 UTC. The automatic helper path after a cold upgrade, the recovery fixes,
+and the warm-input counter comparison still require deployment acceptance.

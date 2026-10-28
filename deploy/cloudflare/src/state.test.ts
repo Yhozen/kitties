@@ -236,6 +236,45 @@ test("storage acknowledgement failure is returned as failure, never success", as
   );
 });
 
+test("storage failure diagnostics identify the stage without exposing state or provider messages", async (t) => {
+  const log = t.mock.method(console, "error", () => {});
+  const f = await fixture();
+  const part = await f.upload("private state bytes");
+  t.mock.method(f.bucket, "put", async () => {
+    throw new Error("provider secret and private path");
+  });
+  const upload = await f.state.handle(
+    new Request(`http://state/v1/blob/${part.sha256}`, {
+      method: "PUT",
+      headers: { "Content-Length": String(part.size) },
+      body: "private state bytes",
+    }),
+    f.epoch,
+  );
+  assert.equal(upload.status, 503);
+  f.storage.failSync = true;
+  const commit = await f.commit(first, 0, [
+    { op: "put", path: "private/settings.json", mode: 0o600, parts: [part] },
+  ]);
+  assert.equal(commit.status, 503);
+  assert.deepEqual(
+    log.mock.calls.map((call) => call.arguments),
+    [
+      [
+        "Durable state request failed",
+        { operation: "blob_upload", stage: "upload", name: "Error" },
+      ],
+      [
+        "Durable state request failed",
+        { operation: "commit", stage: "sync", name: "Error" },
+      ],
+    ],
+  );
+  assert.deepEqual(await upload.json(), {
+    error: "Durable storage is unavailable",
+  });
+});
+
 test("state paths reject traversal before any write", () => {
   for (const path of ["../key", "/key", "a//b", "a/./b", "a\\b", "a\u0000b"]) {
     assert.throws(() =>

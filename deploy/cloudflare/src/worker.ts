@@ -364,23 +364,60 @@ export class Gateway extends DurableObject<Env> {
 
   private async waitForHealth(container: Container): Promise<void> {
     const deadline = Date.now() + READINESS_TIMEOUT_MS;
-    while (Date.now() < deadline) {
-      if (this.retired) throw new Error("Gateway generation is retired");
-      try {
-        const response = await container
-          .getTcpPort(PORT)
-          .fetch("http://container/v1/health", {
-            headers: { Authorization: `Bearer ${this.env.KITTIES_TOKEN}` },
-            signal: AbortSignal.timeout(5_000),
-          });
-        await response.body?.cancel();
-        if (response.ok) return;
-      } catch {
-        /* The port is unavailable while state hydrates. */
+    let active = true;
+    let monitoring = false;
+    let stopped: Error | undefined;
+    let interrupt: (() => void) | undefined;
+    const onStop = () => {
+      if (!active) return;
+      stopped = new Error("Gateway container stopped before becoming ready");
+      interrupt?.();
+    };
+    try {
+      while (Date.now() < deadline) {
+        if (this.retired) throw new Error("Gateway generation is retired");
+        if (stopped) throw stopped;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5_000);
+        interrupt = () => controller.abort();
+        try {
+          const response = await container
+            .getTcpPort(PORT)
+            .fetch("http://container/v1/health", {
+              headers: { Authorization: `Bearer ${this.env.KITTIES_TOKEN}` },
+              signal: controller.signal,
+            });
+          await response.body?.cancel();
+          if (response.ok && !stopped && !this.retired) return;
+        } catch {
+          /* The port is unavailable while state hydrates. */
+        } finally {
+          clearTimeout(timeout);
+          interrupt = undefined;
+        }
+        if (stopped) throw stopped;
+        // Healthy requests never attach a monitor to the long-lived process.
+        if (!monitoring) {
+          monitoring = true;
+          void container.monitor().then(onStop, onStop);
+        }
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(() => {
+            interrupt = undefined;
+            resolve();
+          }, 250);
+          interrupt = () => {
+            clearTimeout(timer);
+            interrupt = undefined;
+            resolve();
+          };
+        });
       }
-      await new Promise((resolve) => setTimeout(resolve, 250));
+      throw new Error("Gateway readiness timed out");
+    } finally {
+      active = false;
+      interrupt?.();
     }
-    throw new Error("Gateway readiness timed out");
   }
 
   private async stopForUpgrade(container: Container): Promise<void> {

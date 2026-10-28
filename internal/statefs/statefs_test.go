@@ -1,6 +1,7 @@
 package statefs
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -14,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/madkoding/kitties/internal/statelock"
 )
@@ -23,15 +25,17 @@ type stateService struct {
 	importNext  int
 	importFiles []Mutation
 
-	mu          sync.Mutex
-	manifest    Manifest
-	blobs       map[string][]byte
-	commits     map[string]int64
-	commitIDs   []string
-	loseACK     bool
-	unavailable bool
-	failWrites  bool
-	corrupt     bool
+	mu             sync.Mutex
+	manifest       Manifest
+	blobs          map[string][]byte
+	commits        map[string]int64
+	commitIDs      []string
+	commitBodies   [][]byte
+	uploadAttempts int
+	loseACK        bool
+	unavailable    bool
+	failWrites     bool
+	corrupt        bool
 }
 
 func newStateService(t *testing.T) (*stateService, *httptest.Server) {
@@ -44,6 +48,9 @@ func newStateService(t *testing.T) (*stateService, *httptest.Server) {
 func (s *stateService) serve(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if r.Method == http.MethodPut {
+		s.uploadAttempts++
+	}
 	if s.unavailable || s.failWrites && r.Method == "PUT" {
 		http.Error(w, "unavailable", 503)
 		return
@@ -128,11 +135,13 @@ func (s *stateService) serve(w http.ResponseWriter, r *http.Request) {
 		}
 	case r.URL.Path == "/v1/commit":
 		var c commit
-		if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
+		payload, err := io.ReadAll(r.Body)
+		if err != nil || json.Unmarshal(payload, &c) != nil {
 			http.Error(w, "json", 400)
 			return
 		}
 		s.commitIDs = append(s.commitIDs, c.ID)
+		s.commitBodies = append(s.commitBodies, payload)
 		if revision, ok := s.commits[c.ID]; ok {
 			json.NewEncoder(w).Encode(map[string]int64{"revision": revision})
 			return
@@ -268,11 +277,18 @@ func TestLostCommitAcknowledgementRetriesSameRequest(t *testing.T) {
 	service.mu.Lock()
 	service.loseACK = true
 	service.mu.Unlock()
+	started := time.Now()
 	must(t, WriteFile(filepath.Join(root, "boat.json"), []byte("remote ID"), 0o600))
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	if len(service.commitIDs) != 2 || service.commitIDs[0] != service.commitIDs[1] || store.revision != 1 || service.manifest.Revision != 1 {
 		t.Fatalf("ambiguous commit retried unsafely: %+v", service.commitIDs)
+	}
+	if !bytes.Equal(service.commitBodies[0], service.commitBodies[1]) {
+		t.Fatal("ambiguous commit changed its payload")
+	}
+	if time.Since(started) < time.Second {
+		t.Fatal("commit retry did not back off after losing acknowledgement")
 	}
 }
 
@@ -306,6 +322,12 @@ func TestRemoteWriteFailureCannotBeIgnored(t *testing.T) {
 	}
 	if !strings.Contains(string(out), "durable gateway state unavailable") {
 		t.Fatalf("unexpected failure: %s", out)
+	}
+	service.mu.Lock()
+	attempts := service.uploadAttempts
+	service.mu.Unlock()
+	if attempts != 3 {
+		t.Fatalf("fatal write was not bounded to three upload attempts: %d", attempts)
 	}
 	if _, err := os.Stat(filepath.Join(root, "external-effect")); !os.IsNotExist(err) {
 		t.Fatal("external action ran after persistence failed")
