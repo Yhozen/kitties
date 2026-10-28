@@ -21,7 +21,9 @@ it in their browser configuration to preserve the existing container behavior.
 `kitty-ready` verifies the display, window manager, capture tool and browser
 installation. `kitty-quiesce` asks the profile's browser to close and waits for
 its process to exit, then normally unmounts that user’s private GVFS FUSE mount
-before syncing files. Boat’s snapshot scanner cannot traverse this mount. A busy,
+and the document portal at `~/.cache/doc` before syncing files. The portal uses
+this cache path when the desktop session has no `XDG_RUNTIME_DIR`. Boat’s snapshot
+scanner cannot traverse these mounts. A busy,
 foreign or unexpected mount fails the checkpoint preparation; it is never forcibly
 or lazily unmounted. Invoke it as `kitty` before stopping a VM for a durable checkpoint.
 Other applications should be stopped or finish writing before the checkpoint.
