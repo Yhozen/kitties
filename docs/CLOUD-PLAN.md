@@ -12,6 +12,7 @@ Approved design: a private always-on gateway managing one to five persistent Boa
 6. `codex/cloud-gateway`: activity leases, task/scheduler wake, idle sleep, explicit stop, TTL renewal, interrupted-work recovery, durable store integration, and streamed encrypted recovery backups. Background work drains before captures; shutdown joins all writers.
 7. `codex/cloud-ui`: async lifecycle progress, retained recovery inventory, independent backup status/actions, and Cloudflare Access logout.
 8. `codex/cloud-deploy`: Alchemy-managed Cloudflare Container, Worker, Durable Objects, private R2 state and independent encrypted backups. Access protects `kitties.rccpr.tech` for `gabriel@garox.org`. No Docker socket or host-shell connectors. Prove container replacement, recovery and image upgrades preserve gateway state.
+9. `codex/desktop-parity`: share Lumen, wallpaper, fonts, icons and desktop defaults across Docker, Boat and Lima. Preserve user preferences, defer active-session upgrades, and make failed cold upgrades retryable.
 
 Each layer includes contract tests and documentation. Use `gh stack` for topology and draft PR submission. Do not deploy until the core path and failure recovery pass.
 
@@ -46,7 +47,7 @@ Cloud configuration disables local-token retrieval, bearer-token logging and hos
 
 ## Follow-ups, not first-stack substitutes
 
-The next desktop follow-up should share the original Lumen session, wallpaper, fonts, icons and home defaults with the Boat/Lima guests, migrate existing homes without replacing user preferences, and verify fresh and restored desktop appearance. The current VM session uses stock Openbox and tint2. Interactive input latency also needs a separate improvement that preserves ownership, generation, expiry and pending-operation checks.
+Desktop parity is implemented in the ninth stack layer. Local Debian 13/arm64, Ubuntu 24.04/amd64 and production Docker fixtures pass appearance, application launch and preference/browser persistence checks. The production checkpoint-and-upgrade canary remains the deployment acceptance gate. A separate input follow-up will reduce repeated preparation while preserving fresh ownership, generation, expiry and pending-operation checks.
 
 Vercel Sandbox/Drives, AgentFS, Fly Sprites can be evaluated later. AgentFS is a filesystem layer, not a VM disk/RAM snapshot. Cross-architecture Lima/cloud transfer is an explicit cold file handoff, not a memory or executable migration.
 
@@ -75,3 +76,19 @@ Vercel Sandbox/Drives, AgentFS, Fly Sprites can be evaluated later. AgentFS is a
 ## Cua Spaces research
 
 See [CUA-RESEARCH.md](CUA-RESEARCH.md) for the dated, source-pinned comparison. For the owner-only personal deployment, evaluate both MIT components and selected FSL guest/media components with their terms and notices retained. Keep Kitties persistence and prioritize warm input sessions and workspace UX. Current Spaces applications, daemon and media implementation have nested FSL licenses; they must not be relabeled MIT.
+
+## Desktop parity checkpoint preparation
+
+The production pre-upgrade canary exposed a GVFS FUSE mount under `/home/kitty/.gvfs`
+that Boat’s root snapshot scanner could not read. The provider correctly refused
+its final stop and kept retrying. A normal unmount as the owning kitty user, after
+checking there were no mounted volumes or open users, let the original stop
+complete. Kitties then promoted a new permanent checkpoint; no forced stop or
+rollback to an older checkpoint was used.
+
+The shared `kitty-quiesce` now checks mount type and ownership, normally unmounts
+only that private GVFS mount, verifies its absence, and syncs. Busy mounts, foreign
+mounts and failed inspection fail preparation. Its regression suite and actual
+Ubuntu/Debian fixture execution pass; ShellCheck also passes. A production guest
+upgrade and repeated stop are still required before claiming this regression is
+closed end to end.

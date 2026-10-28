@@ -163,3 +163,18 @@ func TestChangedPayloadDefersUpdatesWhileDesktopIsActive(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckpointQuiescePreservesBusyAndForeignMounts(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("guest quiesce requires Unix process ownership")
+	}
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 unavailable")
+	}
+	cmd := exec.Command(python, "test/quiesce_test.py")
+	cmd.Env = append(os.Environ(), "PYTHONDONTWRITEBYTECODE=1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("checkpoint quiesce: %v\n%s", err, out)
+	}
+}

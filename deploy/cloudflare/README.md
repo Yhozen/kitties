@@ -4,6 +4,57 @@ This deployment runs one Kitties gateway in a Cloudflare Container and keeps eac
 
 The package pins Alchemy `2.0.0-beta.84`, its Cloudflare provider, and Effect `4.0.6`. The deployment uses Alchemy's supported async Worker binding and the native Durable Object Container API. It does not depend on the older Container helper class.
 
+## Agent and credential boundary
+
+The agent controller runs in the trusted Go gateway, outside each desktop. It calls
+OpenAI and sends individual validated computer tools to Boat over authenticated,
+host-key-pinned SSH. Boat runs those tools; Kitties does not use Boat’s hosted
+prompt API to run its agent loop. This keeps model state, approvals and durable
+operation records under the gateway’s control.
+
+The gateway container currently receives the real OpenAI and Boat keys as secret
+environment bindings. Boat desktops are created and resumed with `noEnv: true`,
+and ordinary commands run as `kitty` with an explicit guest environment. This
+protects the infrastructure keys from guest programs, but it does not make the
+trusted gateway keyless. Worker-only credential injection for OpenAI would be a
+separate hardening change. The private intercepted state and backup routes already
+avoid putting their Cloudflare storage credentials in the gateway.
+
+A coding CLI installed inside a desktop needs its own model authentication path.
+Prefer a short-lived, workspace-scoped capability to a gateway proxy that supplies
+the real provider key outside the guest. Bound the allowed model, request size,
+spending and lifetime there, and verify the CLI’s endpoint compatibility. Never
+place the account-wide infrastructure keys in repository files or bake them into
+a guest image. Guest browser cookies and files are intentional persistent user
+data and remain within the snapshot/backup protection boundary.
+
+Current Boat desktop egress is open. Keeping API keys outside the guest does not
+prevent a program from sending its accessible workspace data elsewhere. Strict
+egress control requires a provider/network boundary that an administrator inside
+the guest cannot disable. Cloudflare’s outbound HTTP/HTTPS interception can
+support gateway proxy policies; it does not by itself constrain arbitrary traffic
+from the separate Boat computer. No general egress restriction is claimed here.
+
+Persisted create requests use Boat’s idempotency keys, and lifecycle reconciliation
+protects the exact owner, remote ID and generation. This does not make an arbitrary
+agent action exactly-once: an SSH command can complete before its acknowledgement
+is lost. Interrupted tasks are marked for explicit continuation instead of replayed.
+Files and browser profiles survive verified checkpoints and encrypted backups;
+process memory, active terminals and running programs are not restored. A coding
+agent should therefore commit or save its work before suspension and verify both
+its repository state and pending external effects after recovery.
+
+For a new coding-agent harness, establish these boundaries before optimizing the
+transport: choose where the controller runs; scope credentials and network access;
+persist computer identity and operation receipts; define the file-versus-process
+recovery contract; keep publishing/deployment credentials outside the workspace;
+and exercise lost acknowledgements, stop failures and replacement recovery with a
+real canary. Measure cold startup, warm tool latency and idle cost independently.
+
+References: [Boat creation and environment settings](https://docs.boat.dev/api/reference/sandboxes/create-sandbox),
+[SSH access](https://docs.boat.dev/ssh-access), and
+[Cloudflare outbound interception](https://developers.cloudflare.com/containers/configuration/outbound-traffic/).
+
 ## State and restarts
 
 The gateway's `/var/lib/kitties` directory is a disposable cache. `internal/statefs` hydrates it before loading stores and synchronously publishes persistent mutations. One active SQLite-backed Gateway Durable Object owns the manifest and revision; a small coordinator stores the active generation. Private R2 objects hold immutable file contents. A write is successful only after its manifest transaction and storage synchronization complete. A failed commit makes the Go gateway stop.
