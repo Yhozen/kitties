@@ -25,8 +25,10 @@ export const discoverTools = (
           parameters: tool.inputSchema as Record<string, unknown>,
           connectionId: connection.id,
           remoteName: tool.name,
-          readOnly: tool.annotations?.readOnlyHint === true,
-          destructive: tool.annotations?.destructiveHint !== false,
+          readOnly:
+            connection.readTools?.includes(tool.name) === true &&
+            tool.annotations?.readOnlyHint !== false,
+          destructive: tool.annotations?.destructiveHint === true,
         }));
       }),
     );
@@ -64,7 +66,9 @@ export const discoverTools = (
 };
 export const needsApproval = (connection: Connection, tool: ToolDefinition, params: unknown) => {
   if (!connection.allowReads) return true;
-  if (["mcp", "google", "m365"].includes(connection.kind))
+  if (connection.kind === "mcp")
+    return !connection.readTools?.includes(tool.remoteName) || !tool.readOnly || tool.destructive;
+  if (connection.kind === "google" || connection.kind === "m365")
     return !tool.readOnly || tool.destructive;
   if (connection.kind === "ntfy") return true;
   const method = (params as { method?: unknown })?.method;
@@ -113,8 +117,9 @@ export const executeTool = (
         if (!descriptor) return yield* Effect.fail("TOOL_NOT_FOUND");
         // Re-discovery cannot lower the risk of the descriptor approved by the owner.
         if (
-          (descriptor.annotations?.readOnlyHint === true) !== tool.readOnly ||
-          (descriptor.annotations?.destructiveHint !== false && !tool.destructive)
+          (connection.readTools?.includes(descriptor.name) === true &&
+            descriptor.annotations?.readOnlyHint !== false) !== tool.readOnly ||
+          (descriptor.annotations?.destructiveHint === true && !tool.destructive)
         )
           return yield* Effect.fail("TOOL_CHANGED");
         const result = yield* client.callTool({

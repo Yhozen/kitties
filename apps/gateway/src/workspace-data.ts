@@ -26,8 +26,9 @@ export const makeWorkspaceData = Effect.gen(function* () {
           return json({ code: "KITTY_NOT_FOUND", params: {} }, 404);
         return json(
           (yield* home.list("kitty-journal"))
-            .map((row) => JSON.parse(row.body) as { kittyId: string })
+            .map((row) => JSON.parse(row.body) as { kittyId: string; at: number })
             .filter((row) => row.kittyId === journalRoute[1])
+            .sort((a, b) => a.at - b.at)
             .slice(-200),
         );
       }

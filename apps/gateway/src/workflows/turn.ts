@@ -566,8 +566,9 @@ export const TurnLive = Workflows.layer(
                       .pipe(Effect.mapError(storageError));
                     output = {
                       entries: rows
-                        .map((row) => JSON.parse(row.body) as { kittyId: string })
+                        .map((row) => JSON.parse(row.body) as { kittyId: string; at: number })
                         .filter((row) => row.kittyId === payload.kittyId)
+                        .sort((a, b) => a.at - b.at)
                         .slice(-50),
                       spent: yield* home
                         .spent(new Date().toISOString().slice(0, 10), payload.kittyId)

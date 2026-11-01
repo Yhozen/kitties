@@ -7,6 +7,7 @@ const nativeUrls = { google: "https://www.googleapis.com", m365: "https://graph.
 export default function ConnectionsPanel() {
   const [connections, setConnections] = useState<readonly Connection[]>([]), [auth, setAuth] = useState<Record<string, string>>({});
   const [name, setName] = useState(""), [url, setUrl] = useState(""), [token, setToken] = useState(""), [kind, setKind] = useState<Connection["kind"]>("mcp"), [allowReads, setAllowReads] = useState(false), [status, setStatus] = useState("");
+  const [readTools,setReadTools]=useState("");
   const [signIn, setSignIn] = useState(""), [clientId, setClientId] = useState(""), [clientSecret, setClientSecret] = useState(""), [scope, setScope] = useState(""), [link, setLink] = useState("");
   const refresh = async () => {
     const items = await call(api => api.connections.list()); setConnections(items);
@@ -31,12 +32,12 @@ export default function ConnectionsPanel() {
         {link && <p><a href={link} target="_blank" rel="noopener noreferrer">{t("Continue to authorization")}</a><button type="button" onClick={() => attempt(refresh)}>{t("I have finished signing in")}</button></p>}
       </form>}
     </div>)}
-    <form onSubmit={event => { event.preventDefault(); attempt(async () => { await call(api => api.connections.save({ params: { id: crypto.randomUUID() }, payload: { name, url: native ? nativeUrls[kind] : url, kind, token, allowReads } })); setToken(""); setName(""); setUrl(""); await refresh(); }); }}>
+    <form onSubmit={event => { event.preventDefault(); attempt(async () => { await call(api => api.connections.save({ params: { id: crypto.randomUUID() }, payload: { name, url: native ? nativeUrls[kind] : url, kind, token, allowReads, readTools:readTools.split(",").map(value=>value.trim()).filter(Boolean) } })); setToken(""); setName(""); setUrl(""); await refresh(); }); }}>
       <label>{t("Name")}<input required value={name} onInput={event => setName(event.currentTarget.value)} /></label>
       <label>{t("Type")}<select value={kind} onChange={event => setKind(event.currentTarget.value as Connection["kind"])}><option value="mcp">MCP</option><option value="http">HTTP</option><option value="ntfy">ntfy</option><option value="google">Google Workspace</option><option value="m365">Microsoft 365</option></select></label>
       {!native && <label>{t("HTTPS address")}<input type="url" required value={url} onInput={event => setUrl(event.currentTarget.value)} /></label>}
       {!native && <label>{t("Token (optional)")}<input type="password" autoComplete="off" value={token} onInput={event => setToken(event.currentTarget.value)} /></label>}
-      <label class="next-check"><input type="checkbox" checked={allowReads} onChange={event => setAllowReads(event.currentTarget.checked)} />{t("Allow reads without asking")}</label><button class="primary">{t("Save connection")}</button>
+      <label>{t("MCP read tool names (comma separated)")}<input value={readTools} onInput={event=>setReadTools(event.currentTarget.value)}/></label><label class="next-check"><input type="checkbox" checked={allowReads} onChange={event => setAllowReads(event.currentTarget.checked)} />{t("Allow reads without asking")}</label><button class="primary">{t("Save connection")}</button>
     </form><p role="status">{status}</p>
   </section>;
 }

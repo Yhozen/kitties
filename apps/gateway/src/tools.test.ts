@@ -7,6 +7,7 @@ const connection: Connection = {
   kind: "mcp",
   url: "https://example.com/mcp",
   allowReads: true,
+  readTools: ["test"],
 };
 const tool: ToolDefinition = {
   name: "test",
@@ -21,6 +22,13 @@ describe("tool authorization", () => {
   it("requires approval for unannotated and destructive MCP tools", () => {
     expect(needsApproval(connection, tool, {})).toBe(true);
     expect(needsApproval(connection, { ...tool, readOnly: true }, {})).toBe(true);
+    expect(
+      needsApproval(
+        { ...connection, readTools: [] },
+        { ...tool, readOnly: true, destructive: false },
+        {},
+      ),
+    ).toBe(true);
     expect(needsApproval(connection, { ...tool, readOnly: true, destructive: false }, {})).toBe(
       false,
     );

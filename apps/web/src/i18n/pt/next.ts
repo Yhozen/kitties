@@ -1,4 +1,5 @@
 export default {
+  "MCP read tool names (comma separated)": "Nomes de ferramentas MCP de leitura (separados por vírgulas)",
   "Could not load connections.": "Não foi possível carregar as conexões.",
   "Could not complete the operation. Check the connection and try again.": "Não foi possível concluir a operação. Verifique a conexão e tente novamente.",
   "Tools and connections": "Ferramentas e conexões",

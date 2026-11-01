@@ -185,6 +185,9 @@ export const ConnectionInput = Schema.Struct({
   url: Schema.String.check(Schema.isMaxLength(2048)),
   token: Schema.optional(Schema.String.check(Schema.isMaxLength(16384))),
   allowReads: Schema.Boolean,
+  readTools: Schema.optional(
+    Schema.Array(Schema.String.check(Schema.isMaxLength(200))).check(Schema.isMaxLength(64)),
+  ),
 });
 export type Connection = Omit<typeof ConnectionInput.Type, "token"> & {
   id: string;
@@ -196,6 +199,9 @@ export const ConnectionView = Schema.Struct({
   kind: ConnectionInput.fields.kind,
   url: Schema.String,
   allowReads: Schema.Boolean,
+  readTools: Schema.optional(
+    Schema.Array(Schema.String.check(Schema.isMaxLength(200))).check(Schema.isMaxLength(64)),
+  ),
   hasToken: Schema.Boolean,
 });
 export const ApprovalView = Schema.Struct({
