@@ -1,5 +1,9 @@
 # Cloud Kitties implementation plan
 
+> **Frozen.** This Go cloud stack stays live, receiving fixes only, until the Effect rewrite
+> replaces it. The successor plan is [effect/PLAN.md](effect/PLAN.md); see
+> [effect/README.md](effect/README.md) for the documents and phase status.
+
 Approved design: a private always-on gateway managing one to five persistent Boat desktops. Lima remains the local VM runtime. Applications may restart; files, browser profiles and installed tools survive. The gateway is a single writer. The user selected Cloudflare Containers for hosting, with a Durable Object manifest and immutable R2 objects acknowledging gateway state writes synchronously. Deployment follows functional and recovery verification.
 
 ## Stack

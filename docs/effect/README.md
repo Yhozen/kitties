@@ -1,0 +1,45 @@
+# Kitties on Effect
+
+Kitties is being rewritten from Go into TypeScript with [Effect](https://effect.website). It will
+run on Cloudflare Workers and Durable Objects, with Alchemy Effect Workflows for durable work,
+and keep its desktops on Boat. The Go system stays live and frozen until the verified hard cutover. No migration or extended
+parallel rollout is required (D16).
+
+## Read in this order
+
+| Document | What it is for |
+|---|---|
+| [PLAN.md](PLAN.md) | The approved plan: why, the target architecture, the design rules, ten phases with exit criteria, and verification. |
+| [DECISIONS.md](DECISIONS.md) | What the owner decided, what each decision removes, and the technical decisions from research. |
+| [PARITY.md](PARITY.md) | Every feature, screen and endpoint today, and whether it is kept, changed or dropped, and in which phase. |
+| [CURRENT-SYSTEM.md](CURRENT-SYSTEM.md) | How the Go system works, the behaviours to carry over, and the known defects not to rebuild. Code links are pinned to commit `7f408a1`. |
+| [RESEARCH.md](RESEARCH.md) | Dated, sourced facts about Alchemy Workflows, Effect 4, Vite+, Cloudflare limits, Boat, agent-desktop and agent-browser. |
+| [RISKS.md](RISKS.md) | The risk register, with mitigations and triggers. |
+| [LATENCY-BASELINE.md](LATENCY-BASELINE.md) | Today's measured numbers, the inferred per-hop budget, targets, and results as phases land. |
+
+## Phase status
+
+Each phase is a stack of draft PRs on top of `codex/durable-state-recovery` (#13). Update this
+table when a phase starts, when its exit criteria are measured, and when it merges.
+
+| Phase | Scope | Status | Exit evidence |
+|---|---|---|---|
+| 1 | Backing documentation and the plan | in review | this directory |
+| 2 | Toolchain groundwork: coverage rules removed, pnpm + Vite+ workspace | not started | — |
+| 3 | Walking skeleton, PWA shell, go/no-go spikes | not started | — |
+| 4 | Live desktop: `kittyd`, fast input, live view | not started | — |
+| 5 | Brains: chat, providers, first MCP and native tools | not started | — |
+| 6 | Lifecycle: sleep, restore, capacity | not started | — |
+| 7 | Durable desktop tasks and perception | not started | — |
+| 8 | Autonomy: goals, webhooks, approvals, notifications | not started | — |
+| 9 | Integrations: MCP with OAuth, Google and Microsoft | not started | — |
+| 10 | Hardening, backups, cutover, Go deleted | not started | — |
+
+## Ground rules while the rewrite runs
+
+- The Go code under `cmd/`, `internal/`, `desktop/` and `deploy/cloudflare/` is frozen. Only
+  fixes for the live deployment land there.
+- New code lives under `apps/`, `packages/` and `guest/` (from Phase 2).
+- `next.kitties.rccpr.tech` is not production until Phase 10. Data entered there is test data.
+- A change to a pinned version of `effect`, `alchemy` or `@alchemy.run/cloudflare` re-runs the
+  spike-1 suite in the same PR.
