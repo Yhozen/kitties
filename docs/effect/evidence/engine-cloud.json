@@ -1,29 +1,29 @@
 {
-  "date": "2026-11-01T18:48:25.319Z",
+  "date": "2026-11-01T19:01:19.227Z",
   "status": "passed",
   "runtime": "Cloudflare DurableObjectEngine",
-  "verifier": "engine-progress-v6",
+  "verifier": "engine-progress-v7",
   "enginePatch": "journal-progress-and-activity-failures",
   "cases": [
     {
       "name": "replay-3",
       "status": "pass",
-      "signalToResultMs": 1105
+      "signalToResultMs": 1090
     },
     {
       "name": "replay-50",
       "status": "pass",
-      "signalToResultMs": 604
+      "signalToResultMs": 1107
     },
     {
       "name": "replay-200",
       "status": "pass",
-      "signalToResultMs": 1079
+      "signalToResultMs": 1102
     },
     {
       "name": "replay-500",
       "status": "pass",
-      "signalToResultMs": 1070
+      "signalToResultMs": 699
     },
     {
       "name": "journaled-failure",

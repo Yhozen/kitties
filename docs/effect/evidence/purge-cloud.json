@@ -1,0 +1,13 @@
+{
+  "date": "2026-11-01T19:03:08.911Z",
+  "status": "passed",
+  "operationId": "f19f1ab2-080c-4903-ae13-59340208a3d3",
+  "executionId": "4e06ffa3e9bc7ded5831dd066eb38200",
+  "target": "TurnV5/b4781e04aa5d895aafac692d545e5e93",
+  "activitiesBefore": 6,
+  "activitiesAfter": 0,
+  "executionResultTombstoneRetained": true,
+  "duplicateMessageReturnedDuplicate": true,
+  "journalNotRecreated": true,
+  "cutoff": "Future cutoff on next test journals, after encrypted export fully authenticated"
+}

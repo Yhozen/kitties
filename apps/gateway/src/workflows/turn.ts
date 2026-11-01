@@ -96,6 +96,7 @@ export const TurnLive = Workflows.layer(
             success: Schema.Number,
             error: Schema.String,
             execute: Effect.gen(function* () {
+              const preparationStartedAt = Date.now();
               const [start, context] = yield* Effect.all(
                 [
                   chat.beginRound(payload.messageId, round).pipe(Effect.mapError(storageError)),
@@ -116,6 +117,7 @@ export const TurnLive = Workflows.layer(
                 ],
                 { concurrency: 2 },
               );
+              const contextLoadedAt = Date.now();
               const config = JSON.parse(context.body) as RunConfig;
               const limit = config.kitty.limits?.max_rounds ?? 12;
               retryBudget = config.kitty.limits?.retries ?? 2;
@@ -323,7 +325,14 @@ export const TurnLive = Workflows.layer(
               const history = yield* session.exportJson.pipe(
                 Effect.mapError(() => "HISTORY_UNAVAILABLE"),
               );
-              const body = JSON.stringify({ ...result, tools, modelStartedAt, modelFinishedAt });
+              const body = JSON.stringify({
+                ...result,
+                tools,
+                modelStartedAt,
+                modelFinishedAt,
+                preparationStartedAt,
+                contextLoadedAt,
+              });
               const [, saved] = yield* Effect.all(
                 [
                   home
@@ -422,8 +431,10 @@ export const TurnLive = Workflows.layer(
                 callId: call.id,
               };
 
+              const authorizedAt = Date.now();
               const run = yield* chat.run(payload.messageId).pipe(Effect.mapError(storageError));
               if (run?.status === "cancelled") return true;
+              const cancelCheckedAt = Date.now();
               const childId = yield* DesktopAttempt.executionId(child);
               const instance = yield* WorkflowEngine.WorkflowInstance;
               const key = yield* Activity.idempotencyKey("desktop-dispatch").pipe(
@@ -436,6 +447,7 @@ export const TurnLive = Workflows.layer(
               const action = yield* Schema.decodeUnknownEffect(Action.fields.action)(
                 tool.remoteName,
               ).pipe(Effect.mapError(() => "UNSUPPORTED_ACTION"));
+              const dispatchStartedAt = Date.now();
               const receipt = yield* kitties
                 .getByName(payload.kittyId, { locationHint: "weur" })
                 .agentAction(intentId, action, call.params as Record<string, unknown>)
@@ -453,6 +465,12 @@ export const TurnLive = Workflows.layer(
                   isFailure:
                     receipt.status !== "completed" || (result as { ok?: boolean })?.ok === false,
                   result,
+                  timing: {
+                    authorizedAt,
+                    cancelCheckedAt,
+                    dispatchStartedAt,
+                    resultAt: Date.now(),
+                  },
                 });
                 yield* Effect.all(
                   [

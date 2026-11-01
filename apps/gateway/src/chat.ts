@@ -397,6 +397,8 @@ const makeChat = Effect.gen(function* () {
             const timing = JSON.parse(body) as {
               modelStartedAt?: number;
               modelFinishedAt?: number;
+              preparationStartedAt?: number;
+              contextLoadedAt?: number;
             };
             if (timing.modelStartedAt !== undefined && timing.modelFinishedAt !== undefined)
               event({
@@ -406,6 +408,8 @@ const makeChat = Effect.gen(function* () {
                 attempt,
                 modelStartedAt: timing.modelStartedAt,
                 modelFinishedAt: timing.modelFinishedAt,
+                preparationStartedAt: timing.preparationStartedAt,
+                contextLoadedAt: timing.contextLoadedAt,
               });
             sql.exec("UPDATE rounds SET history='complete' WHERE id=? AND round=?", id, round);
             return true;
