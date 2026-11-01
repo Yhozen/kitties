@@ -47,7 +47,9 @@ const props = Effect.gen(function* () {
   const stage = yield* Stage;
   const domain = yield* Config.String("KITTIES_NEXT_DOMAIN").pipe(
     Config.withDefault(
-      `${stage === "next" ? "next" : stage === "e2e" ? "e2e" : "dev"}.kitties.rccpr.tech`,
+      stage === "prod"
+        ? "kitties.rccpr.tech"
+        : `${stage === "next" ? "next" : stage === "e2e" ? "e2e" : "dev"}.kitties.rccpr.tech`,
     ),
   );
   const email = yield* Config.String("KITTIES_ACCESS_EMAIL").pipe(
@@ -90,7 +92,9 @@ const props = Effect.gen(function* () {
         Config.withDefault(
           stage === "next"
             ? "6d0289542bd5627c4611d3191d290eb709f6dc21567ce86beede78b8d5e8ff10"
-            : "",
+            : stage === "prod"
+              ? "6c23180dee19ed077a61fdc54b8021bb5437c8cee924b3d72513f745c2fdb679"
+              : "",
         ),
       ),
       CHATGPT_ENABLED: yield* Config.String("KITTIES_CHATGPT_ENABLED").pipe(

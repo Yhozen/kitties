@@ -1,34 +1,8 @@
 name: effect
 on:
   pull_request:
-    paths:
-      [
-        "apps/**",
-        "packages/**",
-        "guest/**",
-        "patches/**",
-        "package.json",
-        "pnpm-lock.yaml",
-        "pnpm-workspace.yaml",
-        "vite.config.ts",
-        "tsconfig.json",
-        ".github/workflows/effect.yml",
-      ]
   push:
     branches: [main, "effect/**"]
-    paths:
-      [
-        "apps/**",
-        "packages/**",
-        "guest/**",
-        "patches/**",
-        "package.json",
-        "pnpm-lock.yaml",
-        "pnpm-workspace.yaml",
-        "vite.config.ts",
-        "tsconfig.json",
-        ".github/workflows/effect.yml",
-      ]
   workflow_dispatch:
 permissions:
   contents: read

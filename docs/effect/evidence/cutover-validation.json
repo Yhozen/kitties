@@ -1,0 +1,19 @@
+{
+  "date": "2026-11-01",
+  "status": "passed",
+  "checks": {
+    "vitePlusFormattingLintAndTypes": "passed",
+    "unitTests": { "files": 17, "tests": 42, "passed": 42 },
+    "taskBuilds": { "successful": 4, "total": 4 },
+    "browserTests": { "passed": 10, "projects": ["desktop", "mobile"], "scope": "Local Alchemy runtime; streamed chat, dedupe, feedback, vault privacy, cross-origin rejection, installable icons, offline shell and languages" },
+    "productionDependencyAudit": "No known vulnerabilities found",
+    "guestShellcheck": { "version": "0.11.0", "severity": "warning", "status": "passed" },
+    "gitDiffWhitespace": "passed"
+  },
+  "legacyRemoval": {
+    "goFilesRemaining": 0,
+    "removed": ["cmd", "internal", "desktop", "android", "docker", "configs", "souls", "go.mod", "deploy/cloudflare", "legacy install/update/release scripts", "legacy frontend modules and e2e", "Go/container/native CI"],
+    "preserved": ["language dictionaries", "guest desktop assets", "historical backing research", "deployed legacy Worker", "legacy R2 buckets", "Boat checkpoints"]
+  },
+  "limits": "These local checks supplement the separately recorded authenticated production smoke and PITR; the original non-model p95 latency target remains unmet and accepted by the owner."
+}

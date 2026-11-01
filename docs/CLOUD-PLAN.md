@@ -1,3 +1,6 @@
+> Historical pre-Effect reference. Production now uses the [Effect architecture](ARCHITECTURE.md)
+> and [Cloudflare deployment](DEPLOY.md). Commands below describe the retired implementation.
+
 # Cloud Kitties implementation plan
 
 > **Frozen.** This Go cloud stack stays live, receiving fixes only, until the Effect rewrite

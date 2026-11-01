@@ -59,4 +59,4 @@ The manual `effect-deploy.yml` Actions workflow needs the repository secret
 workflow has passed on GitHub. The manual deployment workflow becomes dispatchable after its
 file reaches the default branch; direct restricted-token publishing is already verified. ChatDO
 PITR, full encrypted export authentication, purge/tombstones and actual R2 error recovery passed.
-Production cutover and its smoke/recovery drill remain pending.
+Production cutover, authenticated Health/session, ChatDO PITR, guest fencing/rotation and a fresh desktop screenshot passed. See [production evidence](evidence/production-cutover-cloud.json). The old Worker and legacy storage remain retained; [rollback instructions](../DEPLOY.md#production-verification-and-rollback) use the tested custom-domain override.

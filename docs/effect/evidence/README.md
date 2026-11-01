@@ -32,9 +32,12 @@ crash/redeploy test passed again after the dispatch optimization (`desktop-cloud
 The final 50-action non-model run measured p50 653 ms / p95 1,421 ms. The original p95 < 1 s
 target remains unmet; the owner explicitly accepted cutover with this limitation documented
 (`latency-cutover-decision.json`). A newer PITR plus historical-operation retry passed
-(`recovery-history-cloud.json`). Production cutover and production smoke/recovery remain open. A source change or an implemented feature is not a passing acceptance result.
+(`recovery-history-cloud.json`). Production cutover and the authenticated production smoke/PITR/guest-reconnect drill passed (`production-cutover-cloud.json`). A source change or an implemented feature is not a passing acceptance result.
 
 Earlier local probes remain available in `engine-local.json`, `engine-progress-local.json`,
 `engine-advanced-local.json`, `application-local.json`, `chat-local.json` and `channel-local.json`.
 The interrupted stream probe is retained as `stream-soak-interrupted.json`; the later completed soak
 is the acceptance result.
+
+Detached bootstrap duplicate-launch/reconnection acceptance passed (`bootstrap-service-cloud.json`).
+The candidate screenshot/dedupe/replay also passed before cutover (`candidate-desktop-cloud.json`).

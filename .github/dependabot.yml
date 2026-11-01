@@ -1,5 +1,3 @@
-# Updates arrive as pull requests, so the CI and the security checks look at them like at any
-# other change. Weekly, grouped, to keep the noise down.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -11,56 +9,18 @@ updates:
         patterns: ["*"]
     commit-message:
       prefix: "chore(deps)"
-  - package-ecosystem: gomod
+  - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
     groups:
-      go:
+      workspace:
         patterns: ["*"]
-    commit-message:
-      prefix: "chore(deps)"
-  - package-ecosystem: gomod
-    directory: /desktop
-    schedule:
-      interval: weekly
-    groups:
-      go-desktop:
-        patterns: ["*"]
-    commit-message:
-      prefix: "chore(deps)"
-  - package-ecosystem: npm
-    directory: /desktop/frontend
-    schedule:
-      interval: weekly
-    groups:
-      npm:
-        patterns: ["*"]
-    commit-message:
-      prefix: "chore(deps)"
-  - package-ecosystem: docker
-    directory: /docker/gateway
-    schedule:
-      interval: weekly
-    # Node stays on the active LTS line; odd majors are not LTS, so the next major is a
-    # change made by hand.
+    # Effect/Alchemy upgrades require the cloud workflow acceptance suite.
     ignore:
-      - dependency-name: node
-        update-types: ["version-update:semver-major"]
-    commit-message:
-      prefix: "chore(deps)"
-  - package-ecosystem: docker
-    directory: /docker/kitty-desktop
-    schedule:
-      interval: weekly
-    commit-message:
-      prefix: "chore(deps)"
-  - package-ecosystem: gradle
-    directory: /android
-    schedule:
-      interval: weekly
-    groups:
-      android:
-        patterns: ["*"]
+      - dependency-name: "effect"
+      - dependency-name: "@effect/*"
+      - dependency-name: "alchemy"
+      - dependency-name: "@alchemy.run/*"
     commit-message:
       prefix: "chore(deps)"

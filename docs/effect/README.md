@@ -1,9 +1,13 @@
 # Kitties on Effect
 
-Kitties is being rewritten from Go into TypeScript with [Effect](https://effect.website). It will
-run on Cloudflare Workers and Durable Objects, with Alchemy Effect Workflows for durable work,
-and keep its desktops on Boat. The Go system stays live and frozen until the verified hard cutover. No migration or extended
-parallel rollout is required (D16).
+Kitties now runs TypeScript and [Effect](https://effect.website) on Cloudflare Workers and
+Durable Objects, with Alchemy Effect Workflows and Boat desktops. Production switched to
+[kitties.rccpr.tech](https://kitties.rccpr.tech) on 2026-11-01 after authenticated smoke and recovery
+checks. The retired Go Worker, legacy R2 buckets and Boat checkpoints remain available; the source
+and native clients have been removed. There was no data migration (D16).
+
+The original non-model p95 <1 s goal remains unmet. The owner accepted deployment with the latest
+50-action result of **653 ms median / 1,421 ms p95** documented as a performance limitation.
 
 ## Read in this order
 
@@ -26,20 +30,19 @@ table when a phase starts, when its exit criteria are measured, and when it merg
 |---|---|---|---|
 | 1 | Backing documentation and the plan | committed; draft PR open | [#14](https://github.com/Yhozen/kitties/pull/14), commit `1aca978`; links and pinned paths checked |
 | 2 | Toolchain groundwork: coverage rules removed, pnpm + Vite+ workspace | deployed to dev | Vite+ check, typecheck, PKCE regression, task build and Alchemy deploy passed; [dev](https://dev.kitties.rccpr.tech) |
-| 3 | Walking skeleton, PWA shell, go/no-go spikes | engine and perception probes passed; final platform gates open | [Evidence](evidence/README.md): cloud 3/50/200/500-activity runs, local kill/recovery, deferreds, child workflows and callback parking; [20 cloud durable waits](evidence/engine-cloud-clocks.json) verify the alarm-progress patch |
+| 3 | Walking skeleton, PWA shell, go/no-go spikes | deployed; platform gates passed | [Evidence](evidence/README.md): cloud 3/50/200/500-activity runs, local kill/recovery, deferreds, child workflows and callback parking; [20 cloud durable waits](evidence/engine-cloud-clocks.json) verify the alarm-progress patch |
 | 4 | Live desktop: `kittyd`, fast input, live view | deployed; input and stream gates passed | [#17](https://github.com/Yhozen/kitties/pull/17); [200 real inputs](evidence/channel-boat-visible.json): ack p95 242.6 ms, visible p95 359.6 ms; [30-minute three-viewer soak](evidence/stream-soak.json) had zero disconnects |
-| 5 | Brains: chat, providers, first MCP and native tools | deployed; UI and recovery acceptance in progress | [50 streamed turns](evidence/chat-stream-cloud.json): fixture first-token p95 1.872 s; [MCP approval/redeploy](evidence/tools-cloud.json), dedupe and cancel passed |
+| 5 | Brains: chat, providers, first MCP and native tools | deployed; chat, UI and recovery acceptance passed | [50 streamed turns](evidence/chat-stream-cloud.json): fixture first-token p95 1.872 s; [MCP approval/redeploy](evidence/tools-cloud.json), dedupe and cancel passed |
 | 6 | Lifecycle: sleep, restore, capacity | deployed; restore, capacity and lifecycle faults passed | [Full sleep/restore drill](evidence/lifecycle-full-drill.json): automatic completion on generation 4, with file, cookie and package intact; [five active desktops / sixth refused](evidence/capacity-cloud.json); [5xx/lost-create](evidence/boat-chaos-cloud.json), [quiesce repair](evidence/quiesce-chaos-cloud.json) and [TTL review](evidence/ttl-chaos-cloud.json) passed |
 | 7 | Durable desktop tasks and perception | deployed; live desktop recovery passed; latency limitation accepted | Fenced child workflows, screenshot storage, vault references and durable help; [20-task real model A/B](evidence/perception-ab-cloud.json): both arms 20/20, refs use ~74% fewer input tokens and are the default |
-| 8 | Autonomy: goals, webhooks, approvals, notifications | goals and signed hooks deployed; notifications/rules implemented; delegation cloud acceptance passed | [100 deliveries / 200 requests](evidence/webhooks-cloud.json), [goal chaining and disable fencing](evidence/goals-cloud.json); delegation fan-out, backup handoff, journal and limit tools implemented; [two children, backup handoff and cancellation passed](evidence/delegation-cloud.json); [physical iPhone approval passed](evidence/phone-approval-cloud.json) |
+| 8 | Autonomy: goals, webhooks, approvals, notifications | deployed; autonomy and physical phone acceptance passed | [100 deliveries / 200 requests](evidence/webhooks-cloud.json), [goal chaining and disable fencing](evidence/goals-cloud.json); delegation fan-out, backup handoff, journal and limit tools implemented; [two children, backup handoff and cancellation passed](evidence/delegation-cloud.json); [physical iPhone approval passed](evidence/phone-approval-cloud.json) |
 | 9 | Integrations: MCP with OAuth, Google and Microsoft | deployed; server dispositions and OAuth race verified | Encrypted PKCE, single-use bypass callback, RFC 9728/8414 discovery, DCR/CIMD, refresh single-flight and minimal native file/calendar tools; [cloud OAuth](evidence/oauth-cloud.json) and [server dispositions](PARITY.md#deployed-dispositions-2026-11-01); real vendor authorizations require owner configuration |
-| 10 | Hardening, backups, cutover, Go deleted | recovery drills passed; production candidate verified; cutover pending | Retained encrypted exports, external restore epoch and PITR deployed; [Mac key escrow](evidence/key-escrow-mac.json), [ChatDO PITR](evidence/recovery-pitr-cloud.json) and [retention enforcement](evidence/export-retention-cloud.json) passed. [Full encrypted export](evidence/export-cloud.json), [purge](evidence/purge-cloud.json), [R2 failure](evidence/r2-error-cloud.json), [restricted publisher/CI](evidence/ci-permissions-cloud.json) and [candidate owner sign-in](evidence/candidate-owner-cloud.json) passed. Production cutover and deletion remain open. |
+| 10 | Hardening, backups, cutover, Go deleted | deployed to production; recovery passed; legacy source removed | Retained encrypted exports, external restore epoch and PITR deployed; [Mac key escrow](evidence/key-escrow-mac.json), [ChatDO PITR](evidence/recovery-pitr-cloud.json) and [retention enforcement](evidence/export-retention-cloud.json) passed. [Full encrypted export](evidence/export-cloud.json), [purge](evidence/purge-cloud.json), [R2 failure](evidence/r2-error-cloud.json), [restricted publisher/CI](evidence/ci-permissions-cloud.json) and [candidate owner sign-in](evidence/candidate-owner-cloud.json) passed. [Production cutover and PITR/guest reconnect](evidence/production-cutover-cloud.json) passed; legacy source and CI removed. |
 
-## Ground rules while the rewrite runs
+## Operating rules
 
-- The Go code under `cmd/`, `internal/`, `desktop/` and `deploy/cloudflare/` is frozen. Only
-  fixes for the live deployment land there.
-- New code lives under `apps/`, `packages/` and `guest/` (from Phase 2).
-- `next.kitties.rccpr.tech` is not production until Phase 10. Data entered there is test data.
-- A change to a pinned version of `effect`, `alchemy` or `@alchemy.run/cloudflare` re-runs the
-  spike-1 suite in the same PR.
+- Production is `kitties.rccpr.tech`; `next` remains a test deployment.
+- Legacy cloud resources are retained for rollback and must not be destroyed without owner approval.
+- Configure providers and authorize vendor connections in the fresh application; test fixtures are removed.
+- A change to a pinned version of `effect`, `alchemy` or `@alchemy.run/cloudflare` reruns the engine acceptance suite.
+- See [deployment](../DEPLOY.md), [recovery](RECOVERY.md) and [costs](COST-REPORT.md) for operations.

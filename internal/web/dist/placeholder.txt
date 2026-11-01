@@ -1,2 +1,0 @@
-This folder holds the built web interface (desktop/frontend/dist), copied here by `make web`
-before the binary is built. Without it the gateway serves a small built-in page instead.
