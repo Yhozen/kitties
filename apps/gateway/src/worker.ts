@@ -227,6 +227,10 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
       advancedStart: (payload: typeof AdvancedProbe.payloadSchema.Type) =>
         advanced.start(payload).pipe(Effect.map((run) => run.executionId)),
       advancedStatus: (id: string) => advanced.get(id).status,
+      advancedR2Failure: (id: string) =>
+        env.STAGE === "next" || env.STAGE === "e2e"
+          ? homes.getByName("owner", { locationHint: "weur" }).read("probe-r2-error", id)
+          : Effect.succeed(null),
       advancedRepair: (id: string, executionId: string) =>
         homes
           .getByName("owner")

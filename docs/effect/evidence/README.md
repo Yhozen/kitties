@@ -25,8 +25,11 @@ The full encrypted export authenticated all 4,564 parts and reconstructed 4,544 
 (`boat-chaos-cloud.json`, `quiesce-chaos-cloud.json`, `ttl-chaos-cloud.json`). A real candidate
 hostname rollback to Go and back passed in under three seconds (`rollback-cloud.json`).
 
-The remaining gates are purge/tombstone verification, non-model step latency, production
-cutover and production smoke/recovery. A source change or an implemented feature is not a passing acceptance result.
+The purge/tombstone drill passed (`purge-cloud.json`). An actual R2 write refusal suspended
+a guarded activity and resumed once after repair (`r2-error-cloud.json`). The final desktop
+crash/redeploy test passed again after the dispatch optimization (`desktop-cloud.json`).
+
+The remaining gates are non-model step latency, production cutover and production smoke/recovery. A source change or an implemented feature is not a passing acceptance result.
 
 Earlier local probes remain available in `engine-local.json`, `engine-progress-local.json`,
 `engine-advanced-local.json`, `application-local.json`, `chat-local.json` and `channel-local.json`.

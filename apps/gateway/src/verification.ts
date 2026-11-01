@@ -332,7 +332,12 @@ export default class Verification extends Cloudflare.Worker<Verification>()(
           const payload = yield* Effect.tryPromise(() => request.json()) as Effect.Effect<
             {
               id: string;
-              mode: "children" | "suspend" | "activity-failure" | "activity-suspension";
+              mode:
+                | "children"
+                | "suspend"
+                | "activity-failure"
+                | "activity-suspension"
+                | "r2-error";
             },
             unknown
           >;
@@ -345,6 +350,7 @@ export default class Verification extends Cloudflare.Worker<Verification>()(
             Response.json({
               status: yield* gateway.advancedStatus(url.searchParams.get("executionId") ?? ""),
               calls: yield* gateway.probeCalls(url.searchParams.get("id") ?? ""),
+              r2Failure: yield* gateway.advancedR2Failure(url.searchParams.get("id") ?? ""),
             }),
           );
         if (url.pathname === "/mcp-probe" && request.method === "POST")

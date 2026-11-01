@@ -22,6 +22,13 @@
     "secret": "CLOUDFLARE_WORKER_DEPLOY_TOKEN",
     "variable": "CLOUDFLARE_ACCOUNT_ID",
     "transport": "Only GitHub public-key-encrypted deployment token passed to the Mac; gh used the existing owner login",
-    "workflowExecution": "Not yet run"
+    "workflowExecution": {
+      "validation": "passed",
+      "runs": [
+        "https://github.com/Yhozen/kitties/actions/runs/41340003770",
+        "https://github.com/Yhozen/kitties/actions/runs/41340000244"
+      ],
+      "deploymentWorkflow": "Available after its file reaches the default branch; direct restricted-token publishing already passed"
+    }
   }
 }

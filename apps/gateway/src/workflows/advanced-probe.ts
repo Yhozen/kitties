@@ -1,3 +1,5 @@
+import type * as cf from "@cloudflare/workers-types";
+import { seal } from "../secrets.ts";
 import { guardedActivities } from "../recovery-guard.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import { makeCallback } from "alchemy/Callback";
@@ -11,7 +13,13 @@ import { Probe } from "./probe.ts";
 export const AdvancedProbe = Workflow.make("AdvancedProbeV1", {
   payload: {
     id: Schema.String,
-    mode: Schema.Literals(["children", "suspend", "activity-failure", "activity-suspension"]),
+    mode: Schema.Literals([
+      "children",
+      "suspend",
+      "activity-failure",
+      "activity-suspension",
+      "r2-error",
+    ]),
   },
   success: Schema.Number,
   error: Schema.String,
@@ -22,8 +30,70 @@ export const AdvancedProbeLive = Workflows.layer(
   AdvancedProbe,
   Effect.gen(function* () {
     const homes = yield* HomeDO;
+    const env = (yield* Cloudflare.WorkerEnvironment) as {
+      STAGE: string;
+      EXPORTS: cf.R2Bucket;
+      KITTIES_KEK: string;
+    };
     return Effect.fn(function* ({ id, mode }) {
       const home = homes.getByName("owner", { locationHint: "weur" });
+      if (mode === "r2-error") {
+        if (!["next", "e2e"].includes(env.STAGE)) return yield* Effect.fail("PROBE_DISABLED");
+        const key = `exports/r2-error-${id}/canary.jsonl`;
+        yield* guardedActivities(Effect.void)({
+          name: "seed-locked-object",
+          error: Schema.String,
+          execute: Effect.tryPromise({
+            try: async () => {
+              if (await env.EXPORTS.head(key)) return;
+              await env.EXPORTS.put(
+                key,
+                JSON.stringify(
+                  await seal(
+                    env.KITTIES_KEK,
+                    `kitties-export-v1:${key}`,
+                    "R2 error acceptance fixture",
+                  ),
+                ),
+              );
+            },
+            catch: () => "EXPORT_UNAVAILABLE",
+          }),
+        });
+        return yield* guardedActivities(Effect.void)({
+          name: "retryable-r2",
+          success: Schema.Number,
+          error: Schema.String,
+          execute: Effect.gen(function* () {
+            if (
+              !(yield* home
+                .read("probe-repair", id)
+                .pipe(Effect.mapError(() => "STORAGE_UNAVAILABLE")))
+            ) {
+              yield* Effect.tryPromise({
+                try: async () => {
+                  await env.EXPORTS.put(key, "overwrite must be refused");
+                },
+                catch: () => "EXPORT_UNAVAILABLE",
+              }).pipe(
+                Effect.tapError(() =>
+                  home
+                    .write("probe-r2-error", id, "locked overwrite refused")
+                    .pipe(Effect.mapError(() => "STORAGE_UNAVAILABLE")),
+                ),
+              );
+              return yield* Effect.fail("LOCK_NOT_ENFORCED");
+            }
+            const existing = yield* Effect.tryPromise({
+              try: () => env.EXPORTS.head(key),
+              catch: () => "EXPORT_UNAVAILABLE",
+            });
+            if (!existing) return yield* Effect.fail("EXPORT_UNAVAILABLE");
+            yield* home.recordProbeCall(id, 0).pipe(Effect.mapError(() => "STORAGE_UNAVAILABLE"));
+            return 1;
+          }),
+        });
+      }
       if (mode === "activity-suspension")
         return yield* guardedActivities(Effect.void)({
           name: "retryable-storage",

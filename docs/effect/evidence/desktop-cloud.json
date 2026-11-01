@@ -1,5 +1,5 @@
 {
-  "date": "2026-11-01T18:33:53.161Z",
+  "date": "2026-11-01T19:09:28.529Z",
   "status": "passed",
   "kittyId": "41fe4b43-cfe1-4566-b076-933804801b80",
   "screenshotUploadAndReplay": true,
@@ -12,7 +12,7 @@
     "guestAutomaticallyReconnected": true
   },
   "redeployWhileParked": {
-    "method": "Published Gateway and three ingress Workers using restricted application token",
+    "method": "Alchemy redeployed Gateway and affected ingress/verification Workers while the outcome was parked",
     "helpSurvived": true,
     "duplicateMessageReturnedDuplicate": true,
     "ownerAcceptedOutcome": true,
