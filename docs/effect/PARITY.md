@@ -148,3 +148,26 @@ kept behavior must have an implementation and acceptance evidence before cutover
 All seven servers require a deployed initialize/listTools probe. A server that needs an owner
 OAuth app or token remains pending rather than being reported as supported. Record negotiated
 protocol, transport, authentication, tool risk and any vendor restriction in RESEARCH.md.
+
+### Deployed dispositions (2026-11-01)
+
+[Cloud probes](evidence/mcp-cloud.json) exercised the deployed Effect MCP client. The authenticated
+fixture negotiated protocol `2025-11-25`, discovered tools, enforced an approval and made one
+external call across duplicate messages and decisions. [OAuth acceptance](evidence/oauth-cloud.json)
+verified PKCE, single-use callbacks, CIMD, bypass isolation and one refresh for 20 concurrent calls.
+
+| Server | Transport / authentication | Disposition |
+|---|---|---|
+| GitHub | Streamable HTTP; owner OAuth or scoped token | Anonymous probe did not establish a session. Configure owner authorization; authenticated vendor tools remain unverified. |
+| Stripe | Streamable HTTP; owner OAuth | Owner authorization required before use; payment actions always require approval. Authenticated vendor tools remain unverified. |
+| Notion | Streamable HTTP; owner OAuth | Configure an owner app/session; authenticated vendor tools remain unverified. |
+| Linear | Streamable HTTP; owner OAuth | Configure an owner app/session; authenticated vendor tools remain unverified. |
+| Atlassian | Streamable HTTP; owner OAuth | Configure an owner app/session; authenticated vendor tools remain unverified. |
+| Slack | Streamable HTTP; owner OAuth | Configure an owner app/session and workspace scopes; authenticated vendor tools remain unverified. |
+| Home Assistant | Owner-selected HTTPS endpoint and token | No owner instance was supplied. Generic MCP configuration is available; no live instance is claimed. |
+| Google Workspace / Microsoft 365 | Native file/calendar tools; owner OAuth or token | Minimal tool implementations and fixtures exist. Real owner-account calls remain unverified until configured. |
+| CalDAV / CardDAV | PROPFIND from Workers | Deferred: no owner endpoint supplied or deployed PROPFIND acceptance evidence. |
+
+MCP metadata does not grant permission. Read access names must be explicitly selected; all other
+tools go through the approval ledger. ChatGPT sign-in remains disabled by default and requires
+an owner login before real inference can be verified.
