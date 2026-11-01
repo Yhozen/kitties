@@ -54,6 +54,23 @@ export const makeRecovery = Effect.gen(function* () {
             reviews: yield* root().reviews(),
             purges: (yield* root().list("purge")).map((r) => JSON.parse(r.body)),
           });
+        const summary = path.match(
+          /^\/v1\/recovery\/run\/(export|restore|purge)\/([a-zA-Z0-9_-]{1,128})$/,
+        );
+        if (summary && request.method === "GET") {
+          const record = yield* root().read(summary[1]!, summary[2]!);
+          if (!record) return json({ code: "NOT_FOUND", params: {} }, 404);
+          const workflow =
+            summary[1] === "export" ? Export : summary[1] === "restore" ? Restore : Purge;
+          const executionId = (JSON.parse(record) as { executionId: string }).executionId;
+          return json(
+            yield* workflowActor(
+              engine,
+              `${workflow._tag}/${executionId}`,
+              env.KITTIES_KEK,
+            ).adminSummary(),
+          );
+        }
         if (path === "/v1/recovery/resume" && request.method === "POST") {
           const body = yield* readBody(
             request,

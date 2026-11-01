@@ -1,4 +1,6 @@
 import type { ToolDefinition } from "./entities.ts";
+export const desktopPerceptionPolicy =
+  "For desktop tasks, prefer references: use desktop_browser_read for browser pages and desktop_ui_read for native apps, then click/type the returned refs. Read again after a stale ref or to confirm a changed page. Use screenshots and pixel controls when references are unavailable or the task needs visual/canvas interaction. Never invent a reference.";
 const properties: Record<string, Record<string, unknown>> = {
   click: {
     x: { type: "integer", minimum: 0, maximum: 1279 },
@@ -40,9 +42,9 @@ export const desktopTools: ToolDefinition[] = Object.entries(properties).map(
           : action === "type_secret"
             ? "Type an owner vault secret by reference. Requires owner approval."
             : action.startsWith("browser_")
-              ? "Browser DOM references. Read before clicking or typing; stale references require a new read."
+              ? "Preferred browser perception: DOM references. Read before clicking or typing; stale references require a new read."
               : action.startsWith("ui_")
-                ? "Native accessibility references. If unsupported, use screenshot and pixel controls."
+                ? "Preferred native perception: accessibility references. If unsupported, use screenshot and pixel controls."
                 : "Desktop " + action,
     parameters: {
       type: "object",

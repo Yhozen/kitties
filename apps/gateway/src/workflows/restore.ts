@@ -1,3 +1,4 @@
+import * as Schedule from "effect/Schedule";
 import { guardedActivities } from "../recovery-guard.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import { workflowActor } from "../workflow-admin.ts";
@@ -82,7 +83,12 @@ export const RestoreLive = Workflows.layer(
         error: Schema.String,
         execute: Effect.gen(function* () {
           yield* actor.adminEvict().pipe(Effect.catchCause(() => Effect.void));
-          yield* actor.adminBookmark().pipe(Effect.mapError(storage));
+          yield* actor
+            .adminBookmark()
+            .pipe(
+              Effect.retry({ times: 8, schedule: Schedule.exponential("100 millis") }),
+              Effect.mapError(storage),
+            );
         }),
       });
       yield* activity({

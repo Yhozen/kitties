@@ -1,0 +1,1392 @@
+{
+  "date": "2026-11-01T18:01:17.019Z",
+  "suite": "fixed 20 tasks: 10 Chromium forms and 10 GTK controls",
+  "model": "gpt-5.4",
+  "runtime": "Boat Openbox/Xvfb 1280x800, agent-browser 0.41.1, agent-desktop envelope 2.5",
+  "trials": [
+    {
+      "kind": "browser",
+      "task": 0,
+      "mode": "pixels",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click",
+            "x": 282,
+            "y": 312
+          },
+          "usage": {
+            "input_tokens": 1369,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 34,
+            "output_tokens_details": {
+              "reasoning_tokens": 15
+            },
+            "total_tokens": 1403
+          }
+        }
+      ],
+      "imageInputs": 1,
+      "prompt": "Click Amber.",
+      "elapsedMs": 4339
+    },
+    {
+      "kind": "browser",
+      "task": 0,
+      "mode": "refs",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click_ref",
+            "ref": "@e51"
+          },
+          "usage": {
+            "input_tokens": 392,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 27,
+            "output_tokens_details": {
+              "reasoning_tokens": 10
+            },
+            "total_tokens": 419
+          }
+        }
+      ],
+      "imageInputs": 0,
+      "prompt": "Click Amber.",
+      "elapsedMs": 3564
+    },
+    {
+      "kind": "browser",
+      "task": 1,
+      "mode": "refs",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click_ref",
+            "ref": "@e59"
+          },
+          "usage": {
+            "input_tokens": 392,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 15,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 407
+          }
+        }
+      ],
+      "imageInputs": 0,
+      "prompt": "Click Continue.",
+      "elapsedMs": 3071
+    },
+    {
+      "kind": "browser",
+      "task": 1,
+      "mode": "pixels",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click",
+            "x": 282,
+            "y": 561
+          },
+          "usage": {
+            "input_tokens": 1369,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 34,
+            "output_tokens_details": {
+              "reasoning_tokens": 15
+            },
+            "total_tokens": 1403
+          }
+        }
+      ],
+      "imageInputs": 1,
+      "prompt": "Click Continue.",
+      "elapsedMs": 3790
+    },
+    {
+      "kind": "browser",
+      "task": 2,
+      "mode": "pixels",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click",
+            "x": 121,
+            "y": 415
+          },
+          "usage": {
+            "input_tokens": 1370,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 31,
+            "output_tokens_details": {
+              "reasoning_tokens": 12
+            },
+            "total_tokens": 1401
+          }
+        }
+      ],
+      "imageInputs": 1,
+      "prompt": "Enable Reminders.",
+      "elapsedMs": 3900
+    },
+    {
+      "kind": "browser",
+      "task": 2,
+      "mode": "refs",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click_ref",
+            "ref": "@e62"
+          },
+          "usage": {
+            "input_tokens": 383,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 27,
+            "output_tokens_details": {
+              "reasoning_tokens": 9
+            },
+            "total_tokens": 410
+          }
+        }
+      ],
+      "imageInputs": 0,
+      "prompt": "Enable Reminders.",
+      "elapsedMs": 3352
+    },
+    {
+      "kind": "browser",
+      "task": 3,
+      "mode": "refs",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click_ref",
+            "ref": "@e66"
+          },
+          "usage": {
+            "input_tokens": 378,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 26,
+            "output_tokens_details": {
+              "reasoning_tokens": 9
+            },
+            "total_tokens": 404
+          }
+        }
+      ],
+      "imageInputs": 0,
+      "prompt": "Choose Quiet.",
+      "elapsedMs": 3065
+    },
+    {
+      "kind": "browser",
+      "task": 3,
+      "mode": "pixels",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click",
+            "x": 119,
+            "y": 413
+          },
+          "usage": {
+            "input_tokens": 1369,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 28,
+            "output_tokens_details": {
+              "reasoning_tokens": 9
+            },
+            "total_tokens": 1397
+          }
+        }
+      ],
+      "imageInputs": 1,
+      "prompt": "Choose Quiet.",
+      "elapsedMs": 3440
+    },
+    {
+      "kind": "browser",
+      "task": 4,
+      "mode": "pixels",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click",
+            "x": 288,
+            "y": 388
+          },
+          "usage": {
+            "input_tokens": 1374,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 44,
+            "output_tokens_details": {
+              "reasoning_tokens": 25
+            },
+            "total_tokens": 1418
+          }
+        },
+        {
+          "action": {
+            "action": "type",
+            "text": "violet"
+          },
+          "usage": {
+            "input_tokens": 1387,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 36,
+            "output_tokens_details": {
+              "reasoning_tokens": 20
+            },
+            "total_tokens": 1423
+          }
+        },
+        {
+          "action": {
+            "action": "click",
+            "x": 250,
+            "y": 481
+          },
+          "usage": {
+            "input_tokens": 1396,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 28,
+            "output_tokens_details": {
+              "reasoning_tokens": 9
+            },
+            "total_tokens": 1424
+          }
+        }
+      ],
+      "imageInputs": 3,
+      "prompt": "Enter violet in Code and click Save.",
+      "elapsedMs": 8632
+    },
+    {
+      "kind": "browser",
+      "task": 4,
+      "mode": "refs",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "type_ref",
+            "ref": "@e70",
+            "text": "violet"
+          },
+          "usage": {
+            "input_tokens": 374,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 36,
+            "output_tokens_details": {
+              "reasoning_tokens": 14
+            },
+            "total_tokens": 410
+          }
+        },
+        {
+          "action": {
+            "action": "click_ref",
+            "ref": "@e69"
+          },
+          "usage": {
+            "input_tokens": 401,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 26,
+            "output_tokens_details": {
+              "reasoning_tokens": 8
+            },
+            "total_tokens": 427
+          }
+        }
+      ],
+      "imageInputs": 0,
+      "prompt": "Enter violet in Code and click Save.",
+      "elapsedMs": 5072
+    },
+    {
+      "kind": "browser",
+      "task": 5,
+      "mode": "refs",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click_ref",
+            "ref": "@e73"
+          },
+          "usage": {
+            "input_tokens": 378,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 26,
+            "output_tokens_details": {
+              "reasoning_tokens": 9
+            },
+            "total_tokens": 404
+          }
+        }
+      ],
+      "imageInputs": 0,
+      "prompt": "Choose Daily.",
+      "elapsedMs": 3329
+    },
+    {
+      "kind": "browser",
+      "task": 5,
+      "mode": "pixels",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click",
+            "x": 118,
+            "y": 413
+          },
+          "usage": {
+            "input_tokens": 1369,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 30,
+            "output_tokens_details": {
+              "reasoning_tokens": 11
+            },
+            "total_tokens": 1399
+          }
+        }
+      ],
+      "imageInputs": 1,
+      "prompt": "Choose Daily.",
+      "elapsedMs": 3431
+    },
+    {
+      "kind": "browser",
+      "task": 6,
+      "mode": "pixels",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click",
+            "x": 278,
+            "y": 478
+          },
+          "usage": {
+            "input_tokens": 1369,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 33,
+            "output_tokens_details": {
+              "reasoning_tokens": 14
+            },
+            "total_tokens": 1402
+          }
+        }
+      ],
+      "imageInputs": 1,
+      "prompt": "Click Archive.",
+      "elapsedMs": 3745
+    },
+    {
+      "kind": "browser",
+      "task": 6,
+      "mode": "refs",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click_ref",
+            "ref": "@e78"
+          },
+          "usage": {
+            "input_tokens": 392,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 27,
+            "output_tokens_details": {
+              "reasoning_tokens": 10
+            },
+            "total_tokens": 419
+          }
+        }
+      ],
+      "imageInputs": 0,
+      "prompt": "Click Archive.",
+      "elapsedMs": 3194
+    },
+    {
+      "kind": "browser",
+      "task": 7,
+      "mode": "refs",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "type_ref",
+            "ref": "@e82",
+            "text": "Milo"
+          },
+          "usage": {
+            "input_tokens": 374,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 33,
+            "output_tokens_details": {
+              "reasoning_tokens": 11
+            },
+            "total_tokens": 407
+          }
+        },
+        {
+          "action": {
+            "action": "click_ref",
+            "ref": "@e81"
+          },
+          "usage": {
+            "input_tokens": 401,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 26,
+            "output_tokens_details": {
+              "reasoning_tokens": 8
+            },
+            "total_tokens": 427
+          }
+        }
+      ],
+      "imageInputs": 0,
+      "prompt": "Enter Milo in Code and click Save.",
+      "elapsedMs": 5249
+    },
+    {
+      "kind": "browser",
+      "task": 7,
+      "mode": "pixels",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click",
+            "x": 364,
+            "y": 330
+          },
+          "usage": {
+            "input_tokens": 1374,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 28,
+            "output_tokens_details": {
+              "reasoning_tokens": 9
+            },
+            "total_tokens": 1402
+          }
+        },
+        {
+          "action": {
+            "action": "type",
+            "text": "Milo"
+          },
+          "usage": {
+            "input_tokens": 1387,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 40,
+            "output_tokens_details": {
+              "reasoning_tokens": 24
+            },
+            "total_tokens": 1427
+          }
+        },
+        {
+          "action": {
+            "action": "click",
+            "x": 270,
+            "y": 432
+          },
+          "usage": {
+            "input_tokens": 1396,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 27,
+            "output_tokens_details": {
+              "reasoning_tokens": 8
+            },
+            "total_tokens": 1423
+          }
+        }
+      ],
+      "imageInputs": 3,
+      "prompt": "Enter Milo in Code and click Save.",
+      "elapsedMs": 9556
+    },
+    {
+      "kind": "browser",
+      "task": 8,
+      "mode": "pixels",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click",
+            "x": 280,
+            "y": 313
+          },
+          "usage": {
+            "input_tokens": 1369,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 34,
+            "output_tokens_details": {
+              "reasoning_tokens": 15
+            },
+            "total_tokens": 1403
+          }
+        }
+      ],
+      "imageInputs": 1,
+      "prompt": "Click Review.",
+      "elapsedMs": 3585
+    },
+    {
+      "kind": "browser",
+      "task": 8,
+      "mode": "refs",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click_ref",
+            "ref": "@e84"
+          },
+          "usage": {
+            "input_tokens": 392,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 15,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 407
+          }
+        }
+      ],
+      "imageInputs": 0,
+      "prompt": "Click Review.",
+      "elapsedMs": 3573
+    },
+    {
+      "kind": "browser",
+      "task": 9,
+      "mode": "refs",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click_ref",
+            "ref": "@e90"
+          },
+          "usage": {
+            "input_tokens": 378,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 26,
+            "output_tokens_details": {
+              "reasoning_tokens": 9
+            },
+            "total_tokens": 404
+          }
+        }
+      ],
+      "imageInputs": 0,
+      "prompt": "Enable Updates.",
+      "elapsedMs": 3236
+    },
+    {
+      "kind": "browser",
+      "task": 9,
+      "mode": "pixels",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click",
+            "x": 116,
+            "y": 412
+          },
+          "usage": {
+            "input_tokens": 1369,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 30,
+            "output_tokens_details": {
+              "reasoning_tokens": 11
+            },
+            "total_tokens": 1399
+          }
+        }
+      ],
+      "imageInputs": 1,
+      "prompt": "Enable Updates.",
+      "elapsedMs": 4187
+    },
+    {
+      "kind": "native",
+      "task": 0,
+      "mode": "pixels",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click",
+            "x": 641,
+            "y": 210
+          },
+          "usage": {
+            "input_tokens": 1369,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 31,
+            "output_tokens_details": {
+              "reasoning_tokens": 12
+            },
+            "total_tokens": 1400
+          }
+        }
+      ],
+      "imageInputs": 1,
+      "prompt": "Click Amber.",
+      "elapsedMs": 3561
+    },
+    {
+      "kind": "native",
+      "task": 0,
+      "mode": "refs",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click_ref",
+            "ref": "@s2nri40yszbez3:e1"
+          },
+          "usage": {
+            "input_tokens": 412,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 24,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 436
+          }
+        }
+      ],
+      "imageInputs": 0,
+      "prompt": "Click Amber.",
+      "elapsedMs": 3620
+    },
+    {
+      "kind": "native",
+      "task": 1,
+      "mode": "refs",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click_ref",
+            "ref": "@s3jx03pupb3wee:e4"
+          },
+          "usage": {
+            "input_tokens": 417,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 25,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 442
+          }
+        }
+      ],
+      "imageInputs": 0,
+      "prompt": "Click Continue.",
+      "elapsedMs": 3209
+    },
+    {
+      "kind": "native",
+      "task": 1,
+      "mode": "pixels",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click",
+            "x": 641,
+            "y": 480
+          },
+          "usage": {
+            "input_tokens": 1369,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 28,
+            "output_tokens_details": {
+              "reasoning_tokens": 9
+            },
+            "total_tokens": 1397
+          }
+        }
+      ],
+      "imageInputs": 1,
+      "prompt": "Click Continue.",
+      "elapsedMs": 3467
+    },
+    {
+      "kind": "native",
+      "task": 2,
+      "mode": "pixels",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click",
+            "x": 206,
+            "y": 235
+          },
+          "usage": {
+            "input_tokens": 1370,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 29,
+            "output_tokens_details": {
+              "reasoning_tokens": 10
+            },
+            "total_tokens": 1399
+          }
+        }
+      ],
+      "imageInputs": 1,
+      "prompt": "Enable Reminders.",
+      "elapsedMs": 3515
+    },
+    {
+      "kind": "native",
+      "task": 2,
+      "mode": "refs",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click_ref",
+            "ref": "@sdgu839d009ca:e2"
+          },
+          "usage": {
+            "input_tokens": 375,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 33,
+            "output_tokens_details": {
+              "reasoning_tokens": 9
+            },
+            "total_tokens": 408
+          }
+        }
+      ],
+      "imageInputs": 0,
+      "prompt": "Enable Reminders.",
+      "elapsedMs": 3191
+    },
+    {
+      "kind": "native",
+      "task": 3,
+      "mode": "refs",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click_ref",
+            "ref": "@s3mmb7twrs4sp6:e2"
+          },
+          "usage": {
+            "input_tokens": 393,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 43,
+            "output_tokens_details": {
+              "reasoning_tokens": 15
+            },
+            "total_tokens": 436
+          }
+        }
+      ],
+      "imageInputs": 0,
+      "prompt": "Choose Quiet.",
+      "elapsedMs": 3590
+    },
+    {
+      "kind": "native",
+      "task": 3,
+      "mode": "pixels",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click",
+            "x": 206,
+            "y": 231
+          },
+          "usage": {
+            "input_tokens": 1369,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 28,
+            "output_tokens_details": {
+              "reasoning_tokens": 9
+            },
+            "total_tokens": 1397
+          }
+        }
+      ],
+      "imageInputs": 1,
+      "prompt": "Choose Quiet.",
+      "elapsedMs": 3626
+    },
+    {
+      "kind": "native",
+      "task": 4,
+      "mode": "pixels",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "type",
+            "text": "violet"
+          },
+          "usage": {
+            "input_tokens": 1374,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 101,
+            "output_tokens_details": {
+              "reasoning_tokens": 85
+            },
+            "total_tokens": 1475
+          }
+        },
+        {
+          "action": {
+            "action": "click",
+            "x": 642,
+            "y": 293
+          },
+          "usage": {
+            "input_tokens": 1384,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 27,
+            "output_tokens_details": {
+              "reasoning_tokens": 8
+            },
+            "total_tokens": 1411
+          }
+        }
+      ],
+      "imageInputs": 2,
+      "prompt": "Enter violet in Code and click Save.",
+      "elapsedMs": 6401
+    },
+    {
+      "kind": "native",
+      "task": 4,
+      "mode": "refs",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "type_ref",
+            "ref": "@s19dufpxvgwobk:e1",
+            "text": "violet"
+          },
+          "usage": {
+            "input_tokens": 380,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 45,
+            "output_tokens_details": {
+              "reasoning_tokens": 13
+            },
+            "total_tokens": 425
+          }
+        },
+        {
+          "action": {
+            "action": "click_ref",
+            "ref": "@s3qbq79ijl8kc6:e2"
+          },
+          "usage": {
+            "input_tokens": 411,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 35,
+            "output_tokens_details": {
+              "reasoning_tokens": 8
+            },
+            "total_tokens": 446
+          }
+        }
+      ],
+      "imageInputs": 0,
+      "prompt": "Enter violet in Code and click Save.",
+      "elapsedMs": 5309
+    },
+    {
+      "kind": "native",
+      "task": 5,
+      "mode": "refs",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click_ref",
+            "ref": "@shfo82fv7s96s:e2"
+          },
+          "usage": {
+            "input_tokens": 385,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 35,
+            "output_tokens_details": {
+              "reasoning_tokens": 9
+            },
+            "total_tokens": 420
+          }
+        }
+      ],
+      "imageInputs": 0,
+      "prompt": "Choose Daily.",
+      "elapsedMs": 3204
+    },
+    {
+      "kind": "native",
+      "task": 5,
+      "mode": "pixels",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click",
+            "x": 211,
+            "y": 232
+          },
+          "usage": {
+            "input_tokens": 1369,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 28,
+            "output_tokens_details": {
+              "reasoning_tokens": 9
+            },
+            "total_tokens": 1397
+          }
+        }
+      ],
+      "imageInputs": 1,
+      "prompt": "Choose Daily.",
+      "elapsedMs": 3359
+    },
+    {
+      "kind": "native",
+      "task": 6,
+      "mode": "pixels",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click",
+            "x": 642,
+            "y": 389
+          },
+          "usage": {
+            "input_tokens": 1369,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 30,
+            "output_tokens_details": {
+              "reasoning_tokens": 11
+            },
+            "total_tokens": 1399
+          }
+        }
+      ],
+      "imageInputs": 1,
+      "prompt": "Click Archive.",
+      "elapsedMs": 5032
+    },
+    {
+      "kind": "native",
+      "task": 6,
+      "mode": "refs",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click_ref",
+            "ref": "@s1208lgbmd0xmn:e3"
+          },
+          "usage": {
+            "input_tokens": 417,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 36,
+            "output_tokens_details": {
+              "reasoning_tokens": 9
+            },
+            "total_tokens": 453
+          }
+        }
+      ],
+      "imageInputs": 0,
+      "prompt": "Click Archive.",
+      "elapsedMs": 4255
+    },
+    {
+      "kind": "native",
+      "task": 7,
+      "mode": "refs",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "type_ref",
+            "ref": "@s1spe1hqhritz5:e1",
+            "text": "Milo"
+          },
+          "usage": {
+            "input_tokens": 377,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 45,
+            "output_tokens_details": {
+              "reasoning_tokens": 14
+            },
+            "total_tokens": 422
+          }
+        },
+        {
+          "action": {
+            "action": "click_ref",
+            "ref": "@s1x0wtnkekv5be:e2"
+          },
+          "usage": {
+            "input_tokens": 416,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 37,
+            "output_tokens_details": {
+              "reasoning_tokens": 8
+            },
+            "total_tokens": 453
+          }
+        }
+      ],
+      "imageInputs": 0,
+      "prompt": "Enter Milo in Code and click Save.",
+      "elapsedMs": 5861
+    },
+    {
+      "kind": "native",
+      "task": 7,
+      "mode": "pixels",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "type",
+            "text": "Milo"
+          },
+          "usage": {
+            "input_tokens": 1374,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 27,
+            "output_tokens_details": {
+              "reasoning_tokens": 11
+            },
+            "total_tokens": 1401
+          }
+        },
+        {
+          "action": {
+            "action": "click",
+            "x": 641,
+            "y": 294
+          },
+          "usage": {
+            "input_tokens": 1384,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 27,
+            "output_tokens_details": {
+              "reasoning_tokens": 8
+            },
+            "total_tokens": 1411
+          }
+        }
+      ],
+      "imageInputs": 2,
+      "prompt": "Enter Milo in Code and click Save.",
+      "elapsedMs": 6149
+    },
+    {
+      "kind": "native",
+      "task": 8,
+      "mode": "pixels",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click",
+            "x": 642,
+            "y": 211
+          },
+          "usage": {
+            "input_tokens": 1369,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 28,
+            "output_tokens_details": {
+              "reasoning_tokens": 9
+            },
+            "total_tokens": 1397
+          }
+        }
+      ],
+      "imageInputs": 1,
+      "prompt": "Click Review.",
+      "elapsedMs": 3745
+    },
+    {
+      "kind": "native",
+      "task": 8,
+      "mode": "refs",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click_ref",
+            "ref": "@s39wdlop695a68:e1"
+          },
+          "usage": {
+            "input_tokens": 407,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 23,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 430
+          }
+        }
+      ],
+      "imageInputs": 0,
+      "prompt": "Click Review.",
+      "elapsedMs": 9475
+    },
+    {
+      "kind": "native",
+      "task": 9,
+      "mode": "refs",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click_ref",
+            "ref": "@s2q81xqxgffzn0:e2"
+          },
+          "usage": {
+            "input_tokens": 388,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 40,
+            "output_tokens_details": {
+              "reasoning_tokens": 12
+            },
+            "total_tokens": 428
+          }
+        }
+      ],
+      "imageInputs": 0,
+      "prompt": "Enable Updates.",
+      "elapsedMs": 5414
+    },
+    {
+      "kind": "native",
+      "task": 9,
+      "mode": "pixels",
+      "success": true,
+      "steps": [
+        {
+          "action": {
+            "action": "click",
+            "x": 207,
+            "y": 233
+          },
+          "usage": {
+            "input_tokens": 1369,
+            "input_tokens_details": {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens": 28,
+            "output_tokens_details": {
+              "reasoning_tokens": 9
+            },
+            "total_tokens": 1397
+          }
+        }
+      ],
+      "imageInputs": 1,
+      "prompt": "Enable Updates.",
+      "elapsedMs": 3898
+    }
+  ],
+  "pixels": {
+    "tasks": 20,
+    "passed": 20,
+    "imageInputs": 26,
+    "inputTokens": 35736,
+    "outputTokens": 869
+  },
+  "refs": {
+    "tasks": 20,
+    "passed": 20,
+    "imageInputs": 0,
+    "inputTokens": 9413,
+    "outputTokens": 731
+  },
+  "decision": "refs-default",
+  "imageTokens": "The API reports aggregate input tokens. Ref trials send no images (zero image tokens); image input counts are recorded separately.",
+  "limitation": "Synthetic control tasks on this guest; native accessibility failures count as failures, without pixel fallback in the ref arm.",
+  "status": "completed"
+}

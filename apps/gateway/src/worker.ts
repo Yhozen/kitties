@@ -1,3 +1,4 @@
+import { verifiedAccessIdentity } from "./access-jwt.ts";
 import { makeRecovery } from "./recovery.ts";
 import { PurgeLive } from "./workflows/purge.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
@@ -79,6 +80,16 @@ const props = Effect.gen(function* () {
     env: {
       PUBLIC_URL: Cloudflare.Worker.URL,
       ACCESS_EMAIL: email,
+      ACCESS_ISSUER: yield* Config.String("KITTIES_ACCESS_ISSUER").pipe(
+        Config.withDefault("https://misty-sky-3199.cloudflareaccess.com"),
+      ),
+      ACCESS_AUDIENCE: yield* Config.String("KITTIES_ACCESS_AUDIENCE").pipe(
+        Config.withDefault(
+          stage === "next"
+            ? "6d0289542bd5627c4611d3191d290eb709f6dc21567ce86beede78b8d5e8ff10"
+            : "",
+        ),
+      ),
       CHATGPT_ENABLED: yield* Config.String("KITTIES_CHATGPT_ENABLED").pipe(
         Config.withDefault("false"),
       ),
@@ -130,6 +141,8 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
     const env = (yield* Cloudflare.WorkerEnvironment) as {
       PUBLIC_URL: string;
       ACCESS_EMAIL: string;
+      ACCESS_ISSUER: string;
+      ACCESS_AUDIENCE: string;
       STAGE: string;
       ASSETS: { fetch(request: Request): Promise<Response> };
     };
@@ -203,9 +216,14 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
       fetch: Effect.gen(function* () {
         const request = yield* Cloudflare.Request;
         const access = yield* Cloudflare.Access.Context;
-        const identity = access
+        const nativeIdentity = access
           ? yield* access.getIdentity().pipe(Effect.catch(() => Effect.succeed(undefined)))
           : undefined;
+        const identity =
+          nativeIdentity ??
+          (yield* Effect.promise(() =>
+            verifiedAccessIdentity(request, env.ACCESS_ISSUER, env.ACCESS_AUDIENCE),
+          ));
         const error = ownerError(request, env.PUBLIC_URL, env.ACCESS_EMAIL, identity);
         if (error) return json(error.body, error.status);
         const url = new URL(request.url);

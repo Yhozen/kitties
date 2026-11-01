@@ -22,6 +22,7 @@ export const workflowActor = (
   const invoke = <A>(method: string, ...args: readonly unknown[]) =>
     (engine as unknown as Administration).adminCall(workflow, id, method, args) as Effect.Effect<A>;
   return {
+    adminSummary: () => invoke<unknown>("adminSummary"),
     adminBookmark: (at?: number) => invoke<string>("adminBookmark", at),
     adminPrepareRestore: (bookmark: string) => invoke<string>("adminPrepareRestore", bookmark),
     adminEvict: () => invoke<void>("adminEvict"),

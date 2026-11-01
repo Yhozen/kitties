@@ -1,0 +1,19 @@
+{
+  "date": "2026-11-01T18:08:14.917Z",
+  "status": "passed",
+  "workflow": "AdvancedProbeV1",
+  "failure": "STORAGE_UNAVAILABLE",
+  "beforeRepair": "Running, zero calls",
+  "afterRepair": {
+    "status": {
+      "_tag": "Completed",
+      "result": 1
+    },
+    "calls": [
+      {
+        "step": 0,
+        "calls": 1
+      }
+    ]
+  }
+}
