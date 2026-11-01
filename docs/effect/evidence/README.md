@@ -41,3 +41,6 @@ is the acceptance result.
 
 Detached bootstrap duplicate-launch/reconnection acceptance passed (`bootstrap-service-cloud.json`).
 The candidate screenshot/dedupe/replay also passed before cutover (`candidate-desktop-cloud.json`).
+
+The final application was published to both production and next with the restricted token
+(`final-publish-cloud.json`). Local checks and removal scope are in `cutover-validation.json`.

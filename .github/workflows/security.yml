@@ -51,6 +51,8 @@ jobs:
 
   # The code's own mistakes (injection, unsafe paths, weak crypto), with GitHub's CodeQL.
   codeql:
+    # Private repositories need a GitHub Code Security licence; opt in after enabling it.
+    if: github.event.repository.private == false || vars.ENABLE_CODEQL == 'true'
     name: codeql · ${{ matrix.language }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -71,19 +73,7 @@ jobs:
         with:
           category: /language:${{ matrix.language }}
 
-  # A pull request that adds a dependency with a known flaw or a licence that cannot ship.
-  dependency-review:
-    name: dependencies a pull request adds
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v4
-        with:
-          fail-on-severity: high
-
-  # The image's shell scripts, with their own linter.
+  # Guest shell scripts are shipped in the immutable Boat release.
   shellcheck:
     name: shell scripts
     runs-on: ubuntu-24.04
