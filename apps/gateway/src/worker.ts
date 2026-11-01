@@ -2,14 +2,34 @@ import * as Cloudflare from "@alchemy.run/cloudflare";
 import { Stage } from "alchemy/Stage";
 import * as Workflows from "alchemy/Workflows";
 import * as Config from "effect/Config";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import { GuestAssets } from "./resources.ts";
 import { WorkflowEngine } from "effect/workflow";
 import { Health, Session } from "@kitties/domain";
 import { HomeDO, KittyDO, ChatDO } from "./actors.ts";
+import { ChatDOLive } from "./chat.ts";
+import { DesktopAttemptLive } from "./workflows/desktop.ts";
+import { ComputerOpLive } from "./workflows/computer.ts";
+import { TurnLive } from "./workflows/turn.ts";
+import { DistillLive } from "./workflows/distill.ts";
+import { GoalSlotLive } from "./workflows/goal.ts";
+import { makeAutonomy } from "./autonomy.ts";
+import { makeWebhooks } from "./webhooks.ts";
+import { TimerProbe, TimerProbeLive } from "./workflows/timer-probe.ts";
+import { NotifyLive } from "./workflows/notify.ts";
+import { makeNotifications } from "./notifications.ts";
+import { ApprovalLive } from "./workflows/approval.ts";
+import { makeLifecycle } from "./lifecycle.ts";
+import { chatEvents } from "./chat-stream.ts";
+import * as Stream from "effect/Stream";
+import { makeApplication } from "./application.ts";
 import { ownerError } from "./security.ts";
+import type { GuestConfig } from "./kitty.ts";
+import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import { AdvancedProbe, AdvancedProbeLive, CallbackProbeDO } from "./workflows/advanced-probe.ts";
 import { ContinueProbe, Probe, ProbeLive } from "./workflows/probe.ts";
 
@@ -23,6 +43,11 @@ const props = Effect.gen(function* () {
   const email = yield* Config.String("KITTIES_ACCESS_EMAIL").pipe(
     Config.withDefault("gabriel@garox.org"),
   );
+  const kek = yield* Config.Redacted("KITTIES_KEK");
+  const releaseKey = yield* Config.Redacted("KITTIES_RELEASE_KEY");
+  const deployment = yield* Config.String("KITTIES_DEPLOYMENT");
+  const boatKey = yield* Config.Redacted("BOAT_DEV_API_KEY");
+  const blobs = yield* GuestAssets;
   return {
     main: import.meta.url,
     domain,
@@ -45,22 +70,46 @@ const props = Effect.gen(function* () {
       policies: [{ decision: "allow" as const, include: [{ email }] }],
     },
     dev: { access: { identity: { email } } },
-    env: { PUBLIC_URL: Cloudflare.Worker.URL, ACCESS_EMAIL: email, STAGE: stage },
+    env: {
+      PUBLIC_URL: Cloudflare.Worker.URL,
+      ACCESS_EMAIL: email,
+      STAGE: stage,
+      KITTIES_KEK: kek,
+      BOAT_DEV_API_KEY: boatKey,
+      KITTIES_DEPLOYMENT: deployment,
+      KITTIES_RELEASE_KEY: releaseKey,
+      GUEST_URL:
+        stage === "local" ? "http://localhost:1338" : `https://guest-${stage}.kitties.rccpr.tech`,
+      BLOBS: blobs,
+    },
   };
 });
 const ProbePayload = Probe.payloadSchema;
 
 export default class Gateway extends Cloudflare.Worker<Gateway>()(
   "Gateway",
-  props,
+  props.pipe(
+    Effect.tapCause((cause) =>
+      Effect.logError("Gateway configuration failed", Cause.pretty(cause)),
+    ),
+  ),
   Effect.gen(function* () {
     const engine = yield* WorkflowEngine.WorkflowEngine;
     const homes = yield* HomeDO;
-    yield* KittyDO;
-    yield* ChatDO;
+    const kitties = yield* KittyDO;
+    const chats = yield* ChatDO;
     const probes = yield* Workflows.RunWorkflow(Probe);
     const advanced = yield* Workflows.RunWorkflow(AdvancedProbe);
+    const timers = yield* Workflows.RunWorkflow(TimerProbe);
     const callbacks = yield* CallbackProbeDO;
+    const application = yield* makeApplication;
+    const lifecycle = yield* makeLifecycle;
+    const autonomy = yield* makeAutonomy;
+    const receiveWebhook = yield* makeWebhooks;
+    const notifications = yield* makeNotifications;
+    yield* Cloudflare.Workers.cron("* * * * *", () =>
+      lifecycle.pipe(Effect.andThen(autonomy.tick), Effect.andThen(notifications.tick)),
+    );
     const env = (yield* Cloudflare.WorkerEnvironment) as {
       PUBLIC_URL: string;
       ACCESS_EMAIL: string;
@@ -72,6 +121,39 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
         Response.json(body, { status, headers: { "Cache-Control": "no-store" } }),
       );
     return {
+      receiveWebhook,
+      timerStart: (id: string) => timers.start({ id }).pipe(Effect.map((run) => run.executionId)),
+      timerStatus: (id: string) => timers.get(id).status,
+      verifyChatStream: (id: string) =>
+        chatEvents((after) => chats.getByName(id, { locationHint: "weur" }).events(after), 0).pipe(
+          Stream.filter(() => env.STAGE === "next" || env.STAGE === "e2e"),
+        ),
+      verifyApplication: (method: string, path: string, body: string | null) =>
+        Effect.gen(function* () {
+          if (env.STAGE !== "next" && env.STAGE !== "e2e") return { status: 404, body: "" };
+          if (
+            !/^\/v1\/(kitties|chats|providers|connections|approvals|runs|computer-runs|releases|vault|help|artifacts|skills|goals|hooks|approval-rules|notifications)(?:\/|$)/.test(
+              path,
+            )
+          )
+            return { status: 404, body: "" };
+          const response = yield* application(
+            new Request(env.PUBLIC_URL + path, {
+              method,
+              headers: { "Content-Type": "application/json" },
+              ...(body ? { body } : {}),
+            }),
+          );
+          if (!response) return { status: 404, body: "" };
+          if (path.includes("/events")) return { status: 400, body: "" };
+          const native = HttpServerResponse.toWeb(response);
+          return { status: native.status, body: yield* Effect.promise(() => native.text()) };
+        }),
+      desktopConfigure: (id: string, config: Omit<GuestConfig, "epoch">) =>
+        kitties.getByName(id, { locationHint: "weur" }).configure(config),
+      desktopStatus: (id: string) => kitties.getByName(id, { locationHint: "weur" }).status(),
+      desktopReceipt: (id: string, intentId: string) =>
+        kitties.getByName(id, { locationHint: "weur" }).receipt(intentId),
       advancedStart: (payload: typeof AdvancedProbe.payloadSchema.Type) =>
         advanced.start(payload).pipe(Effect.map((run) => run.executionId)),
       advancedStatus: (id: string) => advanced.get(id).status,
@@ -108,6 +190,34 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
         const error = ownerError(request, env.PUBLIC_URL, env.ACCESS_EMAIL, identity);
         if (error) return json(error.body, error.status);
         const url = new URL(request.url);
+        const handled = yield* application(request);
+        if (handled) return handled;
+        const desktopRoute = url.pathname.match(
+          /^\/v1\/kitties\/([a-zA-Z0-9_-]{1,128})\/desktop(?:\/(control|frames))?$/,
+        );
+        if (desktopRoute && request.method === "GET") {
+          const kitty = kitties.getByName(desktopRoute[1]!, { locationHint: "weur" });
+          if (desktopRoute[2]) {
+            if (request.headers.get("Origin") !== env.PUBLIC_URL)
+              return json({ code: "ORIGIN_DENIED", params: {} }, 403);
+            return yield* kitty.fetch(yield* HttpServerRequest.HttpServerRequest);
+          }
+          return json(yield* kitty.status());
+        }
+        if (
+          (env.STAGE === "local" || env.STAGE === "e2e") &&
+          url.pathname === "/v1/operator/desktop" &&
+          request.method === "POST"
+        ) {
+          const body = (yield* Effect.tryPromise(() => request.json())) as Omit<
+            GuestConfig,
+            "epoch"
+          >;
+          return json(
+            yield* kitties.getByName(body.kittyId, { locationHint: "weur" }).configure(body),
+          );
+        }
+
         if (
           env.STAGE !== "prod" &&
           url.pathname === "/v1/operator/advanced" &&
@@ -220,8 +330,24 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
       }).pipe(Effect.catch(() => Effect.succeed(json({ code: "UNAVAILABLE", params: {} }, 503)))),
     };
   }).pipe(
+    Effect.tapCause((cause) =>
+      Effect.logError("Gateway initialization failed", Cause.pretty(cause)),
+    ),
+    Effect.provide(Cloudflare.Workers.CronEventSourceLive),
     Effect.provide(
-      Layer.mergeAll(ProbeLive, AdvancedProbeLive).pipe(
+      Layer.mergeAll(
+        ProbeLive,
+        AdvancedProbeLive,
+        TurnLive,
+        DistillLive,
+        GoalSlotLive,
+        TimerProbeLive,
+        NotifyLive,
+        ApprovalLive,
+        ComputerOpLive,
+        DesktopAttemptLive,
+      ).pipe(
+        Layer.provideMerge(ChatDOLive),
         Layer.provideMerge(Cloudflare.Workflows.DurableObjectEngine),
       ),
     ),

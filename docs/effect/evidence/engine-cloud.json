@@ -1,0 +1,31 @@
+{
+  "date": "2026-11-01T15:42:54.873Z",
+  "status": "passed",
+  "runtime": "Cloudflare DurableObjectEngine",
+  "cases": [
+    {
+      "name": "replay-3",
+      "status": "pass",
+      "signalToResultMs": 113
+    },
+    {
+      "name": "replay-50",
+      "status": "pass",
+      "signalToResultMs": 710
+    },
+    {
+      "name": "replay-200",
+      "status": "pass",
+      "signalToResultMs": 382
+    },
+    {
+      "name": "replay-500",
+      "status": "pass",
+      "signalToResultMs": 1035
+    },
+    {
+      "name": "journaled-failure",
+      "status": "pass"
+    }
+  ]
+}

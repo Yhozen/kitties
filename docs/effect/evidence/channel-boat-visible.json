@@ -1,0 +1,20 @@
+{
+  "date": "2026-11-01T16:33:36.183Z",
+  "runtime": "European Boat Node client \u2192 public Cloudflare WS \u2192 real Boat kittyd; sharp decoded visible pixel",
+  "inputs": 200,
+  "ackP50Ms": 123.45444999999745,
+  "ackP95Ms": 242.5939819999985,
+  "visibleP50Ms": 197.33287999999993,
+  "visibleP95Ms": 359.6270430000004,
+  "frames": 201,
+  "gates": {
+    "ackP95Ms": 250,
+    "visibleP95Ms": 500
+  },
+  "display": "1280x800",
+  "ackMaxMs": 929.0549799999935,
+  "visibleMaxMs": 1136.1277649999997,
+  "clock": "client monotonic clock for all round-trip measurements",
+  "status": "passed",
+  "includes": "European Boat external client via public Cloudflare edge and real kittyd; three additional viewers including one never acknowledging. Client monotonic clock. Not a physical mobile-browser measurement."
+}

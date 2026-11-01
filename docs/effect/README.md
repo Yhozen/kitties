@@ -26,12 +26,12 @@ table when a phase starts, when its exit criteria are measured, and when it merg
 |---|---|---|---|
 | 1 | Backing documentation and the plan | committed; draft PR open | [#14](https://github.com/Yhozen/kitties/pull/14), commit `1aca978`; links and pinned paths checked |
 | 2 | Toolchain groundwork: coverage rules removed, pnpm + Vite+ workspace | deployed to dev | Vite+ check, typecheck, PKCE regression, task build and Alchemy deploy passed; [dev](https://dev.kitties.rccpr.tech) |
-| 3 | Walking skeleton, PWA shell, go/no-go spikes | in progress; skeleton deployed to next | [Evidence](evidence/README.md): local engine recovery, parking and desktop/mobile PWA checks passed; cloud and guest gates in progress |
-| 4 | Live desktop: `kittyd`, fast input, live view | not started | — |
-| 5 | Brains: chat, providers, first MCP and native tools | not started | — |
-| 6 | Lifecycle: sleep, restore, capacity | not started | — |
-| 7 | Durable desktop tasks and perception | not started | — |
-| 8 | Autonomy: goals, webhooks, approvals, notifications | not started | — |
+| 3 | Walking skeleton, PWA shell, go/no-go spikes | engine probes passed; remaining perception and platform gates open | [Evidence](evidence/README.md): cloud 3/50/200/500-activity runs, local kill/recovery, deferreds, child workflows and callback parking; [20 cloud durable waits](evidence/engine-cloud-clocks.json) verify the alarm-progress patch |
+| 4 | Live desktop: `kittyd`, fast input, live view | deployed; stream soak remains open | [#17](https://github.com/Yhozen/kitties/pull/17); [200 real inputs](evidence/channel-boat-visible.json): ack p95 242.6 ms, visible p95 359.6 ms |
+| 5 | Brains: chat, providers, first MCP and native tools | deployed; UI and recovery acceptance in progress | [50 streamed turns](evidence/chat-stream-cloud.json): fixture first-token p95 1.872 s; [MCP approval/redeploy](evidence/tools-cloud.json), dedupe and cancel passed |
+| 6 | Lifecycle: sleep, restore, capacity | deployed; live restore drill in progress | [Persistence drill](evidence/lifecycle-persistence.json): file, cookie and package survived a new VM/generation; full chaos and capacity gates open |
+| 7 | Durable desktop tasks and perception | implementation in progress | Fenced child workflows, screenshot storage, vault references and durable help; live acceptance and perception A/B open |
+| 8 | Autonomy: goals, webhooks, approvals, notifications | goals and signed hooks deployed; notifications and rules in progress | [100 deliveries / 200 requests](evidence/webhooks-cloud.json), [goal chaining and disable fencing](evidence/goals-cloud.json); delegation and phone approval gates open |
 | 9 | Integrations: MCP with OAuth, Google and Microsoft | not started | — |
 | 10 | Hardening, backups, cutover, Go deleted | not started | — |
 

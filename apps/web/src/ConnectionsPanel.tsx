@@ -1,0 +1,12 @@
+import {useState,useEffect} from 'preact/hooks';
+import type {ConnectionView} from '@kitties/domain/entities';
+import {call} from './next-api';
+type Connection=typeof ConnectionView.Type;
+export default function ConnectionsPanel(){
+  const [connections,setConnections]=useState<readonly Connection[]>([]),[name,setName]=useState(''),[url,setUrl]=useState(''),[token,setToken]=useState(''),[kind,setKind]=useState<Connection['kind']>('mcp'),[allowReads,setAllowReads]=useState(false),[status,setStatus]=useState('');
+  const refresh=()=>call(api=>api.connections.list()).then(setConnections);
+  useEffect(()=>{void refresh().catch(()=>setStatus('No se pudieron cargar las conexiones.'));},[]);
+  const attempt=(fn:()=>Promise<unknown>)=>{setStatus('');void fn().catch(()=>setStatus('No se pudo completar la operación.'));};
+  return <section><h3>Herramientas y conexiones</h3><p>Las acciones necesitan tu aprobación. Puedes permitir lecturas en cada conexión.</p>{connections.map(connection=><div class='next-provider' key={connection.id}><strong>{connection.name}</strong><span>{connection.kind} · {connection.url}</span><button onClick={()=>attempt(async()=>{const result=await call(api=>api.connections.test({params:{id:connection.id}}));setStatus(`${result.tools.length} herramientas disponibles.`);})}>Probar</button><button onClick={()=>attempt(async()=>{await call(api=>api.connections.remove({params:{id:connection.id}}));await refresh();})}>Eliminar</button></div>)}
+  <form onSubmit={event=>{event.preventDefault();attempt(async()=>{await call(api=>api.connections.save({params:{id:crypto.randomUUID()},payload:{name,url,kind,token,allowReads}}));setToken('');setName('');setUrl('');await refresh();});}}><label>Nombre<input required value={name} onInput={event=>setName(event.currentTarget.value)}/></label><label>Tipo<select value={kind} onChange={event=>setKind(event.currentTarget.value as Connection['kind'])}><option value='mcp'>MCP remoto</option><option value='http'>HTTP</option><option value='ntfy'>ntfy</option></select></label><label>Dirección HTTPS<input type='url' required value={url} onInput={event=>setUrl(event.currentTarget.value)}/></label><label>Token<input type='password' autoComplete='off' value={token} onInput={event=>setToken(event.currentTarget.value)}/></label><label class='next-check'><input type='checkbox' checked={allowReads} onChange={event=>setAllowReads(event.currentTarget.checked)}/>Permitir lecturas sin preguntar</label><button class='primary'>Guardar conexión</button></form><p role='status'>{status}</p></section>;
+}

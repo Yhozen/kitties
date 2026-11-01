@@ -1,0 +1,11 @@
+{
+  "date": "2026-11-01T16:33:19.570Z",
+  "status": "passed",
+  "runtime": "Deployed TurnV2 + ApprovalV1 + Effect MCP + compat fixture",
+  "retriedMessage": true,
+  "retriedApproval": true,
+  "redeployDuringApproval": true,
+  "rounds": 2,
+  "externalCalls": 1,
+  "answer": "Tool completed: {\"untrusted\":true,\"source\":\"MCP acceptance\",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"sample data, calls=1\"}]}}"
+}

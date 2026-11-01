@@ -179,17 +179,16 @@ async function execute(action: Action): Promise<string> {
       ]);
     }
     case "ui_read":
-      return run(["agent-desktop", "snapshot", "--json"]);
+      return run(["agent-desktop", "snapshot"]);
     case "ui_click":
     case "ui_type": {
       const ref = boundedText(args.ref, 80);
       if (!/^[a-zA-Z0-9_:@.-]+$/.test(ref)) throw Error("STALE_REF");
       return run([
         "agent-desktop",
-        action.action === "ui_click" ? "click" : "fill",
+        action.action === "ui_click" ? "click" : "type",
         ref,
         ...(action.action === "ui_type" ? [boundedText(args.text, 4000)] : []),
-        "--json",
       ]);
     }
     case "quiesce":

@@ -1,0 +1,9 @@
+{
+  "date": "2026-11-01T16:14:50.338Z",
+  "runtime": "Cloudflare TurnWorkflow + Effect AI compat streaming provider fixture",
+  "chatId": "38915593-a558-40f6-9836-72c29720a4f8",
+  "status": "passed",
+  "messageIdDeduplication": true,
+  "encryptedProviderKey": true,
+  "answer": "Hola, prueba completada."
+}

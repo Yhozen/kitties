@@ -1,0 +1,59 @@
+{
+  "date": "2026-11-01T16:24:50.195Z",
+  "runtime": "deployed Cloudflare Worker, Effect McpClient",
+  "results": [
+    {
+      "name": "GitHub",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "status": "requires-owner-authorization",
+      "disposition": "Configure the owner's OAuth or scoped static token; anonymous initialize/listTools did not succeed."
+    },
+    {
+      "name": "Stripe",
+      "url": "https://mcp.stripe.com",
+      "status": "requires-owner-authorization",
+      "disposition": "Configure the owner's OAuth or scoped static token; anonymous initialize/listTools did not succeed."
+    },
+    {
+      "name": "Notion",
+      "url": "https://mcp.notion.com/mcp",
+      "status": "requires-owner-authorization",
+      "disposition": "Configure the owner's OAuth or scoped static token; anonymous initialize/listTools did not succeed."
+    },
+    {
+      "name": "Linear",
+      "url": "https://mcp.linear.app/mcp",
+      "status": "requires-owner-authorization",
+      "disposition": "Configure the owner's OAuth or scoped static token; anonymous initialize/listTools did not succeed."
+    },
+    {
+      "name": "Atlassian",
+      "url": "https://mcp.atlassian.com/v1/mcp",
+      "status": "requires-owner-authorization",
+      "disposition": "Configure the owner's OAuth or scoped static token; anonymous initialize/listTools did not succeed."
+    },
+    {
+      "name": "Slack",
+      "url": "https://mcp.slack.com/mcp",
+      "status": "requires-owner-authorization",
+      "disposition": "Configure the owner's OAuth or scoped static token; anonymous initialize/listTools did not succeed."
+    },
+    {
+      "name": "Fixture",
+      "url": "https://fixtures-next.kitties.rccpr.tech/mcp",
+      "status": "passed",
+      "protocol": "2025-11-25",
+      "tools": [
+        "sample"
+      ],
+      "modelTools": [
+        "fixture_sample"
+      ]
+    },
+    {
+      "name": "HomeAssistant",
+      "status": "requires-owner-instance",
+      "disposition": "No owner instance URL or token is configured."
+    }
+  ]
+}

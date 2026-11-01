@@ -1,0 +1,21 @@
+{
+  "date": "2026-11-01",
+  "status": "passed",
+  "scope": "Persistence sub-gate; full lifecycle acceptance remains open",
+  "sourceRemoteId": "bx_prqb24tv",
+  "restoredRemoteId": "bx_fvputzp8",
+  "sourceGeneration": 1,
+  "restoredGeneration": 2,
+  "restoredTokenVersion": 4,
+  "checkpointName": "kn-1793547500-178923bc-d3eb-4cb2-aaf6-370a093c0572-g1-9dd326ab",
+  "checkpointId": "ed3e3f11-324e-461e-84ea-34e6bb45aef8",
+  "checks": {
+    "marker": "kitties-effect-restore-marker-v1",
+    "chromeCookie": "cookie-survived",
+    "package": "figlet: install ok installed",
+    "newRemoteId": true,
+    "newGeneration": true,
+    "rotatedGuestToken": true
+  },
+  "recoveryNote": "The sleep run needed a manual resume during investigation. An alarm-progress defect was identified in the pinned Alchemy engine; automatic-recovery acceptance is separate and must pass after its patch."
+}
