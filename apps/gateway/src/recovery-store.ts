@@ -57,37 +57,38 @@ export class RecoveryDO extends Cloudflare.DurableObject<RecoveryDO>()(
             }),
           ),
         permit: (workflow: string, id: string, startedAt: number) =>
-          Effect.sync(() =>
-            state.raw.storage.transactionSync(() => {
-              const c = control();
-              sql.exec(
-                "INSERT OR IGNORE INTO recovery_runs(workflow,id,epoch) VALUES (?,?,?)",
+          Effect.sync(() => {
+            const c = control();
+            let row = sql
+              .exec<{ epoch: number; review: number }>(
+                "SELECT epoch,review FROM recovery_runs WHERE workflow=? AND id=?",
                 workflow,
                 id,
-                c.epoch,
-              );
-              const row = sql
-                .exec<{ epoch: number }>(
-                  "SELECT epoch FROM recovery_runs WHERE workflow=? AND id=?",
-                  workflow,
-                  id,
-                )
-                .toArray()[0]!;
-              sql.exec(
-                "INSERT OR IGNORE INTO recovery_objects VALUES ('workflow',?,?)",
-                `${workflow}/${id}`,
-                Date.now(),
-              );
-              const allowed = c.mode === "ready" && row.epoch === c.epoch && startedAt >= c.epoch;
-              if (!allowed)
+              )
+              .toArray()[0];
+            // A known run needs a fresh fence read, not a write transaction on every
+            // activity. Registration is atomic on its first check only.
+            if (!row) {
+              state.raw.storage.transactionSync(() => {
                 sql.exec(
-                  "UPDATE recovery_runs SET review=1 WHERE workflow=? AND id=?",
+                  "INSERT INTO recovery_runs(workflow,id,epoch) VALUES (?,?,?)",
                   workflow,
                   id,
+                  c.epoch,
                 );
-              return allowed;
-            }),
-          ),
+                sql.exec(
+                  "INSERT OR IGNORE INTO recovery_objects VALUES ('workflow',?,?)",
+                  `${workflow}/${id}`,
+                  Date.now(),
+                );
+              });
+              row = { epoch: c.epoch, review: 0 };
+            }
+            const allowed = c.mode === "ready" && row.epoch === c.epoch && startedAt >= c.epoch;
+            if (!allowed && row.review !== 1)
+              sql.exec("UPDATE recovery_runs SET review=1 WHERE workflow=? AND id=?", workflow, id);
+            return allowed;
+          }),
         begin: (id: string) =>
           Effect.sync(() =>
             state.raw.storage.transactionSync(() => {

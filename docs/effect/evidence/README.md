@@ -29,7 +29,10 @@ The purge/tombstone drill passed (`purge-cloud.json`). An actual R2 write refusa
 a guarded activity and resumed once after repair (`r2-error-cloud.json`). The final desktop
 crash/redeploy test passed again after the dispatch optimization (`desktop-cloud.json`).
 
-The remaining gates are non-model step latency, production cutover and production smoke/recovery. A source change or an implemented feature is not a passing acceptance result.
+The final 50-action non-model run measured p50 653 ms / p95 1,421 ms. The original p95 < 1 s
+target remains unmet; the owner explicitly accepted cutover with this limitation documented
+(`latency-cutover-decision.json`). A newer PITR plus historical-operation retry passed
+(`recovery-history-cloud.json`). Production cutover and production smoke/recovery remain open. A source change or an implemented feature is not a passing acceptance result.
 
 Earlier local probes remain available in `engine-local.json`, `engine-progress-local.json`,
 `engine-advanced-local.json`, `application-local.json`, `chat-local.json` and `channel-local.json`.

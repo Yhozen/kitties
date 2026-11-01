@@ -488,6 +488,11 @@ Exit: the draft PR is open in the stack and reviewed. It merges when the stack d
   tests pass.
 
 ### Phase 10: Hardening, backups, cutover (≈1.5 weeks)
+
+Owner update (2026-11-01): deploy with the measured non-model latency limitation documented.
+The original p95 < 1 s performance target remains an optimization target, but is waived as a
+cutover gate. The completed run at this decision measured p50 557 ms, p95 1,596 ms over 50 real
+actions. See [decision evidence](evidence/latency-cutover-decision.json).
 - **Restore semantics:**
   - A `restoredEpoch` in HomeDO interrupts pre-epoch runs for owner review instead of replaying
     them.

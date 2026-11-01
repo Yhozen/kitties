@@ -1,1112 +1,1314 @@
 {
-  "date": "2026-11-01T19:00:35.880Z",
-  "chatId": "c014fe78-0314-449d-9fc6-97ec05266ad0",
+  "date": "2026-11-01T19:13:49.682Z",
+  "chatId": "7b7d58a4-90ff-4984-abc8-8ac325eeb7a5",
   "kittyId": "41fe4b43-cfe1-4566-b076-933804801b80",
   "samples": [
     {
-      "messageId": "0ab63768-2cb6-49a5-99cd-d5d365adc5be",
-      "ms": 2509,
+      "messageId": "06dd0fac-f793-4c85-87a2-05dde0056fb1",
+      "ms": 1323,
       "rounds": [
         {
           "type": "model_timing",
-          "messageId": "0ab63768-2cb6-49a5-99cd-d5d365adc5be",
+          "messageId": "06dd0fac-f793-4c85-87a2-05dde0056fb1",
           "round": 0,
           "attempt": 1,
-          "modelStartedAt": 1793559640129,
-          "modelFinishedAt": 1793559640169
+          "modelStartedAt": 1793560432243,
+          "modelFinishedAt": 1793560432248,
+          "preparationStartedAt": 1793560431724,
+          "contextLoadedAt": 1793560432051
         },
         {
           "type": "model_timing",
-          "messageId": "0ab63768-2cb6-49a5-99cd-d5d365adc5be",
+          "messageId": "06dd0fac-f793-4c85-87a2-05dde0056fb1",
           "round": 1,
           "attempt": 1,
-          "modelStartedAt": 1793559642678,
-          "modelFinishedAt": 1793559642734
+          "modelStartedAt": 1793560433571,
+          "modelFinishedAt": 1793560433600,
+          "preparationStartedAt": 1793560433462,
+          "contextLoadedAt": 1793560433518
         }
       ]
     },
     {
-      "messageId": "a1476e43-b079-4516-a1fd-34f2767bc94c",
-      "ms": 729,
+      "messageId": "a3d5cdec-022e-4f7e-a11d-4e54064a74ac",
+      "ms": 830,
       "rounds": [
         {
           "type": "model_timing",
-          "messageId": "a1476e43-b079-4516-a1fd-34f2767bc94c",
+          "messageId": "a3d5cdec-022e-4f7e-a11d-4e54064a74ac",
           "round": 0,
           "attempt": 1,
-          "modelStartedAt": 1793559645951,
-          "modelFinishedAt": 1793559645987
+          "modelStartedAt": 1793560436010,
+          "modelFinishedAt": 1793560436022,
+          "preparationStartedAt": 1793560435273,
+          "contextLoadedAt": 1793560435581
         },
         {
           "type": "model_timing",
-          "messageId": "a1476e43-b079-4516-a1fd-34f2767bc94c",
+          "messageId": "a3d5cdec-022e-4f7e-a11d-4e54064a74ac",
           "round": 1,
           "attempt": 1,
-          "modelStartedAt": 1793559646716,
-          "modelFinishedAt": 1793559646822
+          "modelStartedAt": 1793560436852,
+          "modelFinishedAt": 1793560436884,
+          "preparationStartedAt": 1793560436375,
+          "contextLoadedAt": 1793560436440
         }
       ]
     },
     {
-      "messageId": "38ea4772-d92b-45af-a671-f39a57e0ffd4",
-      "ms": 479,
+      "messageId": "39561d74-fa92-4968-b99b-e1504d617d4d",
+      "ms": 491,
       "rounds": [
         {
           "type": "model_timing",
-          "messageId": "38ea4772-d92b-45af-a671-f39a57e0ffd4",
+          "messageId": "39561d74-fa92-4968-b99b-e1504d617d4d",
           "round": 0,
           "attempt": 1,
-          "modelStartedAt": 1793559649749,
-          "modelFinishedAt": 1793559649754
+          "modelStartedAt": 1793560438829,
+          "modelFinishedAt": 1793560438835,
+          "preparationStartedAt": 1793560438345,
+          "contextLoadedAt": 1793560438413
         },
         {
           "type": "model_timing",
-          "messageId": "38ea4772-d92b-45af-a671-f39a57e0ffd4",
+          "messageId": "39561d74-fa92-4968-b99b-e1504d617d4d",
           "round": 1,
           "attempt": 1,
-          "modelStartedAt": 1793559650233,
-          "modelFinishedAt": 1793559650270
+          "modelStartedAt": 1793560439326,
+          "modelFinishedAt": 1793560439392,
+          "preparationStartedAt": 1793560439208,
+          "contextLoadedAt": 1793560439265
         }
       ]
     },
     {
-      "messageId": "4de3436b-fd2b-4040-8cf9-b7d0de02fcc3",
-      "ms": 477,
+      "messageId": "5a2e3db8-7fbf-4590-b4e2-f978d0037de2",
+      "ms": 909,
       "rounds": [
         {
           "type": "model_timing",
-          "messageId": "4de3436b-fd2b-4040-8cf9-b7d0de02fcc3",
+          "messageId": "5a2e3db8-7fbf-4590-b4e2-f978d0037de2",
           "round": 0,
           "attempt": 1,
-          "modelStartedAt": 1793559652230,
-          "modelFinishedAt": 1793559652239
+          "modelStartedAt": 1793560441607,
+          "modelFinishedAt": 1793560441615,
+          "preparationStartedAt": 1793560440977,
+          "contextLoadedAt": 1793560441231
         },
         {
           "type": "model_timing",
-          "messageId": "4de3436b-fd2b-4040-8cf9-b7d0de02fcc3",
+          "messageId": "5a2e3db8-7fbf-4590-b4e2-f978d0037de2",
           "round": 1,
           "attempt": 1,
-          "modelStartedAt": 1793559652716,
-          "modelFinishedAt": 1793559652747
+          "modelStartedAt": 1793560442524,
+          "modelFinishedAt": 1793560442553,
+          "preparationStartedAt": 1793560442181,
+          "contextLoadedAt": 1793560442466
         }
       ]
     },
     {
-      "messageId": "248f427a-4602-47ca-92c8-75e2d77580cf",
-      "ms": 748,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "248f427a-4602-47ca-92c8-75e2d77580cf",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559654437,
-          "modelFinishedAt": 1793559654444
-        },
-        {
-          "type": "model_timing",
-          "messageId": "248f427a-4602-47ca-92c8-75e2d77580cf",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559655192,
-          "modelFinishedAt": 1793559655218
-        }
-      ]
-    },
-    {
-      "messageId": "aeb7667e-de7e-4898-89e5-cb1bde2ed6a5",
-      "ms": 589,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "aeb7667e-de7e-4898-89e5-cb1bde2ed6a5",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559657037,
-          "modelFinishedAt": 1793559657043
-        },
-        {
-          "type": "model_timing",
-          "messageId": "aeb7667e-de7e-4898-89e5-cb1bde2ed6a5",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559657632,
-          "modelFinishedAt": 1793559657673
-        }
-      ]
-    },
-    {
-      "messageId": "6697ab53-0dc3-495b-bb73-c36a1eb9d988",
-      "ms": 541,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "6697ab53-0dc3-495b-bb73-c36a1eb9d988",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559660166,
-          "modelFinishedAt": 1793559660174
-        },
-        {
-          "type": "model_timing",
-          "messageId": "6697ab53-0dc3-495b-bb73-c36a1eb9d988",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559660715,
-          "modelFinishedAt": 1793559660752
-        }
-      ]
-    },
-    {
-      "messageId": "723bbb14-4c21-49a7-981f-eaf56b95f96d",
-      "ms": 1121,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "723bbb14-4c21-49a7-981f-eaf56b95f96d",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559662552,
-          "modelFinishedAt": 1793559662558
-        },
-        {
-          "type": "model_timing",
-          "messageId": "723bbb14-4c21-49a7-981f-eaf56b95f96d",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559663679,
-          "modelFinishedAt": 1793559663716
-        }
-      ]
-    },
-    {
-      "messageId": "e9a0b8d4-3f11-4bd3-aabf-8138b46fb77b",
-      "ms": 646,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "e9a0b8d4-3f11-4bd3-aabf-8138b46fb77b",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559666410,
-          "modelFinishedAt": 1793559666421
-        },
-        {
-          "type": "model_timing",
-          "messageId": "e9a0b8d4-3f11-4bd3-aabf-8138b46fb77b",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559667067,
-          "modelFinishedAt": 1793559667102
-        }
-      ]
-    },
-    {
-      "messageId": "f0f46925-8208-4eca-ac0f-70bc1099d535",
-      "ms": 941,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "f0f46925-8208-4eca-ac0f-70bc1099d535",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559670079,
-          "modelFinishedAt": 1793559670090
-        },
-        {
-          "type": "model_timing",
-          "messageId": "f0f46925-8208-4eca-ac0f-70bc1099d535",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559671031,
-          "modelFinishedAt": 1793559671078
-        }
-      ]
-    },
-    {
-      "messageId": "fda4baec-bc39-4bc2-a11c-d4ca151eaf16",
-      "ms": 537,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "fda4baec-bc39-4bc2-a11c-d4ca151eaf16",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559674604,
-          "modelFinishedAt": 1793559674633
-        },
-        {
-          "type": "model_timing",
-          "messageId": "fda4baec-bc39-4bc2-a11c-d4ca151eaf16",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559675170,
-          "modelFinishedAt": 1793559675210
-        }
-      ]
-    },
-    {
-      "messageId": "3a3623a0-3fe9-47be-8815-844e85ebb1c0",
-      "ms": 707,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "3a3623a0-3fe9-47be-8815-844e85ebb1c0",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559677624,
-          "modelFinishedAt": 1793559677639
-        },
-        {
-          "type": "model_timing",
-          "messageId": "3a3623a0-3fe9-47be-8815-844e85ebb1c0",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559678346,
-          "modelFinishedAt": 1793559678377
-        }
-      ]
-    },
-    {
-      "messageId": "f5fd97c0-9a41-4026-895c-037391526f14",
-      "ms": 471,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "f5fd97c0-9a41-4026-895c-037391526f14",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559680322,
-          "modelFinishedAt": 1793559680333
-        },
-        {
-          "type": "model_timing",
-          "messageId": "f5fd97c0-9a41-4026-895c-037391526f14",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559680804,
-          "modelFinishedAt": 1793559680851
-        }
-      ]
-    },
-    {
-      "messageId": "0a691b49-7116-4322-83c9-c2750943e780",
-      "ms": 792,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "0a691b49-7116-4322-83c9-c2750943e780",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559682700,
-          "modelFinishedAt": 1793559682713
-        },
-        {
-          "type": "model_timing",
-          "messageId": "0a691b49-7116-4322-83c9-c2750943e780",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559683505,
-          "modelFinishedAt": 1793559683561
-        }
-      ]
-    },
-    {
-      "messageId": "62b271a3-63d2-492e-b323-b6f398b89150",
-      "ms": 424,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "62b271a3-63d2-492e-b323-b6f398b89150",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559684854,
-          "modelFinishedAt": 1793559684858
-        },
-        {
-          "type": "model_timing",
-          "messageId": "62b271a3-63d2-492e-b323-b6f398b89150",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559685282,
-          "modelFinishedAt": 1793559685321
-        }
-      ]
-    },
-    {
-      "messageId": "a07279d8-f3a8-42fe-bd3c-9781d97ed092",
-      "ms": 657,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "a07279d8-f3a8-42fe-bd3c-9781d97ed092",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559686914,
-          "modelFinishedAt": 1793559686920
-        },
-        {
-          "type": "model_timing",
-          "messageId": "a07279d8-f3a8-42fe-bd3c-9781d97ed092",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559687577,
-          "modelFinishedAt": 1793559687617
-        }
-      ]
-    },
-    {
-      "messageId": "8dc95f1f-0a18-4923-9b73-3edeb38b276b",
-      "ms": 1284,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "8dc95f1f-0a18-4923-9b73-3edeb38b276b",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559689821,
-          "modelFinishedAt": 1793559689841
-        },
-        {
-          "type": "model_timing",
-          "messageId": "8dc95f1f-0a18-4923-9b73-3edeb38b276b",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559691125,
-          "modelFinishedAt": 1793559691200
-        }
-      ]
-    },
-    {
-      "messageId": "0ac58b23-61bf-49ae-ad09-50beb741da5b",
-      "ms": 1356,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "0ac58b23-61bf-49ae-ad09-50beb741da5b",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559693433,
-          "modelFinishedAt": 1793559693447
-        },
-        {
-          "type": "model_timing",
-          "messageId": "0ac58b23-61bf-49ae-ad09-50beb741da5b",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559694803,
-          "modelFinishedAt": 1793559694850
-        }
-      ]
-    },
-    {
-      "messageId": "d6b25232-6d40-4888-9905-8a9c1330379d",
-      "ms": 1425,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "d6b25232-6d40-4888-9905-8a9c1330379d",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559698613,
-          "modelFinishedAt": 1793559698622
-        },
-        {
-          "type": "model_timing",
-          "messageId": "d6b25232-6d40-4888-9905-8a9c1330379d",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559700047,
-          "modelFinishedAt": 1793559700119
-        }
-      ]
-    },
-    {
-      "messageId": "7f1a95ad-3fbf-47b7-93da-0ce9ffce0040",
-      "ms": 1630,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "7f1a95ad-3fbf-47b7-93da-0ce9ffce0040",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559702797,
-          "modelFinishedAt": 1793559702808
-        },
-        {
-          "type": "model_timing",
-          "messageId": "7f1a95ad-3fbf-47b7-93da-0ce9ffce0040",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559704438,
-          "modelFinishedAt": 1793559704790
-        }
-      ]
-    },
-    {
-      "messageId": "5834b418-4b01-44f2-a743-e217909f38ed",
-      "ms": 857,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "5834b418-4b01-44f2-a743-e217909f38ed",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559706975,
-          "modelFinishedAt": 1793559706997
-        },
-        {
-          "type": "model_timing",
-          "messageId": "5834b418-4b01-44f2-a743-e217909f38ed",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559707854,
-          "modelFinishedAt": 1793559707925
-        }
-      ]
-    },
-    {
-      "messageId": "3b0b4cdd-24d7-4d67-802f-d19a53365bb9",
-      "ms": 461,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "3b0b4cdd-24d7-4d67-802f-d19a53365bb9",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559710388,
-          "modelFinishedAt": 1793559710394
-        },
-        {
-          "type": "model_timing",
-          "messageId": "3b0b4cdd-24d7-4d67-802f-d19a53365bb9",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559710855,
-          "modelFinishedAt": 1793559710903
-        }
-      ]
-    },
-    {
-      "messageId": "2a4ebc6b-baa4-49ca-b0e9-e67fa8017ca4",
-      "ms": 2531,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "2a4ebc6b-baa4-49ca-b0e9-e67fa8017ca4",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559712734,
-          "modelFinishedAt": 1793559712739
-        },
-        {
-          "type": "model_timing",
-          "messageId": "2a4ebc6b-baa4-49ca-b0e9-e67fa8017ca4",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559715270,
-          "modelFinishedAt": 1793559715303
-        }
-      ]
-    },
-    {
-      "messageId": "c3fb0063-271b-4b02-93cc-56e391ccd2d0",
-      "ms": 763,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "c3fb0063-271b-4b02-93cc-56e391ccd2d0",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559718439,
-          "modelFinishedAt": 1793559718452
-        },
-        {
-          "type": "model_timing",
-          "messageId": "c3fb0063-271b-4b02-93cc-56e391ccd2d0",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559719215,
-          "modelFinishedAt": 1793559719499
-        }
-      ]
-    },
-    {
-      "messageId": "0820248a-0478-4dcc-910c-fc0facfc0046",
-      "ms": 1981,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "0820248a-0478-4dcc-910c-fc0facfc0046",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559722020,
-          "modelFinishedAt": 1793559722047
-        },
-        {
-          "type": "model_timing",
-          "messageId": "0820248a-0478-4dcc-910c-fc0facfc0046",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559724028,
-          "modelFinishedAt": 1793559724145
-        }
-      ]
-    },
-    {
-      "messageId": "d1f0f13f-340a-4f29-87fe-45394838059d",
-      "ms": 2704,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "d1f0f13f-340a-4f29-87fe-45394838059d",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559726561,
-          "modelFinishedAt": 1793559726587
-        },
-        {
-          "type": "model_timing",
-          "messageId": "d1f0f13f-340a-4f29-87fe-45394838059d",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559729291,
-          "modelFinishedAt": 1793559730033
-        }
-      ]
-    },
-    {
-      "messageId": "88bc2050-c546-4a50-aefa-16c8ef049a49",
-      "ms": 2059,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "88bc2050-c546-4a50-aefa-16c8ef049a49",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559731958,
-          "modelFinishedAt": 1793559731966
-        },
-        {
-          "type": "model_timing",
-          "messageId": "88bc2050-c546-4a50-aefa-16c8ef049a49",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559734025,
-          "modelFinishedAt": 1793559734069
-        }
-      ]
-    },
-    {
-      "messageId": "af00b4cf-1fe4-48ed-b11a-467cb4a75077",
-      "ms": 444,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "af00b4cf-1fe4-48ed-b11a-467cb4a75077",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559736142,
-          "modelFinishedAt": 1793559736149
-        },
-        {
-          "type": "model_timing",
-          "messageId": "af00b4cf-1fe4-48ed-b11a-467cb4a75077",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559736593,
-          "modelFinishedAt": 1793559736633
-        }
-      ]
-    },
-    {
-      "messageId": "e51c33cf-139f-46a1-840d-0d91f65f6e3b",
-      "ms": 943,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "e51c33cf-139f-46a1-840d-0d91f65f6e3b",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559739268,
-          "modelFinishedAt": 1793559739282
-        },
-        {
-          "type": "model_timing",
-          "messageId": "e51c33cf-139f-46a1-840d-0d91f65f6e3b",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559740225,
-          "modelFinishedAt": 1793559740253
-        }
-      ]
-    },
-    {
-      "messageId": "ee8754af-ac90-4e68-bb2e-f265bf949143",
-      "ms": 2971,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "ee8754af-ac90-4e68-bb2e-f265bf949143",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559742271,
-          "modelFinishedAt": 1793559742278
-        },
-        {
-          "type": "model_timing",
-          "messageId": "ee8754af-ac90-4e68-bb2e-f265bf949143",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559745249,
-          "modelFinishedAt": 1793559745275
-        }
-      ]
-    },
-    {
-      "messageId": "23efb511-b97e-482b-937d-2fb3b8363e1f",
-      "ms": 468,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "23efb511-b97e-482b-937d-2fb3b8363e1f",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559748594,
-          "modelFinishedAt": 1793559748606
-        },
-        {
-          "type": "model_timing",
-          "messageId": "23efb511-b97e-482b-937d-2fb3b8363e1f",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559749074,
-          "modelFinishedAt": 1793559749105
-        }
-      ]
-    },
-    {
-      "messageId": "8f9e248b-5648-4f7c-a6dd-48ea164e8b35",
-      "ms": 574,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "8f9e248b-5648-4f7c-a6dd-48ea164e8b35",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559753455,
-          "modelFinishedAt": 1793559753470
-        },
-        {
-          "type": "model_timing",
-          "messageId": "8f9e248b-5648-4f7c-a6dd-48ea164e8b35",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559754044,
-          "modelFinishedAt": 1793559754102
-        }
-      ]
-    },
-    {
-      "messageId": "ce0bad59-8211-459f-94f8-16837de236c6",
-      "ms": 424,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "ce0bad59-8211-459f-94f8-16837de236c6",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559755941,
-          "modelFinishedAt": 1793559755951
-        },
-        {
-          "type": "model_timing",
-          "messageId": "ce0bad59-8211-459f-94f8-16837de236c6",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559756375,
-          "modelFinishedAt": 1793559756403
-        }
-      ]
-    },
-    {
-      "messageId": "67a8a401-6de8-462c-8d67-4fb1d233db78",
-      "ms": 462,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "67a8a401-6de8-462c-8d67-4fb1d233db78",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559758373,
-          "modelFinishedAt": 1793559758387
-        },
-        {
-          "type": "model_timing",
-          "messageId": "67a8a401-6de8-462c-8d67-4fb1d233db78",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559758849,
-          "modelFinishedAt": 1793559758876
-        }
-      ]
-    },
-    {
-      "messageId": "10bcdc8f-c4c2-4bf5-86fa-a9317e8bea54",
-      "ms": 439,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "10bcdc8f-c4c2-4bf5-86fa-a9317e8bea54",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559760712,
-          "modelFinishedAt": 1793559760723
-        },
-        {
-          "type": "model_timing",
-          "messageId": "10bcdc8f-c4c2-4bf5-86fa-a9317e8bea54",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559761162,
-          "modelFinishedAt": 1793559761200
-        }
-      ]
-    },
-    {
-      "messageId": "8e1ef55f-a5c1-4add-87f8-2d9d49e06182",
-      "ms": 843,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "8e1ef55f-a5c1-4add-87f8-2d9d49e06182",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559763815,
-          "modelFinishedAt": 1793559763827
-        },
-        {
-          "type": "model_timing",
-          "messageId": "8e1ef55f-a5c1-4add-87f8-2d9d49e06182",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559764670,
-          "modelFinishedAt": 1793559764702
-        }
-      ]
-    },
-    {
-      "messageId": "cbd00af8-e122-4e92-81aa-ca28d71c4cdd",
-      "ms": 1469,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "cbd00af8-e122-4e92-81aa-ca28d71c4cdd",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559766531,
-          "modelFinishedAt": 1793559766538
-        },
-        {
-          "type": "model_timing",
-          "messageId": "cbd00af8-e122-4e92-81aa-ca28d71c4cdd",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559768007,
-          "modelFinishedAt": 1793559768029
-        }
-      ]
-    },
-    {
-      "messageId": "c5db62ea-3305-491b-9087-d42db7125d07",
-      "ms": 538,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "c5db62ea-3305-491b-9087-d42db7125d07",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559770171,
-          "modelFinishedAt": 1793559770188
-        },
-        {
-          "type": "model_timing",
-          "messageId": "c5db62ea-3305-491b-9087-d42db7125d07",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559770726,
-          "modelFinishedAt": 1793559770758
-        }
-      ]
-    },
-    {
-      "messageId": "f6252b71-7b43-4e71-ad01-4791497e4b0a",
-      "ms": 788,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "f6252b71-7b43-4e71-ad01-4791497e4b0a",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559772851,
-          "modelFinishedAt": 1793559772864
-        },
-        {
-          "type": "model_timing",
-          "messageId": "f6252b71-7b43-4e71-ad01-4791497e4b0a",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559773652,
-          "modelFinishedAt": 1793559773681
-        }
-      ]
-    },
-    {
-      "messageId": "661dd179-8e15-4a87-8fa8-7c33c0a08df9",
+      "messageId": "85c173eb-47f5-4869-83e8-8737db513993",
       "ms": 486,
       "rounds": [
         {
           "type": "model_timing",
-          "messageId": "661dd179-8e15-4a87-8fa8-7c33c0a08df9",
+          "messageId": "85c173eb-47f5-4869-83e8-8737db513993",
           "round": 0,
           "attempt": 1,
-          "modelStartedAt": 1793559775964,
-          "modelFinishedAt": 1793559775972
+          "modelStartedAt": 1793560444886,
+          "modelFinishedAt": 1793560444898,
+          "preparationStartedAt": 1793560444445,
+          "contextLoadedAt": 1793560444524
         },
         {
           "type": "model_timing",
-          "messageId": "661dd179-8e15-4a87-8fa8-7c33c0a08df9",
+          "messageId": "85c173eb-47f5-4869-83e8-8737db513993",
           "round": 1,
           "attempt": 1,
-          "modelStartedAt": 1793559776458,
-          "modelFinishedAt": 1793559776487
+          "modelStartedAt": 1793560445384,
+          "modelFinishedAt": 1793560445416,
+          "preparationStartedAt": 1793560445245,
+          "contextLoadedAt": 1793560445309
         }
       ]
     },
     {
-      "messageId": "671f180f-5266-427d-a70c-2fcd78f72b57",
-      "ms": 482,
+      "messageId": "776c4d3e-61ec-40d3-af5c-216380b35c66",
+      "ms": 779,
       "rounds": [
         {
           "type": "model_timing",
-          "messageId": "671f180f-5266-427d-a70c-2fcd78f72b57",
+          "messageId": "776c4d3e-61ec-40d3-af5c-216380b35c66",
           "round": 0,
           "attempt": 1,
-          "modelStartedAt": 1793559779972,
-          "modelFinishedAt": 1793559779981
+          "modelStartedAt": 1793560448045,
+          "modelFinishedAt": 1793560448059,
+          "preparationStartedAt": 1793560447083,
+          "contextLoadedAt": 1793560447707
         },
         {
           "type": "model_timing",
-          "messageId": "671f180f-5266-427d-a70c-2fcd78f72b57",
+          "messageId": "776c4d3e-61ec-40d3-af5c-216380b35c66",
           "round": 1,
           "attempt": 1,
-          "modelStartedAt": 1793559780463,
-          "modelFinishedAt": 1793559780486
+          "modelStartedAt": 1793560448838,
+          "modelFinishedAt": 1793560448866,
+          "preparationStartedAt": 1793560448694,
+          "contextLoadedAt": 1793560448754
         }
       ]
     },
     {
-      "messageId": "a408eed5-51cc-4a02-8940-1222c371e964",
-      "ms": 792,
+      "messageId": "c9776099-8974-4d6a-8332-d9e9716ffc21",
+      "ms": 496,
       "rounds": [
         {
           "type": "model_timing",
-          "messageId": "a408eed5-51cc-4a02-8940-1222c371e964",
+          "messageId": "c9776099-8974-4d6a-8332-d9e9716ffc21",
           "round": 0,
           "attempt": 1,
-          "modelStartedAt": 1793559782786,
-          "modelFinishedAt": 1793559782797
+          "modelStartedAt": 1793560450789,
+          "modelFinishedAt": 1793560450796,
+          "preparationStartedAt": 1793560450468,
+          "contextLoadedAt": 1793560450536
         },
         {
           "type": "model_timing",
-          "messageId": "a408eed5-51cc-4a02-8940-1222c371e964",
+          "messageId": "c9776099-8974-4d6a-8332-d9e9716ffc21",
           "round": 1,
           "attempt": 1,
-          "modelStartedAt": 1793559783589,
-          "modelFinishedAt": 1793559783617
+          "modelStartedAt": 1793560451292,
+          "modelFinishedAt": 1793560451317,
+          "preparationStartedAt": 1793560451159,
+          "contextLoadedAt": 1793560451220
         }
       ]
     },
     {
-      "messageId": "03d6085e-27e6-41a5-8c90-32daba89a009",
-      "ms": 523,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "03d6085e-27e6-41a5-8c90-32daba89a009",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559785646,
-          "modelFinishedAt": 1793559785658
-        },
-        {
-          "type": "model_timing",
-          "messageId": "03d6085e-27e6-41a5-8c90-32daba89a009",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559786181,
-          "modelFinishedAt": 1793559786211
-        }
-      ]
-    },
-    {
-      "messageId": "862a5426-3792-40fa-9ea0-889f52fb8f41",
-      "ms": 554,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "862a5426-3792-40fa-9ea0-889f52fb8f41",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559788123,
-          "modelFinishedAt": 1793559788129
-        },
-        {
-          "type": "model_timing",
-          "messageId": "862a5426-3792-40fa-9ea0-889f52fb8f41",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559788683,
-          "modelFinishedAt": 1793559788710
-        }
-      ]
-    },
-    {
-      "messageId": "2e2e938c-82c4-415c-bf90-b790ef559d23",
-      "ms": 498,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "2e2e938c-82c4-415c-bf90-b790ef559d23",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559790523,
-          "modelFinishedAt": 1793559790529
-        },
-        {
-          "type": "model_timing",
-          "messageId": "2e2e938c-82c4-415c-bf90-b790ef559d23",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559791027,
-          "modelFinishedAt": 1793559791063
-        }
-      ]
-    },
-    {
-      "messageId": "51461e91-203c-4743-994c-5bffc5c44266",
-      "ms": 520,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "51461e91-203c-4743-994c-5bffc5c44266",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559793329,
-          "modelFinishedAt": 1793559793340
-        },
-        {
-          "type": "model_timing",
-          "messageId": "51461e91-203c-4743-994c-5bffc5c44266",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559793860,
-          "modelFinishedAt": 1793559793891
-        }
-      ]
-    },
-    {
-      "messageId": "49c56f60-b24a-401b-9501-0cf184763d3e",
-      "ms": 1013,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "49c56f60-b24a-401b-9501-0cf184763d3e",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559795292,
-          "modelFinishedAt": 1793559795299
-        },
-        {
-          "type": "model_timing",
-          "messageId": "49c56f60-b24a-401b-9501-0cf184763d3e",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559796312,
-          "modelFinishedAt": 1793559796346
-        }
-      ]
-    },
-    {
-      "messageId": "4111ff46-6cab-4f03-aae6-ef2773bf0487",
-      "ms": 532,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "4111ff46-6cab-4f03-aae6-ef2773bf0487",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559798071,
-          "modelFinishedAt": 1793559798078
-        },
-        {
-          "type": "model_timing",
-          "messageId": "4111ff46-6cab-4f03-aae6-ef2773bf0487",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559798610,
-          "modelFinishedAt": 1793559798633
-        }
-      ]
-    },
-    {
-      "messageId": "8e351004-a8a8-4e5a-9a3b-249d1c3d5259",
-      "ms": 514,
-      "rounds": [
-        {
-          "type": "model_timing",
-          "messageId": "8e351004-a8a8-4e5a-9a3b-249d1c3d5259",
-          "round": 0,
-          "attempt": 1,
-          "modelStartedAt": 1793559800567,
-          "modelFinishedAt": 1793559800579
-        },
-        {
-          "type": "model_timing",
-          "messageId": "8e351004-a8a8-4e5a-9a3b-249d1c3d5259",
-          "round": 1,
-          "attempt": 1,
-          "modelStartedAt": 1793559801093,
-          "modelFinishedAt": 1793559801126
-        }
-      ]
-    },
-    {
-      "messageId": "01a44e8b-7409-4605-bd09-467fe1ae19d3",
+      "messageId": "ccf1fee9-7bf5-4041-9c86-0e2a7eb72db0",
       "ms": 527,
       "rounds": [
         {
           "type": "model_timing",
-          "messageId": "01a44e8b-7409-4605-bd09-467fe1ae19d3",
+          "messageId": "ccf1fee9-7bf5-4041-9c86-0e2a7eb72db0",
           "round": 0,
           "attempt": 1,
-          "modelStartedAt": 1793559803734,
-          "modelFinishedAt": 1793559803747
+          "modelStartedAt": 1793560453501,
+          "modelFinishedAt": 1793560453515,
+          "preparationStartedAt": 1793560452988,
+          "contextLoadedAt": 1793560453064
         },
         {
           "type": "model_timing",
-          "messageId": "01a44e8b-7409-4605-bd09-467fe1ae19d3",
+          "messageId": "ccf1fee9-7bf5-4041-9c86-0e2a7eb72db0",
           "round": 1,
           "attempt": 1,
-          "modelStartedAt": 1793559804274,
-          "modelFinishedAt": 1793559804406
+          "modelStartedAt": 1793560454042,
+          "modelFinishedAt": 1793560454085,
+          "preparationStartedAt": 1793560453894,
+          "contextLoadedAt": 1793560453959
+        }
+      ]
+    },
+    {
+      "messageId": "f47c688a-c416-491a-962f-94e8a24eae57",
+      "ms": 459,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "f47c688a-c416-491a-962f-94e8a24eae57",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560456135,
+          "modelFinishedAt": 1793560456149,
+          "preparationStartedAt": 1793560455705,
+          "contextLoadedAt": 1793560455770
+        },
+        {
+          "type": "model_timing",
+          "messageId": "f47c688a-c416-491a-962f-94e8a24eae57",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560456608,
+          "modelFinishedAt": 1793560456638,
+          "preparationStartedAt": 1793560456482,
+          "contextLoadedAt": 1793560456540
+        }
+      ]
+    },
+    {
+      "messageId": "823bdbff-5796-46c5-a853-44989866e11d",
+      "ms": 491,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "823bdbff-5796-46c5-a853-44989866e11d",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560458535,
+          "modelFinishedAt": 1793560458546,
+          "preparationStartedAt": 1793560458203,
+          "contextLoadedAt": 1793560458272
+        },
+        {
+          "type": "model_timing",
+          "messageId": "823bdbff-5796-46c5-a853-44989866e11d",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560459037,
+          "modelFinishedAt": 1793560459063,
+          "preparationStartedAt": 1793560458917,
+          "contextLoadedAt": 1793560458977
+        }
+      ]
+    },
+    {
+      "messageId": "d2491925-ab30-4476-8d8b-8d40e5ad4758",
+      "ms": 444,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "d2491925-ab30-4476-8d8b-8d40e5ad4758",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560460550,
+          "modelFinishedAt": 1793560460555,
+          "preparationStartedAt": 1793560460420,
+          "contextLoadedAt": 1793560460495
+        },
+        {
+          "type": "model_timing",
+          "messageId": "d2491925-ab30-4476-8d8b-8d40e5ad4758",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560460999,
+          "modelFinishedAt": 1793560461032,
+          "preparationStartedAt": 1793560460890,
+          "contextLoadedAt": 1793560460949
+        }
+      ]
+    },
+    {
+      "messageId": "b1d3a7ed-884e-45b7-ba62-637bed83a7d6",
+      "ms": 524,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "b1d3a7ed-884e-45b7-ba62-637bed83a7d6",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560463559,
+          "modelFinishedAt": 1793560463571,
+          "preparationStartedAt": 1793560463103,
+          "contextLoadedAt": 1793560463177
+        },
+        {
+          "type": "model_timing",
+          "messageId": "b1d3a7ed-884e-45b7-ba62-637bed83a7d6",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560464095,
+          "modelFinishedAt": 1793560464129,
+          "preparationStartedAt": 1793560463945,
+          "contextLoadedAt": 1793560464014
+        }
+      ]
+    },
+    {
+      "messageId": "ee8ac60c-9d34-4b73-be8c-abdc852ce2dd",
+      "ms": 1368,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "ee8ac60c-9d34-4b73-be8c-abdc852ce2dd",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560466480,
+          "modelFinishedAt": 1793560466491,
+          "preparationStartedAt": 1793560465966,
+          "contextLoadedAt": 1793560466037
+        },
+        {
+          "type": "model_timing",
+          "messageId": "ee8ac60c-9d34-4b73-be8c-abdc852ce2dd",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560467859,
+          "modelFinishedAt": 1793560467886,
+          "preparationStartedAt": 1793560467723,
+          "contextLoadedAt": 1793560467785
+        }
+      ]
+    },
+    {
+      "messageId": "57b2f781-f7b3-4b06-b344-034c8148d8c9",
+      "ms": 635,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "57b2f781-f7b3-4b06-b344-034c8148d8c9",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560469949,
+          "modelFinishedAt": 1793560469960,
+          "preparationStartedAt": 1793560469576,
+          "contextLoadedAt": 1793560469640
+        },
+        {
+          "type": "model_timing",
+          "messageId": "57b2f781-f7b3-4b06-b344-034c8148d8c9",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560470595,
+          "modelFinishedAt": 1793560470636,
+          "preparationStartedAt": 1793560470475,
+          "contextLoadedAt": 1793560470535
+        }
+      ]
+    },
+    {
+      "messageId": "c6b1ec89-de17-4461-8880-5b1e51d66367",
+      "ms": 444,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "c6b1ec89-de17-4461-8880-5b1e51d66367",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560473908,
+          "modelFinishedAt": 1793560473915,
+          "preparationStartedAt": 1793560473173,
+          "contextLoadedAt": 1793560473687
+        },
+        {
+          "type": "model_timing",
+          "messageId": "c6b1ec89-de17-4461-8880-5b1e51d66367",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560474359,
+          "modelFinishedAt": 1793560474402,
+          "preparationStartedAt": 1793560474229,
+          "contextLoadedAt": 1793560474293
+        }
+      ]
+    },
+    {
+      "messageId": "43490054-bc84-43bf-a4d1-17dc4d7d5ec4",
+      "ms": 945,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "43490054-bc84-43bf-a4d1-17dc4d7d5ec4",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560476518,
+          "modelFinishedAt": 1793560476527,
+          "preparationStartedAt": 1793560476203,
+          "contextLoadedAt": 1793560476273
+        },
+        {
+          "type": "model_timing",
+          "messageId": "43490054-bc84-43bf-a4d1-17dc4d7d5ec4",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560477472,
+          "modelFinishedAt": 1793560477511,
+          "preparationStartedAt": 1793560477354,
+          "contextLoadedAt": 1793560477411
+        }
+      ]
+    },
+    {
+      "messageId": "143d745d-297f-4d82-b1e5-461115d3f61e",
+      "ms": 1072,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "143d745d-297f-4d82-b1e5-461115d3f61e",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560479847,
+          "modelFinishedAt": 1793560479866,
+          "preparationStartedAt": 1793560479546,
+          "contextLoadedAt": 1793560479619
+        },
+        {
+          "type": "model_timing",
+          "messageId": "143d745d-297f-4d82-b1e5-461115d3f61e",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560480938,
+          "modelFinishedAt": 1793560480973,
+          "preparationStartedAt": 1793560480371,
+          "contextLoadedAt": 1793560480436
+        }
+      ]
+    },
+    {
+      "messageId": "faea16cb-3ee5-4be4-ac9a-3100db6eb813",
+      "ms": 916,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "faea16cb-3ee5-4be4-ac9a-3100db6eb813",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560482769,
+          "modelFinishedAt": 1793560482778,
+          "preparationStartedAt": 1793560482459,
+          "contextLoadedAt": 1793560482528
+        },
+        {
+          "type": "model_timing",
+          "messageId": "faea16cb-3ee5-4be4-ac9a-3100db6eb813",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560483694,
+          "modelFinishedAt": 1793560483737,
+          "preparationStartedAt": 1793560483578,
+          "contextLoadedAt": 1793560483635
+        }
+      ]
+    },
+    {
+      "messageId": "359671f4-25af-4303-9dd0-0d770fb2728a",
+      "ms": 661,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "359671f4-25af-4303-9dd0-0d770fb2728a",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560485840,
+          "modelFinishedAt": 1793560485857,
+          "preparationStartedAt": 1793560485497,
+          "contextLoadedAt": 1793560485575
+        },
+        {
+          "type": "model_timing",
+          "messageId": "359671f4-25af-4303-9dd0-0d770fb2728a",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560486518,
+          "modelFinishedAt": 1793560486547,
+          "preparationStartedAt": 1793560486376,
+          "contextLoadedAt": 1793560486441
+        }
+      ]
+    },
+    {
+      "messageId": "0567e09d-3971-484c-a6cd-1e5e0b867e1a",
+      "ms": 458,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "0567e09d-3971-484c-a6cd-1e5e0b867e1a",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560488653,
+          "modelFinishedAt": 1793560488661,
+          "preparationStartedAt": 1793560488350,
+          "contextLoadedAt": 1793560488428
+        },
+        {
+          "type": "model_timing",
+          "messageId": "0567e09d-3971-484c-a6cd-1e5e0b867e1a",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560489119,
+          "modelFinishedAt": 1793560489154,
+          "preparationStartedAt": 1793560488987,
+          "contextLoadedAt": 1793560489051
+        }
+      ]
+    },
+    {
+      "messageId": "c0f67d74-1d44-4783-b387-75c84007b91e",
+      "ms": 517,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "c0f67d74-1d44-4783-b387-75c84007b91e",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560491046,
+          "modelFinishedAt": 1793560491058,
+          "preparationStartedAt": 1793560490645,
+          "contextLoadedAt": 1793560490813
+        },
+        {
+          "type": "model_timing",
+          "messageId": "c0f67d74-1d44-4783-b387-75c84007b91e",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560491575,
+          "modelFinishedAt": 1793560491611,
+          "preparationStartedAt": 1793560491448,
+          "contextLoadedAt": 1793560491511
+        }
+      ]
+    },
+    {
+      "messageId": "d27a8c85-46dd-41f9-838a-f611fd423ae2",
+      "ms": 613,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "d27a8c85-46dd-41f9-838a-f611fd423ae2",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560493687,
+          "modelFinishedAt": 1793560493698,
+          "preparationStartedAt": 1793560493299,
+          "contextLoadedAt": 1793560493368
+        },
+        {
+          "type": "model_timing",
+          "messageId": "d27a8c85-46dd-41f9-838a-f611fd423ae2",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560494311,
+          "modelFinishedAt": 1793560494378,
+          "preparationStartedAt": 1793560494136,
+          "contextLoadedAt": 1793560494201
+        }
+      ]
+    },
+    {
+      "messageId": "1f0a5063-ffdd-48c3-89a6-442557f689fe",
+      "ms": 1144,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "1f0a5063-ffdd-48c3-89a6-442557f689fe",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560496630,
+          "modelFinishedAt": 1793560496637,
+          "preparationStartedAt": 1793560496103,
+          "contextLoadedAt": 1793560496184
+        },
+        {
+          "type": "model_timing",
+          "messageId": "1f0a5063-ffdd-48c3-89a6-442557f689fe",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560497781,
+          "modelFinishedAt": 1793560497820,
+          "preparationStartedAt": 1793560497641,
+          "contextLoadedAt": 1793560497700
+        }
+      ]
+    },
+    {
+      "messageId": "9969c084-499e-45eb-b169-92d22af88236",
+      "ms": 421,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "9969c084-499e-45eb-b169-92d22af88236",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560498898,
+          "modelFinishedAt": 1793560498904,
+          "preparationStartedAt": 1793560498779,
+          "contextLoadedAt": 1793560498841
+        },
+        {
+          "type": "model_timing",
+          "messageId": "9969c084-499e-45eb-b169-92d22af88236",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560499325,
+          "modelFinishedAt": 1793560499356,
+          "preparationStartedAt": 1793560499214,
+          "contextLoadedAt": 1793560499269
+        }
+      ]
+    },
+    {
+      "messageId": "5adba22c-5594-443b-be00-39717b8a4295",
+      "ms": 498,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "5adba22c-5594-443b-be00-39717b8a4295",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560501233,
+          "modelFinishedAt": 1793560501245,
+          "preparationStartedAt": 1793560500816,
+          "contextLoadedAt": 1793560500886
+        },
+        {
+          "type": "model_timing",
+          "messageId": "5adba22c-5594-443b-be00-39717b8a4295",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560501743,
+          "modelFinishedAt": 1793560501791,
+          "preparationStartedAt": 1793560501585,
+          "contextLoadedAt": 1793560501647
+        }
+      ]
+    },
+    {
+      "messageId": "871c6db0-6373-47c9-9464-ac5f1bec9443",
+      "ms": 447,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "871c6db0-6373-47c9-9464-ac5f1bec9443",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560503979,
+          "modelFinishedAt": 1793560503985,
+          "preparationStartedAt": 1793560503682,
+          "contextLoadedAt": 1793560503759
+        },
+        {
+          "type": "model_timing",
+          "messageId": "871c6db0-6373-47c9-9464-ac5f1bec9443",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560504432,
+          "modelFinishedAt": 1793560504472,
+          "preparationStartedAt": 1793560504314,
+          "contextLoadedAt": 1793560504371
+        }
+      ]
+    },
+    {
+      "messageId": "508f5e54-ea67-4c06-9b85-dcfe845ac492",
+      "ms": 1654,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "508f5e54-ea67-4c06-9b85-dcfe845ac492",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560506773,
+          "modelFinishedAt": 1793560506781,
+          "preparationStartedAt": 1793560506477,
+          "contextLoadedAt": 1793560506553
+        },
+        {
+          "type": "model_timing",
+          "messageId": "508f5e54-ea67-4c06-9b85-dcfe845ac492",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560508435,
+          "modelFinishedAt": 1793560508466,
+          "preparationStartedAt": 1793560508314,
+          "contextLoadedAt": 1793560508369
+        }
+      ]
+    },
+    {
+      "messageId": "edd1442f-80da-4347-baf1-91b075c84eed",
+      "ms": 1421,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "edd1442f-80da-4347-baf1-91b075c84eed",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560510098,
+          "modelFinishedAt": 1793560510108,
+          "preparationStartedAt": 1793560509790,
+          "contextLoadedAt": 1793560509859
+        },
+        {
+          "type": "model_timing",
+          "messageId": "edd1442f-80da-4347-baf1-91b075c84eed",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560511529,
+          "modelFinishedAt": 1793560511562,
+          "preparationStartedAt": 1793560511406,
+          "contextLoadedAt": 1793560511465
+        }
+      ]
+    },
+    {
+      "messageId": "0b032551-60ec-4099-a964-73fe17e53701",
+      "ms": 658,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "0b032551-60ec-4099-a964-73fe17e53701",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560513747,
+          "modelFinishedAt": 1793560513756,
+          "preparationStartedAt": 1793560513414,
+          "contextLoadedAt": 1793560513494
+        },
+        {
+          "type": "model_timing",
+          "messageId": "0b032551-60ec-4099-a964-73fe17e53701",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560514414,
+          "modelFinishedAt": 1793560514467,
+          "preparationStartedAt": 1793560514272,
+          "contextLoadedAt": 1793560514334
+        }
+      ]
+    },
+    {
+      "messageId": "5f87b487-4e05-4b39-89ea-c940ea4618a8",
+      "ms": 1417,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "5f87b487-4e05-4b39-89ea-c940ea4618a8",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560516117,
+          "modelFinishedAt": 1793560516123,
+          "preparationStartedAt": 1793560515804,
+          "contextLoadedAt": 1793560515871
+        },
+        {
+          "type": "model_timing",
+          "messageId": "5f87b487-4e05-4b39-89ea-c940ea4618a8",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560517540,
+          "modelFinishedAt": 1793560517572,
+          "preparationStartedAt": 1793560517417,
+          "contextLoadedAt": 1793560517473
+        }
+      ]
+    },
+    {
+      "messageId": "4ecc7bbe-bdf8-4257-bca1-f8717b5a28f7",
+      "ms": 947,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "4ecc7bbe-bdf8-4257-bca1-f8717b5a28f7",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560519283,
+          "modelFinishedAt": 1793560519295,
+          "preparationStartedAt": 1793560518927,
+          "contextLoadedAt": 1793560518996
+        },
+        {
+          "type": "model_timing",
+          "messageId": "4ecc7bbe-bdf8-4257-bca1-f8717b5a28f7",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560520242,
+          "modelFinishedAt": 1793560520272,
+          "preparationStartedAt": 1793560520011,
+          "contextLoadedAt": 1793560520171
+        }
+      ]
+    },
+    {
+      "messageId": "06fe2ede-b8c6-4a58-a8ba-41a29abdb165",
+      "ms": 436,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "06fe2ede-b8c6-4a58-a8ba-41a29abdb165",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560521486,
+          "modelFinishedAt": 1793560521492,
+          "preparationStartedAt": 1793560521353,
+          "contextLoadedAt": 1793560521420
+        },
+        {
+          "type": "model_timing",
+          "messageId": "06fe2ede-b8c6-4a58-a8ba-41a29abdb165",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560521928,
+          "modelFinishedAt": 1793560521958,
+          "preparationStartedAt": 1793560521798,
+          "contextLoadedAt": 1793560521857
+        }
+      ]
+    },
+    {
+      "messageId": "adcf127f-a56c-42bc-8d2b-c9f96f0d1e6e",
+      "ms": 1114,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "adcf127f-a56c-42bc-8d2b-c9f96f0d1e6e",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560524545,
+          "modelFinishedAt": 1793560524564,
+          "preparationStartedAt": 1793560524107,
+          "contextLoadedAt": 1793560524180
+        },
+        {
+          "type": "model_timing",
+          "messageId": "adcf127f-a56c-42bc-8d2b-c9f96f0d1e6e",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560525678,
+          "modelFinishedAt": 1793560525715,
+          "preparationStartedAt": 1793560525503,
+          "contextLoadedAt": 1793560525564
+        }
+      ]
+    },
+    {
+      "messageId": "a3557ffc-1bc5-4d7f-8c9b-043eac43d158",
+      "ms": 775,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "a3557ffc-1bc5-4d7f-8c9b-043eac43d158",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560527600,
+          "modelFinishedAt": 1793560527608,
+          "preparationStartedAt": 1793560527145,
+          "contextLoadedAt": 1793560527271
+        },
+        {
+          "type": "model_timing",
+          "messageId": "a3557ffc-1bc5-4d7f-8c9b-043eac43d158",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560528383,
+          "modelFinishedAt": 1793560528416,
+          "preparationStartedAt": 1793560528254,
+          "contextLoadedAt": 1793560528315
+        }
+      ]
+    },
+    {
+      "messageId": "0c5cf35f-6785-4d5f-9d9c-e05b313d301e",
+      "ms": 455,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "0c5cf35f-6785-4d5f-9d9c-e05b313d301e",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560530457,
+          "modelFinishedAt": 1793560530470,
+          "preparationStartedAt": 1793560529877,
+          "contextLoadedAt": 1793560530217
+        },
+        {
+          "type": "model_timing",
+          "messageId": "0c5cf35f-6785-4d5f-9d9c-e05b313d301e",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560530925,
+          "modelFinishedAt": 1793560530959,
+          "preparationStartedAt": 1793560530792,
+          "contextLoadedAt": 1793560530851
+        }
+      ]
+    },
+    {
+      "messageId": "23f1eebf-620a-49de-98e4-a216348b5e77",
+      "ms": 802,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "23f1eebf-620a-49de-98e4-a216348b5e77",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560532742,
+          "modelFinishedAt": 1793560532752,
+          "preparationStartedAt": 1793560532444,
+          "contextLoadedAt": 1793560532515
+        },
+        {
+          "type": "model_timing",
+          "messageId": "23f1eebf-620a-49de-98e4-a216348b5e77",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560533554,
+          "modelFinishedAt": 1793560533578,
+          "preparationStartedAt": 1793560533430,
+          "contextLoadedAt": 1793560533491
+        }
+      ]
+    },
+    {
+      "messageId": "ac5f78b2-b26f-490b-9438-6fce3057a6e7",
+      "ms": 577,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "ac5f78b2-b26f-490b-9438-6fce3057a6e7",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560535812,
+          "modelFinishedAt": 1793560535830,
+          "preparationStartedAt": 1793560535202,
+          "contextLoadedAt": 1793560535289
+        },
+        {
+          "type": "model_timing",
+          "messageId": "ac5f78b2-b26f-490b-9438-6fce3057a6e7",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560536407,
+          "modelFinishedAt": 1793560536440,
+          "preparationStartedAt": 1793560536240,
+          "contextLoadedAt": 1793560536315
+        }
+      ]
+    },
+    {
+      "messageId": "ad37f562-5172-44d3-887b-8c4964c65758",
+      "ms": 609,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "ad37f562-5172-44d3-887b-8c4964c65758",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560538880,
+          "modelFinishedAt": 1793560538889,
+          "preparationStartedAt": 1793560538403,
+          "contextLoadedAt": 1793560538470
+        },
+        {
+          "type": "model_timing",
+          "messageId": "ad37f562-5172-44d3-887b-8c4964c65758",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560539498,
+          "modelFinishedAt": 1793560539531,
+          "preparationStartedAt": 1793560539365,
+          "contextLoadedAt": 1793560539424
+        }
+      ]
+    },
+    {
+      "messageId": "b9c11b11-3814-45d1-9e35-f8f08d8a3d75",
+      "ms": 794,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "b9c11b11-3814-45d1-9e35-f8f08d8a3d75",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560543107,
+          "modelFinishedAt": 1793560543121,
+          "preparationStartedAt": 1793560541989,
+          "contextLoadedAt": 1793560542507
+        },
+        {
+          "type": "model_timing",
+          "messageId": "b9c11b11-3814-45d1-9e35-f8f08d8a3d75",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560543915,
+          "modelFinishedAt": 1793560543945,
+          "preparationStartedAt": 1793560543755,
+          "contextLoadedAt": 1793560543817
+        }
+      ]
+    },
+    {
+      "messageId": "fd7c3dbe-6126-4b9d-9ddd-e58744ca7107",
+      "ms": 757,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "fd7c3dbe-6126-4b9d-9ddd-e58744ca7107",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560546211,
+          "modelFinishedAt": 1793560546220,
+          "preparationStartedAt": 1793560545749,
+          "contextLoadedAt": 1793560545961
+        },
+        {
+          "type": "model_timing",
+          "messageId": "fd7c3dbe-6126-4b9d-9ddd-e58744ca7107",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560546977,
+          "modelFinishedAt": 1793560547005,
+          "preparationStartedAt": 1793560546821,
+          "contextLoadedAt": 1793560546887
+        }
+      ]
+    },
+    {
+      "messageId": "41209132-23bf-487a-8820-1ac4d2fe2a04",
+      "ms": 653,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "41209132-23bf-487a-8820-1ac4d2fe2a04",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560549174,
+          "modelFinishedAt": 1793560549187,
+          "preparationStartedAt": 1793560548595,
+          "contextLoadedAt": 1793560548759
+        },
+        {
+          "type": "model_timing",
+          "messageId": "41209132-23bf-487a-8820-1ac4d2fe2a04",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560549840,
+          "modelFinishedAt": 1793560550064,
+          "preparationStartedAt": 1793560549671,
+          "contextLoadedAt": 1793560549735
+        }
+      ]
+    },
+    {
+      "messageId": "ea2fd13d-1e45-43af-9b0c-8220631ead03",
+      "ms": 725,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "ea2fd13d-1e45-43af-9b0c-8220631ead03",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560551868,
+          "modelFinishedAt": 1793560551874,
+          "preparationStartedAt": 1793560551523,
+          "contextLoadedAt": 1793560551590
+        },
+        {
+          "type": "model_timing",
+          "messageId": "ea2fd13d-1e45-43af-9b0c-8220631ead03",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560552599,
+          "modelFinishedAt": 1793560552633,
+          "preparationStartedAt": 1793560552473,
+          "contextLoadedAt": 1793560552533
+        }
+      ]
+    },
+    {
+      "messageId": "eab8d9d4-bd91-48cc-b9e8-71c901b85c99",
+      "ms": 1947,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "eab8d9d4-bd91-48cc-b9e8-71c901b85c99",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560554528,
+          "modelFinishedAt": 1793560554541,
+          "preparationStartedAt": 1793560554223,
+          "contextLoadedAt": 1793560554289
+        },
+        {
+          "type": "model_timing",
+          "messageId": "eab8d9d4-bd91-48cc-b9e8-71c901b85c99",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560556488,
+          "modelFinishedAt": 1793560556515,
+          "preparationStartedAt": 1793560556368,
+          "contextLoadedAt": 1793560556422
+        }
+      ]
+    },
+    {
+      "messageId": "7cae8673-f9ea-4494-aebc-38f6f9eb18ad",
+      "ms": 464,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "7cae8673-f9ea-4494-aebc-38f6f9eb18ad",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560558772,
+          "modelFinishedAt": 1793560558779,
+          "preparationStartedAt": 1793560558481,
+          "contextLoadedAt": 1793560558555
+        },
+        {
+          "type": "model_timing",
+          "messageId": "7cae8673-f9ea-4494-aebc-38f6f9eb18ad",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560559243,
+          "modelFinishedAt": 1793560559275,
+          "preparationStartedAt": 1793560559133,
+          "contextLoadedAt": 1793560559181
+        }
+      ]
+    },
+    {
+      "messageId": "9e9bce3f-09fe-4ebc-8178-5eb0a57afbe1",
+      "ms": 523,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "9e9bce3f-09fe-4ebc-8178-5eb0a57afbe1",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560560925,
+          "modelFinishedAt": 1793560560935,
+          "preparationStartedAt": 1793560560603,
+          "contextLoadedAt": 1793560560679
+        },
+        {
+          "type": "model_timing",
+          "messageId": "9e9bce3f-09fe-4ebc-8178-5eb0a57afbe1",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560561458,
+          "modelFinishedAt": 1793560561489,
+          "preparationStartedAt": 1793560561318,
+          "contextLoadedAt": 1793560561385
+        }
+      ]
+    },
+    {
+      "messageId": "a38ba32e-805c-423f-ba05-818e36b32c28",
+      "ms": 1100,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "a38ba32e-805c-423f-ba05-818e36b32c28",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560563602,
+          "modelFinishedAt": 1793560563613,
+          "preparationStartedAt": 1793560563295,
+          "contextLoadedAt": 1793560563367
+        },
+        {
+          "type": "model_timing",
+          "messageId": "a38ba32e-805c-423f-ba05-818e36b32c28",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560564713,
+          "modelFinishedAt": 1793560564743,
+          "preparationStartedAt": 1793560564555,
+          "contextLoadedAt": 1793560564625
+        }
+      ]
+    },
+    {
+      "messageId": "3dd5ef56-93ce-4fd6-9d00-47ad095791c2",
+      "ms": 753,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "3dd5ef56-93ce-4fd6-9d00-47ad095791c2",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560566555,
+          "modelFinishedAt": 1793560566564,
+          "preparationStartedAt": 1793560566238,
+          "contextLoadedAt": 1793560566309
+        },
+        {
+          "type": "model_timing",
+          "messageId": "3dd5ef56-93ce-4fd6-9d00-47ad095791c2",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560567317,
+          "modelFinishedAt": 1793560567342,
+          "preparationStartedAt": 1793560567196,
+          "contextLoadedAt": 1793560567254
+        }
+      ]
+    },
+    {
+      "messageId": "6d051d2c-6481-4b6c-8713-a6cdf430434b",
+      "ms": 1022,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "6d051d2c-6481-4b6c-8713-a6cdf430434b",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560569124,
+          "modelFinishedAt": 1793560569132,
+          "preparationStartedAt": 1793560568806,
+          "contextLoadedAt": 1793560568874
+        },
+        {
+          "type": "model_timing",
+          "messageId": "6d051d2c-6481-4b6c-8713-a6cdf430434b",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560570154,
+          "modelFinishedAt": 1793560570181,
+          "preparationStartedAt": 1793560570043,
+          "contextLoadedAt": 1793560570099
+        }
+      ]
+    },
+    {
+      "messageId": "c23c2251-7f11-4781-8f67-ec212f3ebe72",
+      "ms": 582,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "c23c2251-7f11-4781-8f67-ec212f3ebe72",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560572078,
+          "modelFinishedAt": 1793560572085,
+          "preparationStartedAt": 1793560571620,
+          "contextLoadedAt": 1793560571693
+        },
+        {
+          "type": "model_timing",
+          "messageId": "c23c2251-7f11-4781-8f67-ec212f3ebe72",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560572667,
+          "modelFinishedAt": 1793560572700,
+          "preparationStartedAt": 1793560572537,
+          "contextLoadedAt": 1793560572598
+        }
+      ]
+    },
+    {
+      "messageId": "a12f0647-9ca6-420f-baf0-0e8309f5af9e",
+      "ms": 583,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "a12f0647-9ca6-420f-baf0-0e8309f5af9e",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793560578146,
+          "modelFinishedAt": 1793560578152,
+          "preparationStartedAt": 1793560577852,
+          "contextLoadedAt": 1793560577918
+        },
+        {
+          "type": "model_timing",
+          "messageId": "a12f0647-9ca6-420f-baf0-0e8309f5af9e",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793560578735,
+          "modelFinishedAt": 1793560578770,
+          "preparationStartedAt": 1793560578605,
+          "contextLoadedAt": 1793560578667
         }
       ]
     }
   ],
   "definition": "Last model response completes to next model request starts, including authorization, durable child dispatch, real guest action, journal/result persistence and next-round preparation. Excludes provider time; no human approval wait.",
-  "p50Ms": 646,
-  "p95Ms": 2531,
-  "maxMs": 2971,
-  "status": "failed"
+  "p50Ms": 653,
+  "p95Ms": 1421,
+  "maxMs": 1947,
+  "status": "failed",
+  "targetP95Ms": 1000,
+  "cutoverAcceptance": "Owner approved deployment with the measured limitation documented; see latency-cutover-decision.json"
 }

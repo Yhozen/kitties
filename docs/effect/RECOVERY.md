@@ -55,7 +55,8 @@ bindings and checks the committed DO class manifest. A live publish of all four 
 the same token received 403 when attempting a bucket-lock mutation.
 
 The manual `effect-deploy.yml` Actions workflow needs the repository secret
-`CLOUDFLARE_WORKER_DEPLOY_TOKEN` and variable `CLOUDFLARE_ACCOUNT_ID`. Their setup is pending local
-Mac execution because the cloud GitHub token cannot manage Actions secrets or variables. This
-pending configuration does not invalidate the successful direct restricted-token publish. ChatDO
-PITR has passed; full export verification, purge and production acceptance remain open.
+`CLOUDFLARE_WORKER_DEPLOY_TOKEN` and variable `CLOUDFLARE_ACCOUNT_ID`. Both were configured and verified using the owner’s Mac GitHub login. The Effect validation
+workflow has passed on GitHub. The manual deployment workflow becomes dispatchable after its
+file reaches the default branch; direct restricted-token publishing is already verified. ChatDO
+PITR, full encrypted export authentication, purge/tombstones and actual R2 error recovery passed.
+Production cutover and its smoke/recovery drill remain pending.

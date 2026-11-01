@@ -601,7 +601,7 @@ export const ComputerOpLive = Workflows.layer(
             const result = yield* request<{ success: boolean }>(
               "POST",
               `/sandboxes/${state.remoteId}/commands`,
-              { command: executeBootstrap, timeoutSeconds: 600 },
+              { command: executeBootstrap, timeoutSeconds: 30 },
             );
             if (!result.success) return yield* Effect.fail("BOOTSTRAP_FAILED");
           }),

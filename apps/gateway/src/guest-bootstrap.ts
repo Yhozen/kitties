@@ -17,4 +17,11 @@ finally:
 `;
 export const prepareBootstrap =
   "sudo install -d -o user -g user -m 0700 /home/user/.config/kittyd-bootstrap && sudo touch /home/user/.config/kittyd-bootstrap/config.json /home/user/.config/kittyd-bootstrap/artifact.json /home/user/.config/kittyd-bootstrap/bootstrap.py && sudo chown user:user /home/user/.config/kittyd-bootstrap/config.json /home/user/.config/kittyd-bootstrap/artifact.json /home/user/.config/kittyd-bootstrap/bootstrap.py && sudo chmod 0600 /home/user/.config/kittyd-bootstrap/config.json /home/user/.config/kittyd-bootstrap/artifact.json /home/user/.config/kittyd-bootstrap/bootstrap.py";
-export const executeBootstrap = "sudo python3 /home/user/.config/kittyd-bootstrap/bootstrap.py";
+// The service outlives a lost Boat response or Worker redeploy. Durable guest
+// readiness polling observes completion without holding an activity for apt/builds.
+export const executeBootstrap = `sudo sh -c '
+active() { systemctl show --property=ActiveState --value kittyd-bootstrap.service 2>/dev/null | grep -Eq "^(active|activating|reloading)$"; }
+if active; then exit 0; fi
+systemctl reset-failed kittyd-bootstrap.service >/dev/null 2>&1 || true
+systemd-run --quiet --unit=kittyd-bootstrap --collect --no-block --property=RuntimeMaxSec=1800 /usr/bin/python3 /home/user/.config/kittyd-bootstrap/bootstrap.py || active
+'`;

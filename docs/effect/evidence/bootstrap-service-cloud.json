@@ -1,0 +1,18 @@
+{
+  "date": "2026-11-01T19:20:15.321Z",
+  "status": "passed",
+  "kittyId": "41fe4b43-cfe1-4566-b076-933804801b80",
+  "remoteId": "bx_rbctzezv",
+  "operationId": "a5293eea-f0c7-4f30-b4b4-d853d98ec225",
+  "executionId": "6ecebf31ef499915e748ab31f7517a03",
+  "elapsedMs": 17100.586343,
+  "upgradeAfterRecoveryReconnectedGuest": true,
+  "tokenVersionBefore": 4,
+  "tokenVersionAfter": 5,
+  "unchangedRemoteAndGeneration": true,
+  "duplicateLaunchWhileRunning": {
+    "samePidAfterDuplicateStart": true,
+    "pid": 101521
+  },
+  "scope": "Real Boat bootstrap runs as an idempotent systemd service; workflow polls guest readiness through durable clocks. No long-running Boat command activity."
+}

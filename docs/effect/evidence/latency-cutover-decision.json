@@ -1,0 +1,14 @@
+{
+  "date": "2026-11-01T19:15:50.357460+00:00",
+  "decision": "Owner approved production cutover with the measured latency limitation documented",
+  "ownerConfirmation": "Deploy and document the latency limit (Recommended)",
+  "originalTargetP95Ms": 1000,
+  "completedRunAtDecision": {
+    "samples": 50,
+    "p50Ms": 557,
+    "p95Ms": 1596,
+    "maxMs": 2120
+  },
+  "gate": "waived for cutover; original performance target remains an open optimization",
+  "measurement": "Last model response completes to next model request starts, including real desktop action and durable persistence; excludes provider time"
+}
