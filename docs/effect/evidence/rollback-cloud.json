@@ -1,0 +1,12 @@
+{
+  "date": "2026-11-01T18:52:37.020Z",
+  "status": "passed",
+  "hostname": "candidate.kitties.rccpr.tech",
+  "scope": "Real custom-domain switch on isolated candidate hostname; production hostname unchanged",
+  "previousWorker": "kitties-gateway-prod-qqaqe4nm4n2wdzo2",
+  "candidateWorker": "kittiesnext-gateway-prod-ngmlf4varln5eane",
+  "rollbackMs": 1435.2092759999998,
+  "restoredCandidateMs": 2892.685408,
+  "rollbackObservedVia": "Public HTTPS Access redirect carrying the legacy worker application audience",
+  "candidateReturnObservedVia": "Public HTTPS Access redirect carrying the candidate application audience"
+}

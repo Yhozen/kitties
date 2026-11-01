@@ -11,8 +11,9 @@ import * as Schema from "effect/Schema";
 import type * as cf from "@cloudflare/workers-types";
 import * as Chat from "effect/ai/Chat";
 import * as Prompt from "effect/ai/Prompt";
-import {} from "effect/workflow";
-import { HomeDO, ChatDO } from "../actors.ts";
+import { Activity, WorkflowEngine } from "effect/workflow";
+import { Action } from "@kitties/protocol";
+import { HomeDO, ChatDO, KittyDO } from "../actors.ts";
 import { Delegation } from "../delegation-definition.ts";
 import { autonomyTools, DelegateInput, LimitToolInput } from "../autonomy-tools.ts";
 import { DesktopAttempt } from "../desktop-definition.ts";
@@ -64,7 +65,8 @@ export const TurnLive = Workflows.layer(
     const recovery = yield* makeRecoveryGuard;
     const fenced = (id: string) => guardedActivities(recovery(Turn._tag, id));
     const homes = yield* HomeDO,
-      chats = yield* ChatDO;
+      chats = yield* ChatDO,
+      kitties = yield* KittyDO;
     const env = (yield* Cloudflare.WorkerEnvironment) as {
       KITTIES_KEK: string;
       STAGE: string;
@@ -83,10 +85,12 @@ export const TurnLive = Workflows.layer(
           if (!saved) return yield* Effect.fail("CONFIG_NOT_FOUND");
           return JSON.parse(saved) as RunConfig;
         });
+        const warmToolResults = new Map<string, string>();
         let maxRounds = 100;
         for (let round = 0; round < maxRounds; round++) {
           let retryBudget = 0,
             modelFailures = 0;
+          let preparedRound: { history: string; body: string } | undefined;
           maxRounds = yield* fenced(executionId)({
             name: `round/${round}`,
             success: Schema.Number,
@@ -236,9 +240,11 @@ export const TurnLive = Workflows.layer(
                 const parts = [];
                 const images: Prompt.FilePart[] = [];
                 for (const call of prior.calls) {
-                  const result = yield* chat
-                    .toolResult(payload.messageId, call.id)
-                    .pipe(Effect.mapError(storageError));
+                  const result =
+                    warmToolResults.get(call.id) ??
+                    (yield* chat
+                      .toolResult(payload.messageId, call.id)
+                      .pipe(Effect.mapError(storageError)));
                   if (!result) return yield* Effect.fail("TOOL_RESULT_MISSING");
                   const value = JSON.parse(result) as { result: unknown; isFailure: boolean };
                   const screenshot = (value.result as { screenshot?: unknown })?.screenshot;
@@ -299,6 +305,7 @@ export const TurnLive = Workflows.layer(
                       .pipe(Effect.mapError(storageError))
                   : Effect.void;
               });
+              const modelStartedAt = Date.now();
               const result = yield* providerText(
                 provider,
                 secret,
@@ -311,28 +318,30 @@ export const TurnLive = Workflows.layer(
                   }),
                 tools,
               );
+              const modelFinishedAt = Date.now();
               yield* flush;
               const history = yield* session.exportJson.pipe(
                 Effect.mapError(() => "HISTORY_UNAVAILABLE"),
               );
-              yield* home
-                .charge(
-                  `${executionId}/round/${round}`,
-                  new Date().toISOString().slice(0, 10),
-                  kitty.id,
-                  result.tokens,
-                  0,
-                )
-                .pipe(Effect.mapError(storageError));
-              yield* chat
-                .saveModelRound(
-                  payload.messageId,
-                  round,
-                  attempt,
-                  history,
-                  JSON.stringify({ ...result, tools }),
-                )
-                .pipe(Effect.mapError(storageError));
+              const body = JSON.stringify({ ...result, tools, modelStartedAt, modelFinishedAt });
+              const [, saved] = yield* Effect.all(
+                [
+                  home
+                    .charge(
+                      `${executionId}/round/${round}`,
+                      new Date().toISOString().slice(0, 10),
+                      kitty.id,
+                      result.tokens,
+                      0,
+                    )
+                    .pipe(Effect.mapError(storageError)),
+                  chat
+                    .saveModelRound(payload.messageId, round, attempt, history, body)
+                    .pipe(Effect.mapError(storageError)),
+                ],
+                { concurrency: 2 },
+              );
+              if (saved) preparedRound = { history, body };
               return limit;
             }).pipe(
               Effect.retry({
@@ -343,9 +352,10 @@ export const TurnLive = Workflows.layer(
             ),
           });
           // Activities journal keys; the actor retains provider history and tool payloads.
-          const stored = yield* chat
-            .modelRound(payload.messageId, round)
-            .pipe(Effect.mapError(storageError));
+          // Cache only acknowledged writes within this pass; a replay reads the actors again.
+          const stored =
+            preparedRound ??
+            (yield* chat.modelRound(payload.messageId, round).pipe(Effect.mapError(storageError)));
           if (!stored) return yield* Effect.fail("ROUND_MISSING");
           const result = JSON.parse(stored.body) as ModelRound;
           if (result.calls.length === 0) {
@@ -397,13 +407,79 @@ export const TurnLive = Workflows.layer(
             const call = result.calls[index]!,
               tool = result.tools.find((item) => item.name === call.name);
             const id = `${executionId}/${round}/${index}`;
+            const fastDesktop = Effect.gen(function* () {
+              if (
+                !tool ||
+                tool.connectionId !== "desktop" ||
+                ["ask_help", "type_secret"].includes(tool.remoteName)
+              )
+                return false;
+              const child = {
+                id,
+                kittyId: payload.kittyId,
+                chatId: payload.chatId,
+                messageId: payload.messageId,
+                callId: call.id,
+              };
+
+              const run = yield* chat.run(payload.messageId).pipe(Effect.mapError(storageError));
+              if (run?.status === "cancelled") return true;
+              const childId = yield* DesktopAttempt.executionId(child);
+              const instance = yield* WorkflowEngine.WorkflowInstance;
+              const key = yield* Activity.idempotencyKey("desktop-dispatch").pipe(
+                Effect.provideService(WorkflowEngine.WorkflowInstance, {
+                  ...instance,
+                  executionId: childId,
+                }),
+              );
+              const intentId = yield* Effect.promise(() => sha256(key));
+              const action = yield* Schema.decodeUnknownEffect(Action.fields.action)(
+                tool.remoteName,
+              ).pipe(Effect.mapError(() => "UNSUPPORTED_ACTION"));
+              const receipt = yield* kitties
+                .getByName(payload.kittyId, { locationHint: "weur" })
+                .agentAction(intentId, action, call.params as Record<string, unknown>)
+                .pipe(Effect.mapError(storageError));
+              if (["completed", "failed"].includes(receipt.status)) {
+                let result: unknown = { status: receipt.status };
+                if (receipt.result) {
+                  try {
+                    result = JSON.parse(receipt.result);
+                  } catch {
+                    result = { text: receipt.result, status: receipt.status };
+                  }
+                }
+                const body = JSON.stringify({
+                  isFailure:
+                    receipt.status !== "completed" || (result as { ok?: boolean })?.ok === false,
+                  result,
+                });
+                yield* Effect.all(
+                  [
+                    chat
+                      .saveToolResult(payload.messageId, call.id, body)
+                      .pipe(Effect.mapError(storageError)),
+                    home
+                      .charge(key, new Date().toISOString().slice(0, 10), payload.kittyId, 0, 1)
+                      .pipe(Effect.mapError(storageError)),
+                  ],
+                  { concurrency: 2 },
+                );
+                warmToolResults.set(call.id, body);
+                return true;
+              }
+              return false;
+            });
             const approvalId = yield* fenced(executionId)({
               name: `authorize/${round}/${index}`,
               success: Schema.String,
               error: Schema.String,
               execute: Effect.gen(function* () {
-                const config = yield* getConfig;
-                const connection = config.connections.find(
+                const config =
+                  tool && ["desktop", "kitty"].includes(tool.connectionId)
+                    ? null
+                    : yield* getConfig;
+                const connection = config?.connections.find(
                   (item) => item.id === tool?.connectionId,
                 );
                 if (!tool) return yield* Effect.fail("TOOL_NOT_FOUND");
@@ -435,7 +511,7 @@ export const TurnLive = Workflows.layer(
                   )
                   .pipe(Effect.mapError(storageError));
                 if (verdict === "never") return yield* Effect.fail("ACTION_BLOCKED");
-                if (verdict === "run") return "";
+                if (verdict === "run") return (yield* fastDesktop) ? "desktop-completed" : "";
                 const digest = yield* Effect.promise(() =>
                   sha256(
                     JSON.stringify({
@@ -485,6 +561,7 @@ export const TurnLive = Workflows.layer(
                 return id;
               }),
             });
+            if (approvalId === "desktop-completed") continue;
             if (approvalId)
               yield* fenced(executionId)({
                 name: `start-approval/${round}/${index}`,
@@ -646,38 +723,35 @@ export const TurnLive = Workflows.layer(
               continue;
             }
             if (tool?.connectionId === "desktop" && approved) {
+              // Saving the job and joining its deterministic child are replay-safe.
+              // Earlier desktop-job/start entries may be skipped: the same child ID
+              // reads its existing journal and guest intent receipt.
               yield* fenced(executionId)({
-                name: `desktop-job/${round}/${index}`,
+                name: `desktop-run/${round}/${index}`,
                 success: Schema.String,
                 error: Schema.String,
-                execute: home
-                  .insert(
-                    "desktop-job",
-                    id,
-                    JSON.stringify({ action: tool.remoteName, args: call.params }),
-                  )
-                  .pipe(Effect.mapError(storageError), Effect.as(id)),
-              });
-              yield* fenced(executionId)({
-                name: `desktop-start/${round}/${index}`,
-                success: Schema.String,
-                execute: DesktopAttempt.execute(
-                  {
+                execute: Effect.gen(function* () {
+                  const child = {
                     id,
                     kittyId: payload.kittyId,
                     chatId: payload.chatId,
                     messageId: payload.messageId,
                     callId: call.id,
-                  },
-                  { discard: true },
-                ),
-              });
-              yield* DesktopAttempt.execute({
-                id,
-                kittyId: payload.kittyId,
-                chatId: payload.chatId,
-                messageId: payload.messageId,
-                callId: call.id,
+                  };
+                  if (yield* fastDesktop) return call.id;
+                  yield* home
+                    .insert(
+                      "desktop-job",
+                      id,
+                      JSON.stringify({
+                        action: tool.remoteName,
+                        args: call.params,
+                        preparedAt: Date.now(),
+                      }),
+                    )
+                    .pipe(Effect.mapError(storageError));
+                  return yield* DesktopAttempt.execute(child);
+                }),
               });
               continue;
             }

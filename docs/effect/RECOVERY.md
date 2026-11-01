@@ -12,7 +12,8 @@ stop for owner review; resuming them does not authorize their old effects. Start
 after checking what happened. Owner writes pause while recovery is running.
 
 The restore workflow saves the undo bookmark outside the target, prepares PITR, evicts the target,
-and confirms reactivation. It fences desktop credentials before and after restore, disconnects
+and confirms reactivation through a fresh stub after a durable wait. The evicted stub must not
+be reused. It fences desktop credentials before and after restore, disconnects
 OAuth credentials and writes the restored epoch to HomeDO. Reauthorize connections and use the
 desktop upgrade action to issue fresh guest credentials. A repeated operation ID must have the
 same payload. A suspended operation has a Continue action in the recovery panel.
@@ -48,5 +49,13 @@ Rotate and verify this escrow whenever the KEK changes.
 
 `scripts/configure-hooks-rate.mjs` configures only the signed hook hosts' WAF rate rule. Bucket
 locks/lifecycle are infrastructure settings managed by the owner's Alchemy deployment. Application
-CI must not receive bucket-configuration permissions. Restricted CI credentials and the live
-export/PITR drill are still being verified; production cutover remains gated on those results.
+CI must not receive bucket-configuration permissions. `scripts/publish-app.mjs next|prod` publishes application code and frontend assets to an existing
+Alchemy stage. It requires only Workers Scripts Write and Account Settings Read, preserves secret
+bindings and checks the committed DO class manifest. A live publish of all four Workers passed;
+the same token received 403 when attempting a bucket-lock mutation.
+
+The manual `effect-deploy.yml` Actions workflow needs the repository secret
+`CLOUDFLARE_WORKER_DEPLOY_TOKEN` and variable `CLOUDFLARE_ACCOUNT_ID`. Their setup is pending local
+Mac execution because the cloud GitHub token cannot manage Actions secrets or variables. This
+pending configuration does not invalidate the successful direct restricted-token publish. ChatDO
+PITR has passed; full export verification, purge and production acceptance remain open.

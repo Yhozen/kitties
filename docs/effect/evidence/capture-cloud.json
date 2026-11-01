@@ -1,0 +1,23 @@
+{
+  "date": "2026-11-01T18:33:51.744808+00:00",
+  "status": "passed",
+  "fixes": [
+    "Fallback to XGetImage when the X server cannot attach the capturer UID\u2019s private shared memory",
+    "Use HTTPS for screenshot uploads through the guest ingress"
+  ],
+  "captureTest": {
+    "display": ":99",
+    "dimensions": [
+      1280,
+      800
+    ],
+    "uids": [
+      "kittyd",
+      "kitty"
+    ],
+    "jpegFrameBytes": 37994,
+    "compilerWarnings": 0
+  },
+  "release": "505f87ab283adb1bd2abf065f0bf65fd6d56827ebc97d282265e67c14fd62294",
+  "liveScreenshotUploadAndReplay": true
+}

@@ -1,0 +1,23 @@
+{
+  "date": "2026-11-01T18:33:53.161Z",
+  "status": "passed",
+  "kittyId": "41fe4b43-cfe1-4566-b076-933804801b80",
+  "screenshotUploadAndReplay": true,
+  "helpReturnResumedTurn": true,
+  "cancellationRemovedPendingHelp": true,
+  "killAfterClick": {
+    "fault": "xdotool completed real click then SIGKILLed kittyd before its receipt commit",
+    "observedClicks": 1,
+    "ambiguousOutcome": "parked for owner review",
+    "guestAutomaticallyReconnected": true
+  },
+  "redeployWhileParked": {
+    "method": "Published Gateway and three ingress Workers using restricted application token",
+    "helpSurvived": true,
+    "duplicateMessageReturnedDuplicate": true,
+    "ownerAcceptedOutcome": true,
+    "turnCompleted": true,
+    "observedClicksAfterResume": 1
+  },
+  "scope": "Live desktop workflow behavior; latency and wider provider chaos are separate gates"
+}

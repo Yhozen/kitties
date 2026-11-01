@@ -24,41 +24,39 @@ export const makeRecoveryGuard = Effect.gen(function* () {
       ),
     );
 });
-// Check outside the journal, including when the underlying activity is already complete.
+// Every workflow checks on replay entry. Check again before each new activity;
+// replaying a completed result cannot dispatch effects or require another RPC.
 export const guardedActivities =
   (guard: Effect.Effect<void, string>) =>
-  <
-    R,
-    Success extends Schema.Constraint = Schema.Void,
-    Error extends Schema.Constraint = Schema.Never,
-  >(options: {
+  <R, Success extends Schema.Constraint = Schema.Void>(options: {
     name: string;
     success?: Success;
-    error?: Error;
-    execute: Effect.Effect<Success["Type"], Error["Type"], R>;
+    error?: typeof Schema.String;
+    execute: Effect.Effect<Success["Type"], string, R>;
   }) =>
-    guard.pipe(
-      Effect.andThen(
-        Activity.make({
-          ...options,
-          execute: options.execute.pipe(
-            Effect.catch((error) => {
-              if (
-                ![
-                  "STORAGE_UNAVAILABLE",
-                  "STORAGE_FAILED",
-                  "EXPORT_UNAVAILABLE",
-                  "RECOVERY_UNAVAILABLE",
-                  "PURGE_UNAVAILABLE",
-                ].includes(String(error))
-              )
-                return Effect.fail(error);
-              return Effect.gen(function* () {
-                yield* Effect.logWarning("Activity awaits operator retry", options.name);
-                return yield* Workflow.suspend(yield* WorkflowEngine.WorkflowInstance);
-              });
-            }),
-          ),
+    Activity.make({
+      ...options,
+      error: Schema.String,
+      execute: guard.pipe(
+        Effect.andThen(options.execute),
+        Effect.catch((error) => {
+          if (
+            ![
+              "STORAGE_UNAVAILABLE",
+              "STORAGE_FAILED",
+              "EXPORT_UNAVAILABLE",
+              "RECOVERY_UNAVAILABLE",
+              "PURGE_UNAVAILABLE",
+              "BOAT_UNAVAILABLE",
+              "QUIESCE_FAILED",
+              "BOOTSTRAP_FAILED",
+            ].includes(String(error))
+          )
+            return Effect.fail(error);
+          return Effect.gen(function* () {
+            yield* Effect.logWarning("Activity awaits operator retry", options.name);
+            return yield* Workflow.suspend(yield* WorkflowEngine.WorkflowInstance);
+          });
         }),
       ),
-    );
+    });

@@ -139,6 +139,14 @@ export const makeRecovery = Effect.gen(function* () {
             return json({ code: "NOT_FOUND", params: {} }, 404);
           if (!(yield* root().claim("restore-request", body.operationId, JSON.stringify(body))))
             return json({ code: "OPERATION_CONFLICT", params: {} }, 409);
+          const previous = yield* root().read("restore", body.operationId);
+          if (previous) {
+            const saved = JSON.parse(previous) as { status: string; executionId: string };
+            if (saved.status === "completed") return json({ executionId: saved.executionId }, 202);
+          }
+          const control = yield* root().status();
+          if (control.mode !== "ready" && control.operation_id !== body.operationId)
+            return json({ code: "RECOVERY_BUSY", params: {} }, 409);
           yield* root().begin(body.operationId);
           return json(
             {

@@ -1,0 +1,21 @@
+{
+  "date": "2026-11-01T18:52:22.203Z",
+  "status": "passed",
+  "kittyId": "891c42dc-e68f-4283-b1b7-61dc78ff7e45",
+  "remoteId": "bx_9pxnyawf",
+  "operationId": "83aa92b8-11ff-47c8-b8d7-8b4c9c64c13d",
+  "executionId": "9ea155d4de1404e8b91571ba88f263d1",
+  "failure": "QUIESCE_FAILED",
+  "whileFailed": "VM remained active; no checkpoint, stop or delete",
+  "helperRestored": true,
+  "resumedSameExecution": true,
+  "finalPhase": "sleeping",
+  "checkpoint": {
+    "name": "kn-1793547500-891c42dc-e68f-4283-b1b7-61dc78ff7e45-g2-83aa92b8",
+    "snapshotId": "523d34ad-1258-4b3f-800c-619bc8439709",
+    "sourceRemoteId": "bx_9pxnyawf",
+    "generation": 2,
+    "quiesced": true,
+    "at": 1793559139977
+  }
+}

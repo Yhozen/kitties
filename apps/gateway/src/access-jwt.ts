@@ -43,6 +43,9 @@ export async function verifiedAccessIdentity(
         return value;
       });
       cached.set(issuer, { expires: Date.now() + 300000, value });
+      void value.catch(() => {
+        if (cached.get(issuer)?.value === value) cached.delete(issuer);
+      });
       return value;
     };
     const saved = cached.get(issuer);

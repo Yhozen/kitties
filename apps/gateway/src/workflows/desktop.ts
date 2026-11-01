@@ -29,19 +29,23 @@ export const DesktopAttemptLive = Workflows.layer(
       const load = Effect.gen(function* () {
         const saved = yield* home.read("desktop-job", payload.id).pipe(Effect.mapError(storage));
         if (!saved) return yield* Effect.fail("TOOL_NOT_FOUND");
-        return JSON.parse(saved) as { action: string; args: Record<string, unknown> };
+        return JSON.parse(saved) as {
+          action: string;
+          args: Record<string, unknown>;
+          preparedAt?: number;
+        };
       });
       const initial = yield* fenced(executionId)({
         name: "dispatch",
         success: Schema.String,
         error: Schema.String,
         execute: Effect.gen(function* () {
-          if (
-            (yield* chat.run(payload.messageId).pipe(Effect.mapError(storage)))?.status ===
-            "cancelled"
-          )
-            return "cancelled";
-          const job = yield* load;
+          const startedAt = Date.now();
+          const [run, job] = yield* Effect.all(
+            [chat.run(payload.messageId).pipe(Effect.mapError(storage)), load],
+            { concurrency: 2 },
+          );
+          if (run?.status === "cancelled") return "cancelled";
           if (job.action === "ask_help") {
             yield* home
               .insert(
@@ -77,10 +81,16 @@ export const DesktopAttemptLive = Workflows.layer(
           const result = yield* kitty
             .agentAction(intentId, name, job.args)
             .pipe(Effect.mapError(storage));
-          return result.status;
+          return JSON.stringify({
+            status: result.status,
+            timing: { preparedAt: job.preparedAt, startedAt, dispatchedAt: Date.now() },
+          });
         }),
       });
-      let status = initial;
+      const dispatch = initial.startsWith("{")
+        ? (JSON.parse(initial) as { status: string; timing: Record<string, number> })
+        : { status: initial, timing: undefined };
+      let status = dispatch.status;
       for (let index = 0; (status === "started" || status === "held") && index < 60; index++) {
         yield* DurableClock.sleep({
           name: `receipt-wait/${index}`,
@@ -186,26 +196,34 @@ export const DesktopAttemptLive = Workflows.layer(
               result = { text: receipt.result, status };
             }
           }
-          yield* chat
-            .saveToolResult(
-              payload.messageId,
-              payload.callId,
-              JSON.stringify({
-                isFailure: status !== "completed" || (result as { ok?: boolean })?.ok === false,
-                result,
-              }),
-            )
-            .pipe(Effect.mapError(storage));
-          yield* home
-            .charge(key, new Date().toISOString().slice(0, 10), payload.kittyId, 0, 1)
-            .pipe(Effect.mapError(storage));
-          yield* home
-            .write(
-              "desktop-help",
-              payload.id,
-              JSON.stringify({ ...payload, executionId, status: "completed" }),
-            )
-            .pipe(Effect.mapError(storage));
+          yield* Effect.all(
+            [
+              chat
+                .saveToolResult(
+                  payload.messageId,
+                  payload.callId,
+                  JSON.stringify({
+                    isFailure: status !== "completed" || (result as { ok?: boolean })?.ok === false,
+                    result,
+                    timing: dispatch.timing
+                      ? { ...dispatch.timing, resultAt: Date.now() }
+                      : undefined,
+                  }),
+                )
+                .pipe(Effect.mapError(storage)),
+              home
+                .charge(key, new Date().toISOString().slice(0, 10), payload.kittyId, 0, 1)
+                .pipe(Effect.mapError(storage)),
+              home
+                .write(
+                  "desktop-help",
+                  payload.id,
+                  JSON.stringify({ ...payload, executionId, status: "completed" }),
+                )
+                .pipe(Effect.mapError(storage)),
+            ],
+            { concurrency: 3 },
+          );
           return payload.callId;
         }),
       });

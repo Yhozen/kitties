@@ -61,8 +61,14 @@ export const makeLifecycle = Effect.gen(function* () {
             )
           )
             return;
-          if (machine.state === "archived") {
-            if (state.operation && ["sleep", "delete"].includes(state.operation.kind)) return;
+          if (["archived", "archiving", "stopping", "stopped"].includes(machine.state)) {
+            if (
+              state.quiesced?.remoteId === state.remoteId &&
+              state.quiesced.generation === state.generation &&
+              state.operation &&
+              ["sleep", "delete"].includes(state.operation.kind)
+            )
+              return;
             yield* home.write(
               "run-health",
               "computer:" + record.id,

@@ -20,6 +20,17 @@ export const PurgeLive = Workflows.layer(
     const env = (yield* Cloudflare.WorkerEnvironment) as { KITTIES_KEK: string };
     return Effect.fn(function* ({ id, before }, executionId) {
       const root = roots.getByName("control", { locationHint: "weur" });
+      yield* activity({
+        name: "started",
+        error: Schema.String,
+        execute: root
+          .save(
+            "purge",
+            id,
+            JSON.stringify({ id, before, executionId, status: "running", at: Date.now() }),
+          )
+          .pipe(Effect.mapError(() => "STORAGE_UNAVAILABLE")),
+      });
       const objects = JSON.parse(
         yield* activity({
           name: "registry",

@@ -147,7 +147,10 @@ async function execute(action: Action): Promise<string> {
       const end = bytes.indexOf(10);
       if (end < 0) throw Error("SCREENSHOT_FAILED");
       const response = await fetch(
-        config.url.replace(/\/control$/, "/artifact/" + action.intentId),
+        config.url
+          .replace(/^wss:/, "https:")
+          .replace(/^ws:/, "http:")
+          .replace(/\/control$/, "/artifact/" + action.intentId),
         {
           method: "PUT",
           headers: { ...headers(), "Content-Type": "image/jpeg" },

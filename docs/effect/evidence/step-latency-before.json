@@ -1,0 +1,212 @@
+{
+  "date": "2026-11-01T18:36:54.277Z",
+  "chatId": "2023e9a4-3295-4637-8ecf-4dbb414fb3e3",
+  "kittyId": "41fe4b43-cfe1-4566-b076-933804801b80",
+  "samples": [
+    {
+      "messageId": "2206fee1-8654-428a-87c7-2eef27b4048e",
+      "ms": 3445
+    },
+    {
+      "messageId": "0fa4a10c-2a56-413e-b3b8-2af79873c568",
+      "ms": 2053
+    },
+    {
+      "messageId": "22a0e2f7-cc69-4969-a0c7-3d6d0f7b1ef6",
+      "ms": 2221
+    },
+    {
+      "messageId": "f174ce07-73a6-494a-8682-83fdb2ff1597",
+      "ms": 2463
+    },
+    {
+      "messageId": "e45eb473-b982-4ba4-b257-ae8d6fa34371",
+      "ms": 3144
+    },
+    {
+      "messageId": "e2fc32da-fc76-441f-a0ba-f4bb70380b7b",
+      "ms": 1958
+    },
+    {
+      "messageId": "ca9a8cc1-e335-46f4-8834-d9d765b38b22",
+      "ms": 1958
+    },
+    {
+      "messageId": "8f29a693-0d82-4744-97e2-8236b6ce9396",
+      "ms": 3022
+    },
+    {
+      "messageId": "74e0b665-bfd6-41df-b781-92fc69b5b7b9",
+      "ms": 2895
+    },
+    {
+      "messageId": "603f5bb9-b5bf-4db6-9885-9caac63916ae",
+      "ms": 3153
+    },
+    {
+      "messageId": "b2c41e5c-2aca-4f47-b4c9-88f4a49e929c",
+      "ms": 1958
+    },
+    {
+      "messageId": "a389596c-91dd-4404-8c18-5249f9aaa75a",
+      "ms": 2497
+    },
+    {
+      "messageId": "f04b1a68-7f20-4bf2-8f5e-f1790809de26",
+      "ms": 3142
+    },
+    {
+      "messageId": "566dd068-91d2-472e-b0af-a6ed278bf83f",
+      "ms": 2960
+    },
+    {
+      "messageId": "16de1cdf-e5ec-4ec6-9f01-653cef3db9db",
+      "ms": 3378
+    },
+    {
+      "messageId": "100b5d8d-1b25-491e-9d30-bab222d799d1",
+      "ms": 3859
+    },
+    {
+      "messageId": "3e691963-b14b-40ce-9ce0-1c5bf84964ae",
+      "ms": 2219
+    },
+    {
+      "messageId": "ba6f02dd-569d-4651-8cee-2104fa361605",
+      "ms": 2145
+    },
+    {
+      "messageId": "77eacbb3-bf37-49d0-aa1f-838b5ea2998b",
+      "ms": 2543
+    },
+    {
+      "messageId": "e27ab91f-9963-434d-a8df-44cd5c576c76",
+      "ms": 2853
+    },
+    {
+      "messageId": "bfe125a2-fac9-46bd-8380-a364aa186fd8",
+      "ms": 3188
+    },
+    {
+      "messageId": "ed6d4c12-ac82-4310-a477-be547391df2a",
+      "ms": 2791
+    },
+    {
+      "messageId": "e7c5f4dd-d8ee-4f4d-b0ad-0d96731f5c93",
+      "ms": 2648
+    },
+    {
+      "messageId": "69ad1c5e-e290-4c35-b8d6-2f049e86e6ff",
+      "ms": 2710
+    },
+    {
+      "messageId": "b4079679-2b9e-4984-8d44-a22f3ff7464c",
+      "ms": 1940
+    },
+    {
+      "messageId": "3c049172-77e4-415c-928c-1fd7e4c98255",
+      "ms": 2712
+    },
+    {
+      "messageId": "a821b2de-33e0-44c5-99bf-d9820e411c06",
+      "ms": 2705
+    },
+    {
+      "messageId": "a614261f-496c-4de0-ac63-df9b3ae201d5",
+      "ms": 2964
+    },
+    {
+      "messageId": "63825ea3-e80b-46b5-b40c-2dcd822249ad",
+      "ms": 2943
+    },
+    {
+      "messageId": "bc9ac5b2-2062-4d10-829f-9d37c15de6d9",
+      "ms": 2716
+    },
+    {
+      "messageId": "ff9c0d59-b59a-426f-b3fc-338abc46d662",
+      "ms": 3168
+    },
+    {
+      "messageId": "ead733ed-d75a-4e52-a91e-5a5bbfffa0cf",
+      "ms": 2295
+    },
+    {
+      "messageId": "61d5b687-572d-4347-8d55-883ba7065cbc",
+      "ms": 2824
+    },
+    {
+      "messageId": "d17d710b-ff71-4401-b3c0-165f889311fb",
+      "ms": 1700
+    },
+    {
+      "messageId": "57a5e0b8-c3c9-4eff-84af-fbc851ccb436",
+      "ms": 3190
+    },
+    {
+      "messageId": "fec0f1a9-6be7-498a-b7e7-8fd2753a39f1",
+      "ms": 2132
+    },
+    {
+      "messageId": "9f35393d-f0ac-4ec2-bab5-35bdcc2244b1",
+      "ms": 2017
+    },
+    {
+      "messageId": "3be933de-f6ef-4fa9-baa1-37c4f4e33c61",
+      "ms": 2006
+    },
+    {
+      "messageId": "02dc9a7b-8b65-43d6-97d0-5f2778bab719",
+      "ms": 2634
+    },
+    {
+      "messageId": "498660f6-e872-4c12-97e6-06d070ca782b",
+      "ms": 2718
+    },
+    {
+      "messageId": "5cb0fa9e-6c38-4f45-a7a9-233d7b5f6c6f",
+      "ms": 2463
+    },
+    {
+      "messageId": "73fa1a55-9d9e-44cf-adb3-8789736f1a65",
+      "ms": 2240
+    },
+    {
+      "messageId": "a8c35df7-e79e-4920-a793-01194a9b871a",
+      "ms": 2472
+    },
+    {
+      "messageId": "2b615a2e-1fbf-4d06-9c29-7e2b94220595",
+      "ms": 2346
+    },
+    {
+      "messageId": "4ab066a6-1684-4be7-8108-d75cd5bfc6a5",
+      "ms": 2660
+    },
+    {
+      "messageId": "5f533d39-c652-4c77-b7d9-2836e75a6b59",
+      "ms": 2079
+    },
+    {
+      "messageId": "6b8a35e7-556a-4fd9-8ea8-fb99c68bf342",
+      "ms": 2331
+    },
+    {
+      "messageId": "561d7bb8-5f33-4604-8230-8a9d69582b8c",
+      "ms": 2860
+    },
+    {
+      "messageId": "3d58bd96-c26f-40eb-b57b-b639cbc34130",
+      "ms": 2095
+    },
+    {
+      "messageId": "eb1f7aa3-e6c4-4933-b0b5-370c23c429af",
+      "ms": 3119
+    }
+  ],
+  "definition": "Last model response completes to next model request starts, including authorization, durable child dispatch, real guest action, journal/result persistence and next-round preparation. Excludes provider time; no human approval wait.",
+  "p50Ms": 2648,
+  "p95Ms": 3378,
+  "maxMs": 3859,
+  "status": "failed"
+}

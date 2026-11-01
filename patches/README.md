@@ -8,10 +8,12 @@ They update source and emitted JavaScript together.
   resumes can re-arm parked callbacks; repeated durable clocks do not exhaust the retry counter.
 - Activity failures are journaled and reach workflow error handlers even when the parent has
   `SuspendOnFailure`. Explicit activity suspension remains unjournaled and retryable.
+- New workflow objects receive an explicit western-Europe location hint so desktop workflows
+  and their application actors start in the same region. Existing objects retain their placement.
 - Workflow creation/completion times are durable metadata. Recovery guards can reject old runs
   even when they were not registered before a restore.
 - Owner-only administration supports workflow PITR, immutable row capture and bounded export
-  reads. Purging completed journals retains the execution/result tombstone to prevent replay.
+  reads. Old workflow row captures are also purged. Purging completed journals retains the execution/result tombstone to prevent replay.
 
 The cloud engine suite exercises 3/50/200/500 activities, deferreds, dedupe and failure handling.
 Additional probes cover annotated activity errors, child workflows, storage suspension and durable

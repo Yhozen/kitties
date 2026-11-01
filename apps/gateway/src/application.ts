@@ -19,6 +19,7 @@ import {
 } from "./entities.ts";
 import { ComputerOp } from "./computer-definition.ts";
 import { Turn } from "./turn-definition.ts";
+import { DesktopAttempt } from "./desktop-definition.ts";
 import { Approval, ApprovalDecision } from "./approval-definition.ts";
 import { WorkflowEngine } from "effect/workflow";
 import { seal, open } from "./secrets.ts";
@@ -52,6 +53,7 @@ export const makeApplication = Effect.gen(function* () {
     chats = yield* ChatDO;
   const computers = yield* Workflows.RunWorkflow(ComputerOp);
   const turns = yield* Workflows.RunWorkflow(Turn);
+  const desktops = yield* Workflows.RunWorkflow(DesktopAttempt);
   const approvals = yield* Workflows.RunWorkflow(Approval);
   const engine = yield* WorkflowEngine.WorkflowEngine;
   const workspaceData = yield* makeWorkspaceData;
@@ -421,6 +423,26 @@ export const makeApplication = Effect.gen(function* () {
           if (!row) return json({ code: "NOT_FOUND", params: {} }, 404);
           if (chatRoute[2] === "cancel") {
             yield* chat.finish(body.messageId, "cancelled");
+            for (const entry of yield* home().list("desktop-help")) {
+              const help = JSON.parse(entry.body) as {
+                chatId: string;
+                messageId: string;
+                executionId: string;
+                status: string;
+              };
+              if (
+                help.chatId !== id ||
+                help.messageId !== body.messageId ||
+                help.status !== "pending"
+              )
+                continue;
+              yield* home().write(
+                "desktop-help",
+                entry.id,
+                JSON.stringify({ ...help, status: "cancelled" }),
+              );
+              yield* desktops.get(help.executionId).interrupt;
+            }
             for (const record of yield* list<ApprovalRecord>("approval")) {
               if (
                 record.messageId !== body.messageId ||

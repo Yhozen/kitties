@@ -1,0 +1,232 @@
+{
+  "date": "2026-11-01T18:56:00.867Z",
+  "chatId": "25bccc6f-9ca4-4866-b28c-d0e5c70857ff",
+  "kittyId": "41fe4b43-cfe1-4566-b076-933804801b80",
+  "samples": [
+    {
+      "messageId": "4e342d34-759b-4f07-97f7-2c55de7d1c07",
+      "ms": 1028,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "4e342d34-759b-4f07-97f7-2c55de7d1c07",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793559363505,
+          "modelFinishedAt": 1793559363514
+        },
+        {
+          "type": "model_timing",
+          "messageId": "4e342d34-759b-4f07-97f7-2c55de7d1c07",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793559364542,
+          "modelFinishedAt": 1793559364567
+        }
+      ]
+    },
+    {
+      "messageId": "9898bce7-237e-4779-b7bb-4e35602722cd",
+      "ms": 1820,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "9898bce7-237e-4779-b7bb-4e35602722cd",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793559366775,
+          "modelFinishedAt": 1793559366793
+        },
+        {
+          "type": "model_timing",
+          "messageId": "9898bce7-237e-4779-b7bb-4e35602722cd",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793559368613,
+          "modelFinishedAt": 1793559368646
+        }
+      ]
+    },
+    {
+      "messageId": "b3eac0f7-6581-4ad8-b8de-04756aa50d7c",
+      "ms": 563,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "b3eac0f7-6581-4ad8-b8de-04756aa50d7c",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793559370516,
+          "modelFinishedAt": 1793559370523
+        },
+        {
+          "type": "model_timing",
+          "messageId": "b3eac0f7-6581-4ad8-b8de-04756aa50d7c",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793559371086,
+          "modelFinishedAt": 1793559371122
+        }
+      ]
+    },
+    {
+      "messageId": "71903eca-8365-4ca4-9506-0a82f5899c66",
+      "ms": 1137,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "71903eca-8365-4ca4-9506-0a82f5899c66",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793559373012,
+          "modelFinishedAt": 1793559373025
+        },
+        {
+          "type": "model_timing",
+          "messageId": "71903eca-8365-4ca4-9506-0a82f5899c66",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793559374162,
+          "modelFinishedAt": 1793559374187
+        }
+      ]
+    },
+    {
+      "messageId": "fd977f93-96bc-4b32-a806-1e7811805b15",
+      "ms": 1196,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "fd977f93-96bc-4b32-a806-1e7811805b15",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793559376263,
+          "modelFinishedAt": 1793559376272
+        },
+        {
+          "type": "model_timing",
+          "messageId": "fd977f93-96bc-4b32-a806-1e7811805b15",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793559377468,
+          "modelFinishedAt": 1793559377495
+        }
+      ]
+    },
+    {
+      "messageId": "55d7c573-5f3f-4d43-94bc-235f497a11de",
+      "ms": 505,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "55d7c573-5f3f-4d43-94bc-235f497a11de",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793559379294,
+          "modelFinishedAt": 1793559379301
+        },
+        {
+          "type": "model_timing",
+          "messageId": "55d7c573-5f3f-4d43-94bc-235f497a11de",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793559379806,
+          "modelFinishedAt": 1793559379829
+        }
+      ]
+    },
+    {
+      "messageId": "44cc54ee-07ee-47f2-89ad-c647c3d47f9d",
+      "ms": 739,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "44cc54ee-07ee-47f2-89ad-c647c3d47f9d",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793559385252,
+          "modelFinishedAt": 1793559385277
+        },
+        {
+          "type": "model_timing",
+          "messageId": "44cc54ee-07ee-47f2-89ad-c647c3d47f9d",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793559386016,
+          "modelFinishedAt": 1793559386040
+        }
+      ]
+    },
+    {
+      "messageId": "8e5ca449-fea7-4885-9003-c9f931215d82",
+      "ms": 1377,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "8e5ca449-fea7-4885-9003-c9f931215d82",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793559387969,
+          "modelFinishedAt": 1793559387974
+        },
+        {
+          "type": "model_timing",
+          "messageId": "8e5ca449-fea7-4885-9003-c9f931215d82",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793559389351,
+          "modelFinishedAt": 1793559389372
+        }
+      ]
+    },
+    {
+      "messageId": "6e74a571-f336-4fb0-81e1-afc70c6094e9",
+      "ms": 1319,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "6e74a571-f336-4fb0-81e1-afc70c6094e9",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793559391335,
+          "modelFinishedAt": 1793559391344
+        },
+        {
+          "type": "model_timing",
+          "messageId": "6e74a571-f336-4fb0-81e1-afc70c6094e9",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793559392663,
+          "modelFinishedAt": 1793559392692
+        }
+      ]
+    },
+    {
+      "messageId": "07f7df7f-4bc4-499e-8c2d-1fcb57a5c2ac",
+      "ms": 1521,
+      "rounds": [
+        {
+          "type": "model_timing",
+          "messageId": "07f7df7f-4bc4-499e-8c2d-1fcb57a5c2ac",
+          "round": 0,
+          "attempt": 1,
+          "modelStartedAt": 1793559394415,
+          "modelFinishedAt": 1793559394452
+        },
+        {
+          "type": "model_timing",
+          "messageId": "07f7df7f-4bc4-499e-8c2d-1fcb57a5c2ac",
+          "round": 1,
+          "attempt": 1,
+          "modelStartedAt": 1793559395973,
+          "modelFinishedAt": 1793559396019
+        }
+      ]
+    }
+  ],
+  "definition": "Last model response completes to next model request starts, including authorization, durable child dispatch, real guest action, journal/result persistence and next-round preparation. Excludes provider time; no human approval wait.",
+  "p50Ms": 1137,
+  "p95Ms": 1820,
+  "maxMs": 1820,
+  "status": "failed"
+}

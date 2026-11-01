@@ -3,7 +3,7 @@
 These are the numbers the rewrite reports against. Every phase that changes a path measures it
 again on `next` and adds a row to the tables below. It never edits the old rows.
 
-All figures come from the Go deployment at commit
+The historical baseline figures come from the Go deployment at commit
 [`7f408a1`](https://github.com/Yhozen/kitties/commit/7f408a17a33e87c29701dc0ec0ca89df3b75947a).
 
 ## Measured today
@@ -68,4 +68,8 @@ targets, not measurements.
 
 | Date | Phase | Path | p50 | p95 | Notes |
 |---|---|---|---|---|---|
-| — | — | — | — | — | No measurements yet. |
+| 2026-11-01 | 4 | Real Boat input acknowledgment | 123.5 ms | 242.6 ms | 200 inputs from a European Boat client through public Cloudflare WS; four viewers total. [Evidence](evidence/channel-boat-visible.json) |
+| 2026-11-01 | 4 | Real Boat click to visible pixel | 197.3 ms | 359.6 ms | Same monotonic client clock; decoded changed pixel. Not a physical mobile-browser measurement. |
+| 2026-11-01 | 4 | Regional DO to real guest acknowledgment | 90 ms | 155 ms | 200 inputs; excludes browser to European edge. [Evidence](evidence/channel-boat-eu.json) |
+| 2026-11-01 | 5 | First streamed fixture-model token | — | 1.872 s | 50 turns through deployed workflow and SSE; excludes paid-provider characteristics. [Evidence](evidence/chat-stream-cloud.json) |
+| 2026-11-01 | 4 | Continuous real stream | 30 min | no disconnects | Three viewers, including a constrained viewer. [Evidence](evidence/stream-soak.json) |

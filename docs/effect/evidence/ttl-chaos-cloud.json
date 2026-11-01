@@ -1,0 +1,17 @@
+{
+  "kittyId": "0e256fef-d43f-477a-9042-80fffe6627a5",
+  "remoteId": "bx_jggrdbhg",
+  "startedAt": "2026-11-01T18:36:53.857Z",
+  "date": "2026-11-01T18:47:13.545Z",
+  "status": "passed",
+  "boatState": "archiving",
+  "automaticRestore": false,
+  "checkpointAdopted": false,
+  "health": {
+    "id": "computer:0e256fef-d43f-477a-9042-80fffe6627a5",
+    "kittyId": "0e256fef-d43f-477a-9042-80fffe6627a5",
+    "status": "attention",
+    "code": "TTL_ARCHIVE_REQUIRES_REVIEW",
+    "updatedAt": 1793558827151
+  }
+}

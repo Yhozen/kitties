@@ -6,7 +6,7 @@ import * as HttpBody from "effect/http/HttpBody";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import type * as cf from "@cloudflare/workers-types";
 import { KittyDO, type GuestConfig } from "./kitty.ts";
-import { GuestAssets } from "./resources.ts";
+import { GuestAssets, RetainedExports } from "./resources.ts";
 import Gateway from "./worker.ts";
 import { benchmarkChannel } from "./channel-benchmark.ts";
 import { probeMcpEndpoints } from "./mcp.ts";
@@ -60,7 +60,7 @@ class VerificationDO extends Cloudflare.DurableObject<VerificationDO>()(
         const saved = yield* state.storage.get<Checkpoint>("checkpoint");
         if (!saved)
           yield* gateway.probeSaveReport(
-            JSON.stringify({ status: "pending", verifier: "engine-progress-v3" }),
+            JSON.stringify({ status: "pending", verifier: "engine-progress-v7" }),
           );
         const checkpoint = saved ?? { index: 0, id: `cloud-${Date.now()}`, results: [] };
         if (checkpoint.index >= cases.length) return;
@@ -118,7 +118,7 @@ class VerificationDO extends Cloudflare.DurableObject<VerificationDO>()(
             date: new Date().toISOString(),
             status: "passed",
             runtime: "Cloudflare DurableObjectEngine",
-            verifier: "engine-progress-v3",
+            verifier: "engine-progress-v7",
             enginePatch: "journal-progress-and-activity-failures",
             cases: checkpoint.results,
           };
@@ -150,12 +150,14 @@ export default class Verification extends Cloudflare.Worker<Verification>()(
     const token = yield* Config.Redacted("KITTIES_VERIFY_TOKEN");
     const target = globalThis.__ALCHEMY_RUNTIME__ ? undefined : yield* Gateway;
     const assets = yield* GuestAssets;
+    const exports = yield* RetainedExports;
     return {
       main: import.meta.url,
       domain: "checks.kitties.rccpr.tech",
       env: {
         KITTIES_VERIFY_TOKEN: token,
         GUEST_ASSETS: assets,
+        EXPORTS: exports,
         ...(target
           ? {
               DESKTOPS: Cloudflare.DurableObject<KittyDO>("KittyDO", {
@@ -178,9 +180,10 @@ export default class Verification extends Cloudflare.Worker<Verification>()(
       KITTIES_VERIFY_TOKEN: string;
       DESKTOPS: cf.DurableObjectNamespace;
       GUEST_ASSETS: cf.R2Bucket;
+      EXPORTS: cf.R2Bucket;
     };
     yield* Cloudflare.Workers.cron("* * * * *", () =>
-      verifiers.getByName("engine-progress-v3", { locationHint: "weur" }).tick(),
+      verifiers.getByName("engine-progress-v7", { locationHint: "weur" }).tick(),
     );
     return {
       fetch: Effect.gen(function* () {
@@ -291,6 +294,22 @@ export default class Verification extends Cloudflare.Worker<Verification>()(
         }
         if (request.headers.get("Authorization") !== `Bearer ${env.KITTIES_VERIFY_TOKEN}`)
           return HttpServerResponse.empty({ status: 404 });
+        if (url.pathname === "/export-object") {
+          const key = url.searchParams.get("key") ?? "";
+          if (!/^exports\/[a-zA-Z0-9_/-]+\.jsonl$/.test(key))
+            return HttpServerResponse.empty({ status: 400 });
+          const object = yield* Effect.promise(() => env.EXPORTS.get(key));
+          return object
+            ? HttpServerResponse.fromWeb(
+                new Response(object.body as unknown as ReadableStream, {
+                  headers: {
+                    "Content-Type": "application/x-ndjson",
+                    "X-Kitties-Last": object.customMetadata?.last ?? "true",
+                  },
+                }),
+              )
+            : HttpServerResponse.empty({ status: 404 });
+        }
         if (url.pathname === "/timer-probe" && request.method === "POST")
           return HttpServerResponse.fromWeb(
             Response.json({
@@ -342,6 +361,51 @@ export default class Verification extends Cloudflare.Worker<Verification>()(
           >;
           return HttpServerResponse.fromWeb(
             Response.json(yield* gateway.verifyApplication(body.method, body.path, body.body)),
+          );
+        }
+        if (url.pathname === "/boat-fault" && request.method === "POST") {
+          const body = yield* Effect.tryPromise(() => request.json()) as Effect.Effect<
+            { operationId: string; mode: "5xx" | "lost-create" | "5xx-lost-create" | "read" },
+            unknown
+          >;
+          if (
+            !/^[a-zA-Z0-9_-]{1,128}$/.test(body.operationId) ||
+            !["5xx", "lost-create", "5xx-lost-create", "read"].includes(body.mode)
+          )
+            return HttpServerResponse.empty({ status: 400 });
+          return HttpServerResponse.fromWeb(
+            Response.json(yield* gateway.verifyBoatFault(body.operationId, body.mode)),
+          );
+        }
+        if (url.pathname === "/workflow-summary" && request.method === "POST") {
+          const body = yield* Effect.tryPromise(() => request.json()) as Effect.Effect<
+            { name: string },
+            unknown
+          >;
+          if (!/^[a-zA-Z0-9_]+\/[a-f0-9]{32}$/.test(body.name))
+            return HttpServerResponse.empty({ status: 400 });
+          return HttpServerResponse.fromWeb(
+            Response.json(yield* gateway.verifyWorkflowSummary(body.name)),
+          );
+        }
+        if (url.pathname === "/purge-test" && request.method === "POST") {
+          const body = yield* Effect.tryPromise(() => request.json()) as Effect.Effect<
+            { id: string; before: number },
+            unknown
+          >;
+          return HttpServerResponse.fromWeb(
+            Response.json({ executionId: yield* gateway.verifyPurge(body.id, body.before) }),
+          );
+        }
+        if (url.pathname === "/secret-audit" && request.method === "POST") {
+          const body = yield* Effect.tryPromise(() => request.json()) as Effect.Effect<
+            { needle: string; chatId: string; messages: string[] },
+            unknown
+          >;
+          return HttpServerResponse.fromWeb(
+            Response.json(
+              yield* gateway.verifySecretAudit(body.needle, body.chatId, body.messages),
+            ),
           );
         }
         if (url.pathname === "/channel-token") {
@@ -404,7 +468,7 @@ export default class Verification extends Cloudflare.Worker<Verification>()(
           );
         }
         if (request.method === "POST" && url.pathname === "/run")
-          yield* verifiers.getByName("engine-progress-v3", { locationHint: "weur" }).tick();
+          yield* verifiers.getByName("engine-progress-v7", { locationHint: "weur" }).tick();
         const report = yield* gateway.probeReport();
         return HttpServerResponse.fromWeb(
           Response.json(
@@ -413,7 +477,7 @@ export default class Verification extends Cloudflare.Worker<Verification>()(
               : {
                   status: "pending",
                   checkpoint: yield* verifiers
-                    .getByName("engine-progress-v3", { locationHint: "weur" })
+                    .getByName("engine-progress-v7", { locationHint: "weur" })
                     .snapshot(),
                 },
           ),

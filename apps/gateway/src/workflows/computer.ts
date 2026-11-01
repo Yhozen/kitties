@@ -8,7 +8,14 @@ import * as Schedule from "effect/Schedule";
 import { DurableClock } from "effect/workflow";
 import { HomeDO, KittyDO } from "../actors.ts";
 import { ComputerOp } from "../computer-definition.ts";
-import { boatClient, ownsSandbox, activeSandbox, readySandbox, type BoatSandbox } from "../boat.ts";
+import {
+  boatClient,
+  ownsSandbox,
+  activeSandbox,
+  readySandbox,
+  type BoatSandbox,
+  BoatError,
+} from "../boat.ts";
 import type { ComputerState } from "../computer-state.ts";
 import { bootstrapPython, prepareBootstrap, executeBootstrap } from "../guest-bootstrap.ts";
 import { releaseUrl } from "../releases.ts";
@@ -28,35 +35,96 @@ export const ComputerOpLive = Workflows.layer(
       KITTIES_KEK: string;
       KITTIES_RELEASE_KEY: string;
       GUEST_URL: string;
+      STAGE: string;
     };
     const boat = boatClient(env.BOAT_DEV_API_KEY);
-    const request = <A>(
-      method: string,
-      path: string,
-      body?: unknown,
-      headers?: Record<string, string>,
-    ) =>
-      boat.request<A>(method, path, body, headers).pipe(
-        Effect.retry({
-          times: 3,
-          schedule: Schedule.spaced("2 seconds"),
-          while: (error) =>
-            error.status === 0 ||
-            error.status >= 500 ||
-            error.status === 429 ||
-            error.code === "idempotency_in_progress",
-        }),
-        Effect.mapError((error) => error.code),
-      );
-    const get = (id: string) =>
-      request<{ sandbox: BoatSandbox }>("GET", "/sandboxes/" + encodeURIComponent(id)).pipe(
-        Effect.map((value) => value.sandbox),
-      );
+    const boatError = (error: { status: number; code: string }) =>
+      error.status === 0 ||
+      error.status >= 500 ||
+      error.status === 429 ||
+      error.code === "idempotency_in_progress"
+        ? "BOAT_UNAVAILABLE"
+        : error.code;
     return Effect.fn(
       function* (payload, executionId) {
         yield* recovery(ComputerOp._tag, executionId);
         const home = homes.getByName("owner", { locationHint: "weur" }),
           kitty = kitties.getByName(payload.kittyId, { locationHint: "weur" });
+        const request = <A>(
+          method: string,
+          path: string,
+          body?: unknown,
+          headers?: Record<string, string>,
+        ) =>
+          Effect.gen(function* () {
+            // Only the authenticated next/e2e verifier can install these per-operation faults.
+            const injected =
+              env.STAGE === "next" || env.STAGE === "e2e"
+                ? yield* home
+                    .read("boat-fault", payload.operationId)
+                    .pipe(
+                      Effect.mapError(
+                        () => new BoatError({ code: "BOAT_UNAVAILABLE", status: 0, retryAfter: 5 }),
+                      ),
+                    )
+                : null;
+            const fault = injected
+              ? (JSON.parse(injected) as {
+                  mode: string;
+                  remaining: number;
+                  injected: number;
+                  remoteId?: string;
+                })
+              : null;
+            const hit = method === "POST" && path === "/sandboxes" && fault && fault.remaining > 0;
+            if (hit) {
+              const serverFailure =
+                fault.mode === "5xx" || (fault.mode === "5xx-lost-create" && fault.remaining > 1);
+              fault.remaining--;
+              fault.injected++;
+              yield* home
+                .write("boat-fault", payload.operationId, JSON.stringify(fault))
+                .pipe(
+                  Effect.mapError(
+                    () => new BoatError({ code: "BOAT_UNAVAILABLE", status: 0, retryAfter: 5 }),
+                  ),
+                );
+              if (serverFailure)
+                return yield* Effect.fail(
+                  new BoatError({ code: "BOAT_UNAVAILABLE", status: 503, retryAfter: 1 }),
+                );
+            }
+            const result = yield* boat.request<A>(method, path, body, headers);
+            if (hit && ["lost-create", "5xx-lost-create"].includes(fault.mode)) {
+              fault.remoteId = (result as { sandbox?: BoatSandbox }).sandbox?.id;
+              yield* home
+                .write("boat-fault", payload.operationId, JSON.stringify(fault))
+                .pipe(
+                  Effect.mapError(
+                    () => new BoatError({ code: "BOAT_UNAVAILABLE", status: 0, retryAfter: 5 }),
+                  ),
+                );
+              return yield* Effect.fail(
+                new BoatError({ code: "BOAT_UNAVAILABLE", status: 0, retryAfter: 1 }),
+              );
+            }
+            return result;
+          }).pipe(
+            Effect.retry({
+              times: 3,
+              schedule: Schedule.spaced("2 seconds"),
+              while: (error) =>
+                error.status === 0 ||
+                error.status >= 500 ||
+                error.status === 429 ||
+                error.code === "idempotency_in_progress",
+            }),
+            Effect.mapError(boatError),
+          );
+        const get = (id: string) =>
+          request<{ sandbox: BoatSandbox }>("GET", "/sandboxes/" + encodeURIComponent(id)).pipe(
+            Effect.map((value) => value.sandbox),
+          );
         const read = Effect.gen(function* () {
           const state = yield* kitty.computer().pipe(Effect.mapError(storage));
           if (!state) return yield* Effect.fail("COMPUTER_NOT_FOUND");
@@ -71,7 +139,25 @@ export const ComputerOpLive = Workflows.layer(
             name,
             success: Schema.String,
             error: Schema.String,
-            execute: execute.pipe(Effect.as(payload.kittyId)),
+            execute: execute.pipe(
+              Effect.tapError((code) =>
+                home
+                  .write(
+                    "run-health",
+                    executionId,
+                    JSON.stringify({
+                      id: executionId,
+                      kittyId: payload.kittyId,
+                      operationId: payload.operationId,
+                      status: "suspended",
+                      code,
+                      updatedAt: Date.now(),
+                    }),
+                  )
+                  .pipe(Effect.catchCause(() => Effect.void)),
+              ),
+              Effect.as(payload.kittyId),
+            ),
           });
         const poll = (name: string, check: Effect.Effect<boolean, string>) =>
           Effect.gen(function* () {
@@ -285,7 +371,7 @@ export const ComputerOpLive = Workflows.layer(
           execute: Effect.gen(function* () {
             const state = yield* read;
             if (state.phase === "ready" && !state.operation) return "ready" as const;
-            const inventory = yield* boat.inventory.pipe(Effect.mapError((error) => error.code));
+            const inventory = yield* boat.inventory.pipe(Effect.mapError(boatError));
             const matches = inventory.filter((machine) =>
               ownsSandbox(
                 machine,
@@ -381,7 +467,7 @@ export const ComputerOpLive = Workflows.layer(
             const operation = state.operation;
             if (!operation?.key || !operation.body)
               return yield* Effect.fail("CREATE_PLAN_MISSING");
-            const inventory = yield* boat.inventory.pipe(Effect.mapError((error) => error.code));
+            const inventory = yield* boat.inventory.pipe(Effect.mapError(boatError));
             const matches = inventory.filter((machine) =>
               ownsSandbox(
                 machine,

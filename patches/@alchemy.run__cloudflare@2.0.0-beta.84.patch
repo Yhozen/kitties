@@ -1,43 +1,25 @@
 diff --git a/lib/Workflows/DurableObjectEngine.js b/lib/Workflows/DurableObjectEngine.js
-index be9b376a5976239138eb5a1a257b765dff90eb41..5019b913575008bc630d9369e5778bed6fcd80c9 100644
+index be9b376..682f0c5 100644
 --- a/lib/Workflows/DurableObjectEngine.js
 +++ b/lib/Workflows/DurableObjectEngine.js
-@@ -131,7 +131,10 @@ export const DurableObjectEngine = Layer.effect(WorkflowEngine.WorkflowEngine, E
-             if (stored.length > 0) {
-                 return new Workflow.Complete({ exit: yield* decodeExit(stored[0].exit) });
-             }
+@@ -88 +88 @@ export const DurableObjectEngine = Layer.effect(WorkflowEngine.WorkflowEngine, E
+-    const stubOf = (workflowName, executionId) => Effect.map(namespaceOf(workflowName), (namespace) => namespace.getByName(executionId));
++    const stubOf = (workflowName, executionId) => Effect.map(namespaceOf(workflowName), (namespace) => namespace.getByName(executionId, { locationHint: "weur" }));
+@@ -134 +134,4 @@ export const DurableObjectEngine = Layer.effect(WorkflowEngine.WorkflowEngine, E
 -            const activityInstance = WorkflowEngine.WorkflowInstance.initial(instance.workflow, instance.executionId);
 +            const activityWorkflow = Object.assign(function () {}, instance.workflow, {
 +                    annotations: Context.add(instance.workflow.annotations, Workflow.SuspendOnFailure, false),
 +                });
 +                const activityInstance = WorkflowEngine.WorkflowInstance.initial(activityWorkflow, instance.executionId);
-             activityInstance.interrupted = instance.interrupted;
-             const result = yield* activity.executeEncoded.pipe(Workflow.intoResult, Effect.provide(Layer.mergeAll(Layer.succeed(WorkflowEngine.WorkflowInstance, activityInstance), Layer.succeed(CurrentActivity, makeCurrentActivity(instance.workflow._tag, instance.executionId, activity.name)))));
-             if (result._tag === "Complete") {
-@@ -169,6 +172,9 @@ export const DurableObjectEngine = Layer.effect(WorkflowEngine.WorkflowEngine, E
-             yield* execution.scheduleClock(options.clock.name, options.clock.deferred.name, clock.due);
-         }),
-     });
+@@ -171,0 +175,3 @@ export const DurableObjectEngine = Layer.effect(WorkflowEngine.WorkflowEngine, E
 +    Object.assign(engine, {
 +      adminCall: (workflowName, executionId, method, args) => Effect.flatMap(stubOf(workflowName, executionId), (stub) => call(stub[method](...args))),
 +    });
-     return engine;
- }));
- /**
-@@ -180,7 +186,9 @@ class CurrentExecution extends Context.Service()("alchemy/Cloudflare/Workflows/D
- const currentExecution = (operation) => Effect.flatMap(Effect.serviceOption(CurrentExecution), (current) => Option.isSome(current)
-     ? Effect.succeed(current.value)
-     : Effect.die(new Error(`DurableObjectEngine: ${operation} only runs inside a workflow execution`)));
+@@ -182,0 +189 @@ const currentExecution = (operation) => Effect.flatMap(Effect.serviceOption(Curr
 +const StartedAt = Context.Reference("alchemy/Cloudflare/Workflows/DurableObjectEngine/StartedAt", { defaultValue: () => 0 });
- const SCHEMA = `
+@@ -183,0 +191 @@ const SCHEMA = `
 +CREATE TABLE IF NOT EXISTS workflow_meta (key TEXT PRIMARY KEY,value INTEGER NOT NULL);
- CREATE TABLE IF NOT EXISTS workflow_execution (
-   id INTEGER PRIMARY KEY CHECK (id = 1),
-   execution_id TEXT NOT NULL,
-@@ -211,9 +219,14 @@ const executionObject = (registration) => Effect.gen(function* () {
-         // interrupt) records what changed and schedules this one job. Jobs run
-         // one at a time and are retried until a run succeeds.
-         const runs = yield* makeCallback(RUN, () => run, { retry: { delay: "5 seconds" } });
+@@ -214,3 +222,8 @@ const executionObject = (registration) => Effect.gen(function* () {
 -        const wake = runs
 -            .schedule(RUN, { after: 0, payload: {} })
 -            .pipe(Effect.orDie, Effect.provide(context));
@@ -49,40 +31,18 @@ index be9b376a5976239138eb5a1a257b765dff90eb41..5019b913575008bc630d9369e5778bed
 +            yield* runs.schedule(RUN, { after: 0, payload: {}, progress: yield* progress });
 +        }).pipe(Effect.orDie, Effect.provide(context));
 +        const kick = runs.schedule(RUN, { after: 0, payload: {} }).pipe(Effect.orDie, Effect.provide(context));
-         const complete = (deferredName, exit) => query("INSERT OR IGNORE INTO workflow_deferred (name, exit) VALUES (?, ?)", deferredName, exit).pipe(Effect.andThen(wake));
-         const clocks = yield* makeCallback("clock", (job) => Effect.gen(function* () {
-             yield* complete(job.deferred, yield* encodeExit(Exit.void));
-@@ -223,7 +236,7 @@ const executionObject = (registration) => Effect.gen(function* () {
-             if (done.length > 0)
-                 return;
-             yield* clocks
+@@ -226 +239 @@ const executionObject = (registration) => Effect.gen(function* () {
 -                .schedule(name, { at: due, payload: { deferred: deferredName } })
 +                .schedule(name, { at: due, payload: { deferred: deferredName }, progress: yield* progress })
-                 .pipe(Effect.orDie, Effect.provide(context));
-         });
-         const run = Effect.gen(function* () {
-@@ -242,7 +255,8 @@ const executionObject = (registration) => Effect.gen(function* () {
-                 instance.interrupted = true;
-                 instance.suspended = false;
-                 return Effect.withFiber((fiber) => Effect.interruptible(Fiber.interrupt(fiber)));
+@@ -245 +258,2 @@ const executionObject = (registration) => Effect.gen(function* () {
 -            }), Workflow.intoResult, Effect.provide(Layer.mergeAll(Layer.succeed(WorkflowEngine.WorkflowInstance, instance), Layer.succeed(WorkflowEngine.WorkflowEngine, registration.engine()), Layer.succeed(CurrentExecution, {
 +            }), Workflow.intoResult, Effect.provide(Layer.mergeAll(Layer.succeed(WorkflowEngine.WorkflowInstance, instance), Layer.succeed(WorkflowEngine.WorkflowEngine, registration.engine()), Layer.succeed(StartedAt, (yield* query("SELECT value FROM workflow_meta WHERE key='started_at'"))[0]?.value ?? 0),
 +                Layer.succeed(CurrentExecution, {
-                 workflowName: workflow._tag,
-                 executionId: row.execution_id,
-                 query,
-@@ -252,17 +266,66 @@ const executionObject = (registration) => Effect.gen(function* () {
-             // Suspended: a clock or a completed deferred wakes it again.
-             if (result._tag === "Suspended")
-                 return;
+@@ -255 +269,2 @@ const executionObject = (registration) => Effect.gen(function* () {
 -            yield* query("UPDATE workflow_execution SET result = ?", yield* encodeResult(workflow, result.exit));
 +            yield* query("INSERT OR REPLACE INTO workflow_meta VALUES ('completed_at', ?)", Date.now());
 +        yield* query("UPDATE workflow_execution SET result = ?", yield* encodeResult(workflow, result.exit));
-             if (row.parent !== null)
-                 yield* resumeParent(registration, JSON.parse(row.parent));
-         });
-         const result = Effect.map(readExecution, (row) => row?.result ?? null);
-         return {
+@@ -260,0 +276,51 @@ const executionObject = (registration) => Effect.gen(function* () {
 +
 +        adminSummary: () => Effect.promise(async()=>({
 +          meta:state.raw.storage.sql.exec("SELECT key,value FROM workflow_meta").toArray(),
@@ -121,6 +81,10 @@ index be9b376a5976239138eb5a1a257b765dff90eb41..5019b913575008bc630d9369e5778bed
 +        }),
 +        adminPurge: (before) => Effect.sync(() => {
 +          const sql=state.raw.storage.sql;
++          if(sql.exec("SELECT 1 FROM sqlite_master WHERE type='table' AND name='admin_exports'").toArray().length) {
++            sql.exec("DELETE FROM admin_captures WHERE id IN (SELECT DISTINCT id FROM admin_exports WHERE at<?)",before);
++            sql.exec("DELETE FROM admin_exports WHERE at<?",before);
++          }
 +          const done=sql.exec("SELECT value FROM workflow_meta WHERE key='completed_at'").toArray()[0];
 +          if(!done||Number(done.value)>=before) return false;
 +          // Keep the execution/result tombstone: resending an old message must never repeat effects.
@@ -130,73 +94,47 @@ index be9b376a5976239138eb5a1a257b765dff90eb41..5019b913575008bc630d9369e5778bed
 +          });
 +          return true;
 +        }),
-             /** Create the execution if it's new, and return its result once it has one. */
-             start: (executionId, payload, parent) => reportDefects(Effect.gen(function* () {
-                 const existing = yield* readExecution;
-                 if (existing === undefined) {
-                     yield* query("INSERT INTO workflow_execution (id, execution_id, payload, parent) VALUES (1, ?, ?, ?)", executionId, payload, parent === "null" ? null : parent);
+@@ -265,0 +332 @@ const executionObject = (registration) => Effect.gen(function* () {
 +                    yield* query("INSERT OR IGNORE INTO workflow_meta VALUES ('started_at', ?)", Date.now());
-                     yield* wake;
-                 }
-                 return yield* result;
-@@ -272,10 +335,10 @@ const executionObject = (registration) => Effect.gen(function* () {
-                 result: row?.result ?? null,
-             }))),
-             deferredDone: (deferredName, exit) => reportDefects(complete(deferredName, exit)),
+@@ -266,0 +334 @@ const executionObject = (registration) => Effect.gen(function* () {
++
+@@ -275 +343 @@ const executionObject = (registration) => Effect.gen(function* () {
 -            resume: () => reportDefects(wake),
 +            resume: () => reportDefects(kick),
-             // The next run replays with the instance marked interrupted, which
-             // fails the workflow and runs its compensations.
+@@ -278 +346 @@ const executionObject = (registration) => Effect.gen(function* () {
 -            interrupt: () => reportDefects(query("UPDATE workflow_execution SET interrupted = 1").pipe(Effect.andThen(wake))),
 +            interrupt: () => reportDefects(query("UPDATE workflow_execution SET interrupted = 1").pipe(Effect.andThen(kick))),
-             // Stop without running compensations.
-             interruptUnsafe: () => reportDefects(Effect.gen(function* () {
-                 yield* runs.cancel(RUN).pipe(Effect.orDie, Effect.provide(context));
+@@ -316 +384 @@ const declare = CloudflareDurableObject;
+-//# sourceMappingURL=DurableObjectEngine.js.map
+\ No newline at end of file
++//# sourceMappingURL=DurableObjectEngine.js.map
 diff --git a/src/Workflows/DurableObjectEngine.ts b/src/Workflows/DurableObjectEngine.ts
-index 9ae2b09f33a4fd64e0dedfdbd03799cffae925c6..1e57470fcb757b14d21feb9066e8e6fdcd1f8799 100644
+index 9ae2b09..d452cde 100644
 --- a/src/Workflows/DurableObjectEngine.ts
 +++ b/src/Workflows/DurableObjectEngine.ts
-@@ -174,8 +174,13 @@ export const DurableObjectEngine: Layer.Layer<WorkflowEngine.WorkflowEngine, nev
-             if (stored.length > 0) {
-               return new Workflow.Complete({ exit: yield* decodeExit(stored[0]!.exit) });
-             }
+@@ -106 +106 @@ export const DurableObjectEngine: Layer.Layer<WorkflowEngine.WorkflowEngine, nev
+-        Effect.map(namespaceOf(workflowName), (namespace) => namespace.getByName(executionId));
++        Effect.map(namespaceOf(workflowName), (namespace) => namespace.getByName(executionId, { locationHint: "weur" }));
+@@ -176,0 +177,5 @@ export const DurableObjectEngine: Layer.Layer<WorkflowEngine.WorkflowEngine, nev
 +            // Activity errors must be journaled and delivered to workflow handlers.
 +            // SuspendOnFailure belongs to the parent execution, not this activity.
 +            const activityWorkflow = Object.assign(function () {}, instance.workflow, {
 +              annotations: Context.add(instance.workflow.annotations, Workflow.SuspendOnFailure, false),
 +            }) as typeof instance.workflow;
-             const activityInstance = WorkflowEngine.WorkflowInstance.initial(
+@@ -178 +183 @@ export const DurableObjectEngine: Layer.Layer<WorkflowEngine.WorkflowEngine, nev
 -              instance.workflow,
 +              activityWorkflow,
-               instance.executionId,
-             );
-             activityInstance.interrupted = instance.interrupted;
-@@ -257,6 +262,10 @@ export const DurableObjectEngine: Layer.Layer<WorkflowEngine.WorkflowEngine, nev
-           }),
-       });
- 
+@@ -259,0 +265,4 @@ export const DurableObjectEngine: Layer.Layer<WorkflowEngine.WorkflowEngine, nev
 +      Object.assign(engine, {
 +        adminCall: (workflowName: string, executionId: string, method: string, args: ReadonlyArray<unknown>) =>
 +          Effect.flatMap(stubOf(workflowName, executionId), (stub) => call(stub[method](...args))),
 +      });
-       return engine;
-     }),
-   );
-@@ -316,7 +325,10 @@ const currentExecution = (operation: string) =>
-         ),
-   );
- 
+@@ -318,0 +328,2 @@ const currentExecution = (operation: string) =>
 +const StartedAt = Context.Reference<number>("alchemy/Cloudflare/Workflows/DurableObjectEngine/StartedAt", { defaultValue: () => 0 });
 +
- const SCHEMA = `
+@@ -319,0 +331 @@ const SCHEMA = `
 +CREATE TABLE IF NOT EXISTS workflow_meta (key TEXT PRIMARY KEY,value INTEGER NOT NULL);
- CREATE TABLE IF NOT EXISTS workflow_execution (
-   id INTEGER PRIMARY KEY CHECK (id = 1),
-   execution_id TEXT NOT NULL,
-@@ -371,8 +383,19 @@ const executionObject = (registration: Registration) =>
-       // interrupt) records what changed and schedules this one job. Jobs run
-       // one at a time and are retried until a run succeeds.
-       const runs = yield* makeCallback(RUN, () => run, { retry: { delay: "5 seconds" } });
+@@ -374,2 +386,13 @@ const executionObject = (registration: Registration) =>
 -      const wake = runs
 -        .schedule(RUN, { after: 0, payload: {} })
 +      const progress = Effect.map(
@@ -212,38 +150,14 @@ index 9ae2b09f33a4fd64e0dedfdbd03799cffae925c6..1e57470fcb757b14d21feb9066e8e6fd
 +      // Explicit operator/parent resumes may re-arm a parked callback without
 +      // inventing journal progress. Normal clocks use the durable revision.
 +      const kick = runs.schedule(RUN, { after: 0, payload: {} })
-         .pipe(Effect.orDie, Effect.provide(context));
- 
-       const complete = (deferredName: string, exit: string) =>
-@@ -395,7 +418,7 @@ const executionObject = (registration: Registration) =>
-           const done = yield* query("SELECT 1 FROM workflow_deferred WHERE name = ?", deferredName);
-           if (done.length > 0) return;
-           yield* clocks
+@@ -398 +421 @@ const executionObject = (registration: Registration) =>
 -            .schedule(name, { at: due, payload: { deferred: deferredName } })
 +            .schedule(name, { at: due, payload: { deferred: deferredName }, progress: yield* progress })
-             .pipe(Effect.orDie, Effect.provide(context));
-         });
- 
-@@ -421,6 +444,7 @@ const executionObject = (registration: Registration) =>
-             Layer.mergeAll(
-               Layer.succeed(WorkflowEngine.WorkflowInstance, instance),
-               Layer.succeed(WorkflowEngine.WorkflowEngine, registration.engine()),
+@@ -423,0 +447 @@ const executionObject = (registration: Registration) =>
 +              Layer.succeed(StartedAt, (yield* query<{value:number}>("SELECT value FROM workflow_meta WHERE key='started_at'"))[0]?.value ?? 0),
-               Layer.succeed(CurrentExecution, {
-                 workflowName: workflow._tag,
-                 executionId: row.execution_id,
-@@ -433,6 +457,7 @@ const executionObject = (registration: Registration) =>
-         );
-         // Suspended: a clock or a completed deferred wakes it again.
-         if (result._tag === "Suspended") return;
+@@ -435,0 +460 @@ const executionObject = (registration: Registration) =>
 +        yield* query("INSERT OR REPLACE INTO workflow_meta VALUES ('completed_at', ?)", Date.now());
-         yield* query(
-           "UPDATE workflow_execution SET result = ?",
-           yield* encodeResult(workflow, result.exit),
-@@ -443,6 +468,53 @@ const executionObject = (registration: Registration) =>
-       const result = Effect.map(readExecution, (row) => row?.result ?? null);
- 
-       return {
+@@ -445,0 +471,51 @@ const executionObject = (registration: Registration) =>
 +
 +        adminSummary: () => Effect.promise(async()=>({
 +          meta:state.raw.storage.sql.exec("SELECT key,value FROM workflow_meta").toArray(),
@@ -282,6 +196,10 @@ index 9ae2b09f33a4fd64e0dedfdbd03799cffae925c6..1e57470fcb757b14d21feb9066e8e6fd
 +        }),
 +        adminPurge: (before: number) => Effect.sync(() => {
 +          const sql=state.raw.storage.sql;
++          if(sql.exec("SELECT 1 FROM sqlite_master WHERE type='table' AND name='admin_exports'").toArray().length) {
++            sql.exec("DELETE FROM admin_captures WHERE id IN (SELECT DISTINCT id FROM admin_exports WHERE at<?)",before);
++            sql.exec("DELETE FROM admin_exports WHERE at<?",before);
++          }
 +          const done=sql.exec("SELECT value FROM workflow_meta WHERE key='completed_at'").toArray()[0];
 +          if(!done||Number(done.value)>=before) return false;
 +          // Keep the execution/result tombstone: resending an old message must never repeat effects.
@@ -291,29 +209,13 @@ index 9ae2b09f33a4fd64e0dedfdbd03799cffae925c6..1e57470fcb757b14d21feb9066e8e6fd
 +          });
 +          return true;
 +        }),
-         /** Create the execution if it's new, and return its result once it has one. */
-         start: (executionId: string, payload: string, parent: string) =>
-           reportDefects(
-@@ -455,6 +527,7 @@ const executionObject = (registration: Registration) =>
-                   payload,
-                   parent === "null" ? null : parent,
-                 );
+@@ -457,0 +534 @@ const executionObject = (registration: Registration) =>
 +                yield* query("INSERT OR IGNORE INTO workflow_meta VALUES ('started_at', ?)", Date.now());
-                 yield* wake;
-               }
-               return yield* result;
-@@ -469,12 +542,12 @@ const executionObject = (registration: Registration) =>
-           ),
-         deferredDone: (deferredName: string, exit: string) =>
-           reportDefects(complete(deferredName, exit)),
+@@ -458,0 +536 @@ const executionObject = (registration: Registration) =>
++
+@@ -472 +550 @@ const executionObject = (registration: Registration) =>
 -        resume: () => reportDefects(wake),
 +        resume: () => reportDefects(kick),
-         // The next run replays with the instance marked interrupted, which
-         // fails the workflow and runs its compensations.
-         interrupt: () =>
-           reportDefects(
+@@ -477 +555 @@ const executionObject = (registration: Registration) =>
 -            query("UPDATE workflow_execution SET interrupted = 1").pipe(Effect.andThen(wake)),
 +            query("UPDATE workflow_execution SET interrupted = 1").pipe(Effect.andThen(kick)),
-           ),
-         // Stop without running compensations.
-         interruptUnsafe: () =>

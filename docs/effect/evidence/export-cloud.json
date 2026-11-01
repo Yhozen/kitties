@@ -1,0 +1,18 @@
+{
+  "date": "2026-11-01T18:58:56.019Z",
+  "status": "passed",
+  "operationId": "19eba68d-6783-4f69-975f-9bd00a44c7a7",
+  "registeredObjects": 69,
+  "encryptedParts": 4564,
+  "manifestDecrypted": true,
+  "allPartsAuthenticated": true,
+  "reconstructedRows": 4544,
+  "workflowRows": 19,
+  "reconstructedBytes": 5097701,
+  "embeddedCredentialEnvelopes": 408,
+  "outerObjectFormat": "Only kid/iv/ct; no plaintext row fields",
+  "snapshotConsistency": "Immutable per-actor capture, not a global transaction",
+  "retentionDays": 90,
+  "lockedDays": 30,
+  "downloadTransport": "Authenticated verification Worker reads encrypted objects directly from R2; Cloudflare management API hit its rate limit."
+}

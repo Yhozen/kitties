@@ -1,0 +1,24 @@
+{
+  "date": "2026-11-01T18:19:07.285Z",
+  "status": "passed",
+  "restored": "ChatDO",
+  "epoch": 1793556675278,
+  "preBookmarkMessageRetained": true,
+  "postBookmarkMessageRemoved": true,
+  "oldRunsForReview": 12,
+  "operationIdDeduplication": "passed",
+  "mismatchedPayloadRejected": true,
+  "newRequestCompleted": true,
+  "restore": {
+    "id": "15f264ff-0763-4eb1-9b4c-1e278f89ae8f",
+    "kind": "chat",
+    "name": "e82d46a9-7b5a-4530-8326-edff1f54a0b3",
+    "bookmark": "00000001-00000012-00005116-2e1d42e7f308f492a02215250a51b585",
+    "executionId": "82c7449a1e5a6c7693f37032fd370cc2",
+    "epoch": 1793556675278,
+    "status": "completed",
+    "at": 1793557098056,
+    "credentials": "reauthorize",
+    "oldRuns": "owner-review"
+  }
+}

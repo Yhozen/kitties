@@ -1,5 +1,8 @@
 import { verifiedAccessIdentity } from "./access-jwt.ts";
+import { makeSecretAudit } from "./secret-audit.ts";
+import { workflowActor } from "./workflow-admin.ts";
 import { makeRecovery } from "./recovery.ts";
+import { Purge } from "./recovery-definition.ts";
 import { PurgeLive } from "./workflows/purge.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import { Stage } from "alchemy/Stage";
@@ -120,6 +123,7 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
     const kitties = yield* KittyDO;
     const chats = yield* ChatDO;
     const probes = yield* Workflows.RunWorkflow(Probe);
+    const purges = yield* Workflows.RunWorkflow(Purge);
     const advanced = yield* Workflows.RunWorkflow(AdvancedProbe);
     const timers = yield* Workflows.RunWorkflow(TimerProbe);
     const callbacks = yield* CallbackProbeDO;
@@ -131,6 +135,7 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
     const receiveWebhook = yield* makeWebhooks;
     const notifications = yield* makeNotifications;
     const recovery = yield* makeRecovery;
+    const auditSecret = yield* makeSecretAudit;
     yield* Cloudflare.Workers.cron("* * * * *", () =>
       lifecycle.pipe(
         Effect.andThen(autonomy.tick),
@@ -144,6 +149,7 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
       ACCESS_ISSUER: string;
       ACCESS_AUDIENCE: string;
       STAGE: string;
+      KITTIES_KEK: string;
       ASSETS: { fetch(request: Request): Promise<Response> };
     };
     const json = (body: unknown, status = 200) =>
@@ -151,6 +157,38 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
         Response.json(body, { status, headers: { "Cache-Control": "no-store" } }),
       );
     return {
+      verifyBoatFault: (
+        operationId: string,
+        mode: "5xx" | "lost-create" | "5xx-lost-create" | "read",
+      ) =>
+        env.STAGE === "next" || env.STAGE === "e2e"
+          ? mode === "read"
+            ? homes.getByName("owner", { locationHint: "weur" }).read("boat-fault", operationId)
+            : homes
+                .getByName("owner", { locationHint: "weur" })
+                .write(
+                  "boat-fault",
+                  operationId,
+                  JSON.stringify({
+                    mode,
+                    remaining: mode === "5xx-lost-create" ? 3 : mode === "5xx" ? 2 : 1,
+                    injected: 0,
+                  }),
+                )
+                .pipe(Effect.as(null))
+          : Effect.succeed(null),
+      verifyWorkflowSummary: (name: string) =>
+        env.STAGE === "next" || env.STAGE === "e2e"
+          ? workflowActor(engine, name, env.KITTIES_KEK).adminSummary()
+          : Effect.succeed(null),
+      verifySecretAudit: (needle: string, chatId: string, messages: readonly string[]) =>
+        env.STAGE === "next" || env.STAGE === "e2e"
+          ? auditSecret(needle, chatId, messages, env.KITTIES_KEK)
+          : Effect.succeed(null),
+      verifyPurge: (id: string, before: number) =>
+        env.STAGE === "next" || env.STAGE === "e2e"
+          ? purges.start({ id, before }).pipe(Effect.map((run) => run.executionId))
+          : Effect.succeed(null),
       receiveWebhook,
       finishOAuth: (state: string, code: string, issuer?: string) =>
         oauth.callback(state, code, issuer),

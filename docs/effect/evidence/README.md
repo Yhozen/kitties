@@ -1,29 +1,34 @@
 # Rewrite acceptance evidence
 
-These are machine-generated probe outputs, dated 2026-11-01. Local workerd evidence does not establish cloud latency or CPU.
+These probes ran on 2026-11-01. Each JSON file records its scope and limitations. Local workerd
+results establish behavior, not Cloudflare CPU or regional latency. Fixture-model timings exclude
+paid-provider performance. Unknown desktop outcomes require owner review and are never replayed.
 
-- `engine-local.json`: durable clocks, deferreds, failure journaling, idempotent start, interrupts, route isolation; 3/50/200/500 activities.
-- `engine-workerd-kill.json`: SIGKILL of the actual local workerd while the durable clock was pending; automatic restart and no repeated recorded effect.
-- `engine-advanced-local.json`: three concurrent child starts with fixed-order joins; SuspendOnFailure, repair and explicit resume with the preceding activity recorded once.
-- `callback-parking-local.json`: the actual Alchemy callback reached attempt 8, parked, and scheduled its next recovery one hour later. This is attempts without progress, not eight minutes.
+| Area | Evidence | Result |
+|---|---|---|
+| Durable engine | `engine-cloud.json`, `engine-cloud-clocks.json` | Real DO 3/50/200/500-activity runs, duplicate starts, durable waits and journaled failures passed after the progress patch. |
+| Engine failure recovery | `engine-activity-errors-cloud.json`, `engine-storage-suspension-cloud.json`, `engine-workerd-kill.json`, `callback-parking-local.json` | Terminal failures, resumable storage outages, actual local workerd termination and callback parking verified. |
+| Desktop channel | `channel-boat-visible.json`, `channel-boat-eu.json` | 200 real inputs: public European client ack p95 242.6 ms, visible p95 359.6 ms, with three additional viewers. Regional DO ack p95 155 ms. |
+| Stream | `stream-soak.json` | 30 minutes, three viewers including a constrained viewer, no disconnects. |
+| Chat | `chat-stream-cloud.json`, `chat-contracts-cloud.json`, `tools-cloud.json`, `retry-cloud.json` | 50 fixture-model streamed turns, first-token p95 1.872 s; dedupe, approvals, redeploy and retry behavior passed. |
+| Desktop workflow | `desktop-cloud.json`, `capture-cloud.json`, `vault-cloud.json` | Real capture/replay, durable help, cancellation cleanup, kill after actual click, redeploy while parked, and owner resolution without a second click. Vault typing succeeded; actor/journal scan found no plaintext canary. |
+| Perception | `perception-ab-cloud.json` | Twenty real-model tasks per arm: both 20/20, references used about 74% fewer input tokens. |
+| Lifecycle | `lifecycle-full-drill.json`, `capacity-cloud.json` | Automatic quiesced sleep/checkpoint/new-generation restore retained a file, cookie and package. Five active Boat desktops; sixth refused. |
+| Autonomy | `webhooks-cloud.json`, `goals-cloud.json`, `delegation-cloud.json` | 100 deliveries sent twice created 100 turns; goal chaining, disable fencing, child fan-out, backup handoff and cancellation passed. |
+| Phone approval | `phone-approval-cloud.json` | Owner approved on a physical iPhone after Access authentication; pending tool resumed. |
+| Integrations | `oauth-cloud.json`, `mcp-cloud.json`, `mcp-endpoint-dispositions.json` | OAuth PKCE, replay and refresh races passed; server dispositions are also in `../PARITY.md`. Vendor authorizations require owner configuration. |
+| Recovery | `recovery-pitr-cloud.json`, `key-escrow-mac.json` | Real ChatDO PITR retained the earlier message, removed the later message and fenced old runs. Encrypted KEK escrow saved and verified on the owner's Mac. |
+| Retention and publishing | `export-retention-cloud.json`, `ci-permissions-cloud.json` | Locked export deletion refused; unlocked canary deleted. Restricted publisher updated all four Workers and assets; its token cannot change bucket locks. GitHub Actions secret and account variable were configured and verified through the owner’s Mac login; workflow execution is separate. |
 
-Cloud results, real guest latency, constrained viewers and mobile device installation remain separate acceptance gates. Unknown outcomes inside a guest action are deliberately not auto-replayed; completed guest receipts can reconcile without asking the owner.
+The full encrypted export authenticated all 4,564 parts and reconstructed 4,544 rows
+(`export-cloud.json`). Boat 5xx/lost-create, quiesce repair and TTL review passed
+(`boat-chaos-cloud.json`, `quiesce-chaos-cloud.json`, `ttl-chaos-cloud.json`). A real candidate
+hostname rollback to Go and back passed in under three seconds (`rollback-cloud.json`).
 
-- `engine-cloud.json`: real Cloudflare acceptance passed for 3/50/200/500-entry workflows, duplicate starts, clocks, deferred completion and journaled failure. Observed signal-to-result wall times were 113/710/382/1035 ms.
-- `engine-cloud-observed-cpu.json`: raw live-tail CPU/wall measurements for observed Gateway alarm invocations. The tail does not identify each execution; these must not be presented as a per-case replay benchmark.
-- `channel-local.json`: 200 fake-guest actions over the actual hibernatable local DO channel, p95 acknowledgment 48 ms, exactly 200 effects, plus release and bypass-route checks.
+The remaining gates are purge/tombstone verification, non-model step latency, production
+cutover and production smoke/recovery. A source change or an implemented feature is not a passing acceptance result.
 
-## Application and autonomy acceptance (2026-11-01)
-
-- `chat-stream-cloud.json`: 50 streamed fixture-model turns; first-token p95 1.872 s. This measures the deployed workflow and SSE path, not paid-provider latency.
-- `lifecycle-persistence.json`: quiesced checkpoint restored into a new Boat VM, retaining a marker, Chrome cookie and installed package. The initial run needed manual callback recovery; this is a persistence result, not the full lifecycle gate.
-- `engine-cloud-clocks.json`: after the journal-progress patch, 20 durable 250 ms waits completed in 14.2 s without manual resumes. The unpatched engine propagated callback attempts across clock/run handoffs, eventually parking successful polling workflows.
-- `webhooks-cloud.json`: 100 signed deliveries, each sent twice, produced exactly 100 completed turns; altered-body replay returned 409.
-- `goals-cloud.json`: real minute slot, next-slot chaining and disabled-revision fencing passed without manual resumes.
-
-Stream soak, physical phone approval, desktop replay/cancellation, native perception A/B, capacity and chaos acceptance remain open.
-
-- `engine-progress-local.json`: complete local 3/50/200/500-activity suite after the alarm-progress patch, including failure journaling, interruption and owner route isolation.
-- `application-local.json`: 37 unit tests plus ten desktop/mobile Chrome checks covering durable chat, duplicate POSTs, feedback and secret redaction. OAuth unit cases include PKCE, callback replay/mix-up, 20 concurrent refresh callers, eviction, disconnect during refresh, API-origin binding and redirect denial. Live OAuth/phone acceptance remains separate.
-
-Restore testing also exposed CLOSING hibernated sockets consuming both guest admission slots. The fix counts open sockets for admission and viewer leases. An in-progress restore will verify recovery after deployment; until then it is not a passing lifecycle result. Native AT-SPI now runs under the desktop UID through a restricted Unix socket, but focused-window discovery on Openbox remains unverified.
+Earlier local probes remain available in `engine-local.json`, `engine-progress-local.json`,
+`engine-advanced-local.json`, `application-local.json`, `chat-local.json` and `channel-local.json`.
+The interrupted stream probe is retained as `stream-soak-interrupted.json`; the later completed soak
+is the acceptance result.

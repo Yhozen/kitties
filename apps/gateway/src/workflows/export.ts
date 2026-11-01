@@ -118,6 +118,11 @@ export const ExportLive = Workflows.layer(
                         prefix,
                         parts,
                         objects: snapshots.length,
+                        capturedRows: snapshots.reduce(
+                          (total, snapshot) =>
+                            total + snapshot.tables.reduce((n, t) => n + t.rows, 0),
+                          0,
+                        ),
                       }),
                     )
                     .pipe(Effect.mapError(storage)),

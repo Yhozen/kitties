@@ -37,6 +37,14 @@ static int arg_in(const char *s, int lo, int hi, int def) {
     return (s && *s && !*end && n >= lo && n <= hi) ? (int)n : def;
 }
 
+static int shm_attach_error = 0;
+static int record_shm_error(Display *dpy, XErrorEvent *error) {
+    (void)dpy;
+    (void)error;
+    shm_attach_error = 1;
+    return 0;
+}
+
 /* closed tells whether the input has been closed (a read of 0 bytes), without waiting. */
 static int closed(void) {
     struct pollfd p = {.fd = 0, .events = POLLIN};
@@ -114,12 +122,25 @@ int main(int argc, char **argv) {
             shm.shmid = shmget(IPC_PRIVATE, (size_t)img->bytes_per_line * img->height, IPC_CREAT | 0600);
             shm.shmaddr = img->data = shm.shmid < 0 ? (char *)-1 : shmat(shm.shmid, NULL, 0);
             shm.readOnly = False;
-            if (shm.shmid < 0 || shm.shmaddr == (char *)-1 || !XShmAttach(dpy, &shm)) {
+            int attached = 0;
+            if (shm.shmid >= 0 && shm.shmaddr != (char *)-1) {
+                /* XShmAttach fails asynchronously when X and the capturer use
+                 * different UIDs. Keep private memory permissions and fall back. */
+                XSync(dpy, False);
+                int (*previous)(Display *, XErrorEvent *) = XSetErrorHandler(record_shm_error);
+                shm_attach_error = 0;
+                attached = XShmAttach(dpy, &shm);
+                XSync(dpy, False);
+                XSetErrorHandler(previous);
+                attached = attached && !shm_attach_error;
+            }
+            if (!attached) {
+                if (shm.shmaddr != (char *)-1) shmdt(shm.shmaddr);
+                if (shm.shmid >= 0) shmctl(shm.shmid, IPC_RMID, NULL);
                 img->data = NULL;
                 XDestroyImage(img);
                 img = NULL;
             } else {
-                XSync(dpy, False);
                 shmctl(shm.shmid, IPC_RMID, NULL); /* gone when this process is */
             }
         }
@@ -166,6 +187,7 @@ int main(int argc, char **argv) {
     }
     if (img) {
         XShmDetach(dpy, &shm);
+        img->data = NULL;
         XDestroyImage(img);
         shmdt(shm.shmaddr);
     }

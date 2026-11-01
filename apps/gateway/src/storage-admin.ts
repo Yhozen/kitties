@@ -12,6 +12,26 @@ export const makeStorageAdmin = (
   );
   sql.exec("CREATE TABLE IF NOT EXISTS admin_captures (id TEXT PRIMARY KEY,body TEXT NOT NULL)");
   return {
+    adminContains: (value: string) =>
+      Effect.sync(() => {
+        if (!value || value.length > 8192) throw Error("INVALID_AUDIT_VALUE");
+        for (const table of tables) {
+          const columns = sql.exec<{ name: string }>(`PRAGMA table_info(${table})`).toArray();
+          for (const { name } of columns) {
+            if (!/^[a-z_]+$/.test(name)) throw Error("INVALID_COLUMN");
+            if (
+              sql
+                .exec(
+                  `SELECT 1 FROM "${table}" WHERE instr(CAST("${name}" AS TEXT),?)>0 LIMIT 1`,
+                  value,
+                )
+                .toArray().length
+            )
+              return true;
+          }
+        }
+        return false;
+      }),
     adminBookmark: (at?: number) =>
       Effect.tryPromise({
         try: () =>

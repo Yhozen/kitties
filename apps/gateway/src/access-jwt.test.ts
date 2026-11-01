@@ -73,4 +73,18 @@ test("Access fallback verifies signature, issuer, audience and expiry; email hea
     ),
   ).toBeUndefined();
   expect(calls).toBe(1);
+  const retryIssuer = "https://retry.identity.example";
+  let attempts = 0;
+  const retryFetcher = (async () =>
+    ++attempts === 1
+      ? new Response(null, { status: 503 })
+      : Response.json({ keys: [jwk] })) as typeof fetch;
+  const retryToken = await token({ iss: retryIssuer });
+  expect(
+    await verifiedAccessIdentity(request(retryToken), retryIssuer, audience, retryFetcher),
+  ).toBeUndefined();
+  expect(
+    await verifiedAccessIdentity(request(retryToken), retryIssuer, audience, retryFetcher),
+  ).toEqual({ email: "owner@example.org" });
+  expect(attempts).toBe(2);
 });

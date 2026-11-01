@@ -213,6 +213,8 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
           safeAction(action),
           Date.now(),
         );
+        if (computer && action.action !== "quiesce")
+          write("computer", { ...computer, lastActiveAt: Date.now() });
         scheduleAt(action.deadline);
         try {
           send(guest, action);

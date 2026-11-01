@@ -2,7 +2,7 @@ import * as Schedule from "effect/Schedule";
 import { guardedActivities } from "../recovery-guard.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import { workflowActor } from "../workflow-admin.ts";
-import { WorkflowEngine } from "effect/workflow";
+import { DurableClock, WorkflowEngine } from "effect/workflow";
 import * as Workflows from "alchemy/Workflows";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -23,11 +23,11 @@ export const RestoreLive = Workflows.layer(
     return Effect.fn(function* (payload, executionId) {
       const root = roots.getByName("control", { locationHint: "weur" }),
         home = homes.getByName("owner", { locationHint: "weur" });
-      const actor =
+      const actor = () =>
         payload.kind === "workflow"
           ? workflowActor(engine, payload.name, env.KITTIES_KEK)
           : payload.kind === "home"
-            ? home
+            ? homes.getByName("owner", { locationHint: "weur" })
             : payload.kind === "kitty"
               ? kitties.getByName(payload.name, { locationHint: "weur" })
               : chats.getByName(payload.name, { locationHint: "weur" });
@@ -70,7 +70,7 @@ export const RestoreLive = Workflows.layer(
         error: Schema.String,
         execute: Effect.gen(function* () {
           if (yield* root.read("undo", payload.id).pipe(Effect.mapError(storage))) return;
-          const undo = yield* actor
+          const undo = yield* actor()
             .adminPrepareRestore(payload.bookmark)
             .pipe(Effect.mapError(storage));
           yield* root
@@ -81,14 +81,25 @@ export const RestoreLive = Workflows.layer(
       yield* activity({
         name: "restart",
         error: Schema.String,
+        // abort() invalidates the calling Cloudflare stub. Journal the eviction
+        // before creating a new stub in a new durable callback.
+        execute: actor()
+          .adminEvict()
+          .pipe(Effect.catchCause(() => Effect.void)),
+      });
+      yield* DurableClock.sleep({
+        name: "restart-boundary",
+        duration: "1 second",
+        inMemoryThreshold: 0,
+      });
+      yield* activity({
+        name: "verify-restart",
+        error: Schema.String,
         execute: Effect.gen(function* () {
-          yield* actor.adminEvict().pipe(Effect.catchCause(() => Effect.void));
-          yield* actor
-            .adminBookmark()
-            .pipe(
-              Effect.retry({ times: 8, schedule: Schedule.exponential("100 millis") }),
-              Effect.mapError(storage),
-            );
+          yield* Effect.suspend(() => actor().adminBookmark()).pipe(
+            Effect.retry({ times: 8, schedule: Schedule.exponential("100 millis") }),
+            Effect.mapError(storage),
+          );
         }),
       });
       yield* activity({
