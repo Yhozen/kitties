@@ -1,0 +1,16 @@
+{
+  "name": "@kitties/gateway",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "alchemy dev --stage dev",
+    "plan": "alchemy plan --stage dev",
+    "deploy": "alchemy deploy --stage dev",
+    "build": "tsc --noEmit -p ../../tsconfig.json"
+  },
+  "dependencies": {
+    "@alchemy.run/cloudflare": "2.0.0-beta.84",
+    "alchemy": "2.0.0-beta.84",
+    "effect": "4.1.1"
+  }
+}

@@ -147,3 +147,22 @@ On 2026-11-01 the owner confirmed there are no customers and authorized a hard c
 migration. Production changes after the functional/recovery/security gates pass. A parallel
 rollout, compatibility window and seven-day soak are no longer release prerequisites. Existing
 R2 buckets and checkpoints remain retained; replacing the live route does not delete them.
+
+## Phase 2 evidence — 2026-11-01
+
+The unmodified pins do **not** load together: Alchemy beta.84 imports the removed
+`effect/Crypto` entrypoint. `patches/alchemy@2.0.0-beta.84.patch` ports OAuth randomness and
+PKCE to `effect/crypto/{SecureRandom,Digest}` and supplies those Layers in both platform
+entrypoints. Source, emitted JS and public types are patched, so Node and Bun agree. A regression
+test checks fresh state/verifier values and the RFC 7636 S256 challenge against Node crypto.
+No workflow engine source changed. Re-run the Phase 3 engine suite before altering this patch.
+
+Vite+'s bundled Vite fork has npm version 1.4.0 while providing the Vite 8 API; the explicit
+peer rule admits that alias. capnp-es's TypeScript peer range is older than TypeScript 7; the
+workspace admits the pinned compiler after typechecking. `pnpm peers check` reports no conflicts.
+
+`vp check`, `tsc --noEmit`, `vp test --run` (one PKCE regression) and `vp run build -r` pass.
+Alchemy deployed the Effect hello Worker and static assets at `https://dev.kitties.rccpr.tech`,
+with workers.dev/previews off, owner-only Access and 300000 ms CPU configured.
+The branch-protection API returned 403 to the GitHub integration; no branch rule was changed.
+Legacy enforcement is removed in Makefile/CI and their development/deployment documentation.

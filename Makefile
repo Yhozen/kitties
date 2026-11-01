@@ -15,8 +15,6 @@ PKGS     := ./internal/... ./cmd/...
 # WEB=0 builds without the web interface inside (no Node needed): the gateway then serves its
 # small built-in page.
 WEB      ?= 1
-# Coverage every package must reach (percent).
-COVER_MIN ?= 90
 IMAGE    ?= ghcr.io/madkoding/kitty-desktop:latest
 
 # Every platform the binary is built for. Android (arm64) runs the CLI and the gateway under
@@ -25,7 +23,7 @@ PLATFORMS := linux/amd64 linux/arm64 linux/arm android/arm64 \
              windows/amd64 windows/arm64 darwin/amd64 darwin/arm64
 
 .DEFAULT_GOAL := help
-.PHONY: help build dist test vet fmt fmt-check check cover image run clean frontend web desktop desktop-check e2e demo android
+.PHONY: help build dist test vet fmt fmt-check check image run clean frontend web desktop desktop-check e2e demo android
 
 help: ## Show this list of commands
 	@printf '\nkitties: what you can run here\n\n'
@@ -60,15 +58,6 @@ fmt-check: ## Fail if any Go file is unformatted
 
 check: fmt-check vet test ## Everything CI checks, in one go
 
-cover: ## Coverage per package, against COVER_MIN
-	@fail=0; for pkg in $$($(GO) list $(PKGS)); do \
-		pct=$$($(GO) test -count=1 -cover $$pkg 2>/dev/null | sed -n 's/.*coverage: \([0-9.]*\)%.*/\1/p'); \
-		[ -z "$$pct" ] && pct=0; \
-		ok=$$(awk -v p="$$pct" -v m="$(COVER_MIN)" 'BEGIN{print (p+0 >= m+0) ? "ok" : "LOW"}'); \
-		printf '  %-6s %6s%%  %s\n' "$$ok" "$$pct" "$$pkg"; \
-		[ "$$ok" = "LOW" ] && fail=1; \
-	done; [ "$$fail" = 0 ] || { echo "a package is under $(COVER_MIN)%"; exit 1; }
-
 frontend: ## Build the desktop app's page (desktop/frontend/dist)
 	@cd desktop/frontend && npm ci --no-audit --no-fund && npm run typecheck && npm run build
 
@@ -78,7 +67,7 @@ web: frontend ## Copy the built page into the binary's embed folder (the web int
 	@echo "web interface ready in internal/web/dist"
 
 desktop-check: frontend ## Vet and test the Wails app (needs the page built)
-	@cd desktop && $(GO) vet ./... && $(GO) test -count=1 -cover ./...
+	@cd desktop && $(GO) vet ./... && $(GO) test -count=1 ./...
 
 e2e: frontend ## Drive the desktop app end to end in a browser and rewrite docs/screenshots
 	@cd desktop/frontend && npm run e2e
@@ -99,4 +88,4 @@ run: build ## Start the gateway with the local kitties.yaml
 	@$(DIST)/kitties gateway
 
 clean: ## Remove the build output
-	@rm -rf $(DIST) coverage.out
+	@rm -rf $(DIST)

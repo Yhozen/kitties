@@ -24,8 +24,8 @@ table when a phase starts, when its exit criteria are measured, and when it merg
 
 | Phase | Scope | Status | Exit evidence |
 |---|---|---|---|
-| 1 | Backing documentation and the plan | in review | this directory |
-| 2 | Toolchain groundwork: coverage rules removed, pnpm + Vite+ workspace | not started | — |
+| 1 | Backing documentation and the plan | committed; draft PR open | [#14](https://github.com/Yhozen/kitties/pull/14), commit `1aca978`; links and pinned paths checked |
+| 2 | Toolchain groundwork: coverage rules removed, pnpm + Vite+ workspace | deployed to dev | Vite+ check, typecheck, PKCE regression, task build and Alchemy deploy passed; [dev](https://dev.kitties.rccpr.tech) |
 | 3 | Walking skeleton, PWA shell, go/no-go spikes | not started | — |
 | 4 | Live desktop: `kittyd`, fast input, live view | not started | — |
 | 5 | Brains: chat, providers, first MCP and native tools | not started | — |

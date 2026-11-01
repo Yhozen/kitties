@@ -134,7 +134,7 @@ Caddy: `flush_interval -1`). `deploy/nginx.conf` is a complete example.
 - The `security` workflow scans the gateway and the kitty-desktop images with Trivy (pulling the base anew, also every Monday), fetched from its release and checked
   against a checksum kept in the workflow; raise `TRIVY_VERSION` and `TRIVY_SHA256` together.
 - In the repository settings (Rules → branch ruleset for `main`), require a pull request, and these
-  checks to pass before merging: `fmt · vet · test · coverage`, `desktop app · end to end`,
+  checks to pass before merging: `fmt · vet · test`, `desktop app · end to end`,
   `gateway image`, `kitty-desktop image`, `updating itself`, `semantic title`, `CodeQL`,
   `dependencies a pull request adds` and `gateway image · known vulnerabilities`, `kitty-desktop image · known vulnerabilities`. Only an owner of the
   repository can set this; it is not done by the workflows.

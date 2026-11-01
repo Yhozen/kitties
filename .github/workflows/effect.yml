@@ -1,0 +1,54 @@
+name: effect
+on:
+  pull_request:
+    paths:
+      [
+        "apps/**",
+        "packages/**",
+        "guest/**",
+        "patches/**",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "vite.config.ts",
+        "tsconfig.json",
+        ".github/workflows/effect.yml",
+      ]
+  push:
+    branches: [main, "effect/**"]
+    paths:
+      [
+        "apps/**",
+        "packages/**",
+        "guest/**",
+        "patches/**",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "vite.config.ts",
+        "tsconfig.json",
+        ".github/workflows/effect.yml",
+      ]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: effect-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    name: Effect · check · test · build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.16.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 26
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm test
+      - run: pnpm build

@@ -43,3 +43,12 @@ desktop/frontend/e2e/.data-login/
 .env
 .env.*
 !.env.example
+
+# Effect workspace
+node_modules/
+.pnpm-store/
+.vite/
+.vite-plus/
+.alchemy/
+apps/*/dist/
+packages/*/dist/
