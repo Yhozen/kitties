@@ -60,7 +60,7 @@ class VerificationDO extends Cloudflare.DurableObject<VerificationDO>()(
         const saved = yield* state.storage.get<Checkpoint>("checkpoint");
         if (!saved)
           yield* gateway.probeSaveReport(
-            JSON.stringify({ status: "pending", verifier: "engine-progress-v2" }),
+            JSON.stringify({ status: "pending", verifier: "engine-progress-v3" }),
           );
         const checkpoint = saved ?? { index: 0, id: `cloud-${Date.now()}`, results: [] };
         if (checkpoint.index >= cases.length) return;
@@ -118,8 +118,8 @@ class VerificationDO extends Cloudflare.DurableObject<VerificationDO>()(
             date: new Date().toISOString(),
             status: "passed",
             runtime: "Cloudflare DurableObjectEngine",
-            verifier: "engine-progress-v2",
-            enginePatch: "journal-progress",
+            verifier: "engine-progress-v3",
+            enginePatch: "journal-progress-and-activity-failures",
             cases: checkpoint.results,
           };
           yield* gateway.probeSaveReport(JSON.stringify(report));
@@ -180,7 +180,7 @@ export default class Verification extends Cloudflare.Worker<Verification>()(
       GUEST_ASSETS: cf.R2Bucket;
     };
     yield* Cloudflare.Workers.cron("* * * * *", () =>
-      verifiers.getByName("engine-progress-v2", { locationHint: "weur" }).tick(),
+      verifiers.getByName("engine-progress-v3", { locationHint: "weur" }).tick(),
     );
     return {
       fetch: Effect.gen(function* () {
@@ -301,6 +301,33 @@ export default class Verification extends Cloudflare.Worker<Verification>()(
           return HttpServerResponse.fromWeb(
             Response.json(yield* gateway.timerStatus(url.searchParams.get("executionId") ?? "")),
           );
+        if (url.pathname === "/advanced-repair" && request.method === "POST") {
+          const body = yield* Effect.tryPromise(() => request.json()) as Effect.Effect<
+            { id: string; executionId: string },
+            unknown
+          >;
+          yield* gateway.advancedRepair(body.id, body.executionId);
+          return HttpServerResponse.fromWeb(Response.json({ ok: true }));
+        }
+        if (url.pathname === "/advanced" && request.method === "POST") {
+          const payload = yield* Effect.tryPromise(() => request.json()) as Effect.Effect<
+            {
+              id: string;
+              mode: "children" | "suspend" | "activity-failure" | "activity-suspension";
+            },
+            unknown
+          >;
+          return HttpServerResponse.fromWeb(
+            Response.json({ executionId: yield* gateway.advancedStart(payload) }),
+          );
+        }
+        if (url.pathname === "/advanced" && request.method === "GET")
+          return HttpServerResponse.fromWeb(
+            Response.json({
+              status: yield* gateway.advancedStatus(url.searchParams.get("executionId") ?? ""),
+              calls: yield* gateway.probeCalls(url.searchParams.get("id") ?? ""),
+            }),
+          );
         if (url.pathname === "/mcp-probe" && request.method === "POST")
           return HttpServerResponse.fromWeb(Response.json(yield* probeMcpEndpoints));
         const streamRoute = url.pathname.match(/^\/chat-stream\/([a-zA-Z0-9_-]{1,128})$/);
@@ -377,7 +404,7 @@ export default class Verification extends Cloudflare.Worker<Verification>()(
           );
         }
         if (request.method === "POST" && url.pathname === "/run")
-          yield* verifiers.getByName("engine-progress-v2", { locationHint: "weur" }).tick();
+          yield* verifiers.getByName("engine-progress-v3", { locationHint: "weur" }).tick();
         const report = yield* gateway.probeReport();
         return HttpServerResponse.fromWeb(
           Response.json(
@@ -386,7 +413,7 @@ export default class Verification extends Cloudflare.Worker<Verification>()(
               : {
                   status: "pending",
                   checkpoint: yield* verifiers
-                    .getByName("engine-progress-v2", { locationHint: "weur" })
+                    .getByName("engine-progress-v3", { locationHint: "weur" })
                     .snapshot(),
                 },
           ),

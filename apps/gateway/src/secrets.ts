@@ -3,7 +3,12 @@ export interface Envelope {
   iv: string;
   ct: string;
 }
-const encode = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
+const encode = (bytes: Uint8Array) => {
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 8192)
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
+  return btoa(binary);
+};
 const decode = (text: string) => Uint8Array.from(atob(text), (char) => char.charCodeAt(0));
 const key = (hex: string) => {
   if (!/^[a-f0-9]{64}$/.test(hex)) throw Error("KEY_UNAVAILABLE");

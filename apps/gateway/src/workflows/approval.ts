@@ -1,7 +1,8 @@
+import { makeRecoveryGuard, guardedActivities } from "../recovery-guard.ts";
 import * as Workflows from "alchemy/Workflows";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { Activity, DurableClock, DurableDeferred } from "effect/workflow";
+import { DurableClock, DurableDeferred } from "effect/workflow";
 import { HomeDO } from "../actors.ts";
 import { Approval, ApprovalDecision } from "../approval-definition.ts";
 import type { ApprovalRecord } from "../entities.ts";
@@ -9,10 +10,13 @@ import type { ApprovalRecord } from "../entities.ts";
 export const ApprovalLive = Workflows.layer(
   Approval,
   Effect.gen(function* () {
+    const recovery = yield* makeRecoveryGuard;
+    const fenced = (id: string) => guardedActivities(recovery(Approval._tag, id));
     const homes = yield* HomeDO;
-    return Effect.fn(function* ({ id }) {
+    return Effect.fn(function* ({ id }, executionId) {
+      yield* recovery(Approval._tag, executionId);
       const home = homes.getByName("owner", { locationHint: "weur" });
-      const expiresAt = yield* Activity.make({
+      const expiresAt = yield* fenced(executionId)({
         name: "deadline",
         success: Schema.Number,
         error: Schema.String,
@@ -38,7 +42,7 @@ export const ApprovalLive = Workflows.layer(
         ],
       });
       if (first === "reminder") {
-        yield* Activity.make({
+        yield* fenced(executionId)({
           name: "remind",
           error: Schema.String,
           execute: Effect.gen(function* () {
@@ -71,7 +75,7 @@ export const ApprovalLive = Workflows.layer(
           ],
         });
       }
-      return yield* Activity.make({
+      return yield* fenced(executionId)({
         name: "decision",
         success: Schema.Boolean,
         error: Schema.String,

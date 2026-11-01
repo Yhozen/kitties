@@ -167,7 +167,7 @@ overrides:
   vite: npm:@voidzero-dev/vite-plus-core@1.4.0
 
 patchedDependencies:
-  '@alchemy.run/cloudflare@2.0.0-beta.84': e420397aa5c38a88b4e2978a6bfcf71d6127e74e7a3093e2264d009f338162dd
+  '@alchemy.run/cloudflare@2.0.0-beta.84': 0309b9912e4f233f87087426dfd830e68b2b02b28d30bb0285380ba985b38925
   alchemy@2.0.0-beta.84: b5322a2ed99569e8dc319a86af24199e65eaabf1673616a57a7b9d05d1a8d7b8
 
 importers:
@@ -176,7 +176,7 @@ importers:
     dependencies:
       '@alchemy.run/cloudflare':
         specifier: 2.0.0-beta.84
-        version: 2.0.0-beta.84(patch_hash=e420397aa5c38a88b4e2978a6bfcf71d6127e74e7a3093e2264d009f338162dd)(@effect/platform-bun@4.1.1(effect@4.1.1))(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1))(@types/node@26.6.5)(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.5)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(alchemy@2.0.0-beta.84(patch_hash=b5322a2ed99569e8dc319a86af24199e65eaabf1673616a57a7b9d05d1a8d7b8)(@effect/platform-bun@4.1.1(effect@4.1.1))(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1))(@effect/vitest@4.1.1(effect@4.1.1)(vitest@5.0.5))(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.5)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(effect@4.1.1)(ws@8.22.1))(effect@4.1.1)(typescript@7.0.2)
+        version: 2.0.0-beta.84(patch_hash=0309b9912e4f233f87087426dfd830e68b2b02b28d30bb0285380ba985b38925)(@effect/platform-bun@4.1.1(effect@4.1.1))(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1))(@types/node@26.6.5)(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.5)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(alchemy@2.0.0-beta.84(patch_hash=b5322a2ed99569e8dc319a86af24199e65eaabf1673616a57a7b9d05d1a8d7b8)(@effect/platform-bun@4.1.1(effect@4.1.1))(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1))(@effect/vitest@4.1.1(effect@4.1.1)(vitest@5.0.5))(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.5)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(effect@4.1.1)(ws@8.22.1))(effect@4.1.1)(typescript@7.0.2)
       '@effect/platform-bun':
         specifier: 4.1.1
         version: 4.1.1(effect@4.1.1)
@@ -216,7 +216,7 @@ importers:
     dependencies:
       '@alchemy.run/cloudflare':
         specifier: 2.0.0-beta.84
-        version: 2.0.0-beta.84(patch_hash=e420397aa5c38a88b4e2978a6bfcf71d6127e74e7a3093e2264d009f338162dd)(@effect/platform-bun@4.1.1(effect@4.1.1))(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1))(@types/node@26.6.5)(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.5)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(alchemy@2.0.0-beta.84(patch_hash=b5322a2ed99569e8dc319a86af24199e65eaabf1673616a57a7b9d05d1a8d7b8)(@effect/platform-bun@4.1.1(effect@4.1.1))(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1))(@effect/vitest@4.1.1(effect@4.1.1)(vitest@5.0.5))(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.5)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(effect@4.1.1)(ws@8.22.1))(effect@4.1.1)(typescript@7.0.2)
+        version: 2.0.0-beta.84(patch_hash=0309b9912e4f233f87087426dfd830e68b2b02b28d30bb0285380ba985b38925)(@effect/platform-bun@4.1.1(effect@4.1.1))(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1))(@types/node@26.6.5)(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.5)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(alchemy@2.0.0-beta.84(patch_hash=b5322a2ed99569e8dc319a86af24199e65eaabf1673616a57a7b9d05d1a8d7b8)(@effect/platform-bun@4.1.1(effect@4.1.1))(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1))(@effect/vitest@4.1.1(effect@4.1.1)(vitest@5.0.5))(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.5)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(effect@4.1.1)(ws@8.22.1))(effect@4.1.1)(typescript@7.0.2)
       '@block65/webcrypto-web-push':
         specifier: 2.0.0
         version: 2.0.0
@@ -2738,7 +2738,7 @@ snapshots:
       - proxy-agent
       - typescript
 
-  '@alchemy.run/cloudflare@2.0.0-beta.84(patch_hash=e420397aa5c38a88b4e2978a6bfcf71d6127e74e7a3093e2264d009f338162dd)(@effect/platform-bun@4.1.1(effect@4.1.1))(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1))(@types/node@26.6.5)(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.5)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(alchemy@2.0.0-beta.84(patch_hash=b5322a2ed99569e8dc319a86af24199e65eaabf1673616a57a7b9d05d1a8d7b8)(@effect/platform-bun@4.1.1(effect@4.1.1))(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1))(@effect/vitest@4.1.1(effect@4.1.1)(vitest@5.0.5))(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.5)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(effect@4.1.1)(ws@8.22.1))(effect@4.1.1)(typescript@7.0.2)':
+  '@alchemy.run/cloudflare@2.0.0-beta.84(patch_hash=0309b9912e4f233f87087426dfd830e68b2b02b28d30bb0285380ba985b38925)(@effect/platform-bun@4.1.1(effect@4.1.1))(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1))(@types/node@26.6.5)(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.5)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(alchemy@2.0.0-beta.84(patch_hash=b5322a2ed99569e8dc319a86af24199e65eaabf1673616a57a7b9d05d1a8d7b8)(@effect/platform-bun@4.1.1(effect@4.1.1))(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1))(@effect/vitest@4.1.1(effect@4.1.1)(vitest@5.0.5))(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.5)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(effect@4.1.1)(ws@8.22.1))(effect@4.1.1)(typescript@7.0.2)':
     dependencies:
       '@alchemy.run/acme': 2.0.0-beta.84(alchemy@2.0.0-beta.84(patch_hash=b5322a2ed99569e8dc319a86af24199e65eaabf1673616a57a7b9d05d1a8d7b8)(@effect/platform-bun@4.1.1(effect@4.1.1))(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1))(@effect/vitest@4.1.1(effect@4.1.1)(vitest@5.0.5))(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.5)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(effect@4.1.1)(ws@8.22.1))(effect@4.1.1)
       '@alchemy.run/cloudflare-runtime': 2.0.0-beta.84(@distilled.cloud/cloudflare@1.0.0-rc.17(effect@4.1.1))(@effect/platform-bun@4.1.1(effect@4.1.1))(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1))(@types/node@26.6.5)(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.5)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(effect@4.1.1)(rolldown@1.2.13)(typescript@7.0.2)
@@ -2754,10 +2754,6 @@ snapshots:
       pathe: 2.0.3
       rolldown: 1.2.13
       tinyglobby: 0.2.17
-    optionalDependencies:
-      '@effect/platform-bun': 4.1.1(effect@4.1.1)
-      '@effect/platform-node': 4.1.1(effect@4.1.1)(redis@6.3.1)
-      vite: '@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.5)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1)'
     transitivePeerDependencies:
       - '@effect/sql-libsql'
       - '@effect/sql-mysql2'

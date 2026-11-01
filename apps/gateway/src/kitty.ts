@@ -1,3 +1,4 @@
+import { makeStorageAdmin } from "./storage-admin.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Effect from "effect/Effect";
 import type * as cf from "@cloudflare/workers-types";
@@ -47,7 +48,10 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
   "KittyDO",
   Effect.gen(function* () {
     const state = yield* Cloudflare.DurableObjectState;
-    const env = (yield* Cloudflare.WorkerEnvironment) as { BLOBS: cf.R2Bucket };
+    const env = (yield* Cloudflare.WorkerEnvironment) as {
+      BLOBS: cf.R2Bucket;
+      KITTIES_KEK: string;
+    };
     return Effect.sync(() => {
       const heartbeat = globalThis as unknown as {
         WebSocketRequestResponsePair: new (
@@ -220,6 +224,7 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
       };
       return {
         computer: () => Effect.sync(() => read<ComputerState>("computer")),
+        ...makeStorageAdmin(state, env.KITTIES_KEK, ["kitty_state", "effect_ledger"]),
         beginComputer: (kittyId: string, id: string, kind: ComputerOperation["kind"]) =>
           Effect.sync(() => {
             const current = read<ComputerState>("computer") ?? freshComputer(kittyId, Date.now());
@@ -300,6 +305,32 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
               ws.close(1012, "Credentials rotated");
             publish({ type: "control_revoked" });
             return { epoch: c.epoch };
+          }),
+        recoveryFence: (epoch: number) =>
+          Effect.sync(() => {
+            if ((read<number>("restoredEpoch") ?? 0) >= epoch) return;
+            write("restoredEpoch", epoch);
+            const c = bump();
+            if (c) {
+              c.tokenVersion++;
+              c.tokenHash = Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) =>
+                b.toString(16).padStart(2, "0"),
+              ).join("");
+              write("config", c);
+            }
+            for (const ws of [...sockets("guest"), ...sockets("guest-frames")])
+              ws.close(1012, "Recovery requires fresh credentials");
+            const computer = read<ComputerState>("computer");
+            if (computer)
+              write("computer", {
+                ...computer,
+                tokenVersion: c?.tokenVersion ?? computer.tokenVersion + 1,
+                operation: undefined,
+                phase: ["sleeping", "deleted", "absent"].includes(computer.phase)
+                  ? computer.phase
+                  : "attention",
+              });
+            sql.exec("UPDATE effect_ledger SET status='unknown' WHERE status='started'");
           }),
         status: () =>
           Effect.sync(() => ({

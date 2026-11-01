@@ -1,7 +1,8 @@
+import { makeRecoveryGuard, guardedActivities } from "../recovery-guard.ts";
 import * as Workflows from "alchemy/Workflows";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { Activity, DurableClock } from "effect/workflow";
+import { DurableClock } from "effect/workflow";
 import { HomeDO, ChatDO } from "../actors.ts";
 import { GoalSlot } from "../goal-definition.ts";
 import type { Goal } from "../entities.ts";
@@ -10,9 +11,12 @@ const storage = () => "STORAGE_UNAVAILABLE";
 export const GoalSlotLive = Workflows.layer(
   GoalSlot,
   Effect.gen(function* () {
+    const recovery = yield* makeRecoveryGuard;
+    const fenced = (id: string) => guardedActivities(recovery(GoalSlot._tag, id));
     const homes = yield* HomeDO,
       chats = yield* ChatDO;
-    return Effect.fn(function* (payload) {
+    return Effect.fn(function* (payload, executionId) {
+      yield* recovery(GoalSlot._tag, executionId);
       const home = homes.getByName("owner", { locationHint: "weur" });
       // The persisted clock deadline stays fixed across replay and redeployment.
       yield* DurableClock.sleep({
@@ -20,7 +24,7 @@ export const GoalSlotLive = Workflows.layer(
         duration: Math.max(1, payload.slotTime - Date.now()),
         inMemoryThreshold: 0,
       });
-      const following = yield* Activity.make({
+      const following = yield* fenced(executionId)({
         name: "deliver-slot",
         success: Schema.Number,
         error: Schema.String,
@@ -50,7 +54,7 @@ export const GoalSlotLive = Workflows.layer(
         }),
       });
       if (following)
-        yield* Activity.make({
+        yield* fenced(executionId)({
           name: "chain-next",
           success: Schema.String,
           execute: GoalSlot.execute({ ...payload, slotTime: following }, { discard: true }),

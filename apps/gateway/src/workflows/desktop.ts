@@ -1,3 +1,4 @@
+import { makeRecoveryGuard, guardedActivities } from "../recovery-guard.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Workflows from "alchemy/Workflows";
 import * as Effect from "effect/Effect";
@@ -12,11 +13,14 @@ const storage = () => "STORAGE_UNAVAILABLE";
 export const DesktopAttemptLive = Workflows.layer(
   DesktopAttempt,
   Effect.gen(function* () {
+    const recovery = yield* makeRecoveryGuard;
+    const fenced = (id: string) => guardedActivities(recovery(DesktopAttempt._tag, id));
     const homes = yield* HomeDO,
       kitties = yield* KittyDO,
       chats = yield* ChatDO;
     const env = (yield* Cloudflare.WorkerEnvironment) as { KITTIES_KEK: string };
     return Effect.fn(function* (payload, executionId) {
+      yield* recovery(DesktopAttempt._tag, executionId);
       const home = homes.getByName("owner", { locationHint: "weur" }),
         kitty = kitties.getByName(payload.kittyId, { locationHint: "weur" }),
         chat = chats.getByName(payload.chatId, { locationHint: "weur" });
@@ -27,7 +31,7 @@ export const DesktopAttemptLive = Workflows.layer(
         if (!saved) return yield* Effect.fail("TOOL_NOT_FOUND");
         return JSON.parse(saved) as { action: string; args: Record<string, unknown> };
       });
-      const initial = yield* Activity.make({
+      const initial = yield* fenced(executionId)({
         name: "dispatch",
         success: Schema.String,
         error: Schema.String,
@@ -83,7 +87,7 @@ export const DesktopAttemptLive = Workflows.layer(
           duration: status === "held" ? "5 seconds" : "1 second",
           inMemoryThreshold: 0,
         });
-        status = yield* Activity.make({
+        status = yield* fenced(executionId)({
           name: `receipt/${index}`,
           success: Schema.String,
           error: Schema.String,
@@ -121,7 +125,7 @@ export const DesktopAttemptLive = Workflows.layer(
         });
       }
       if (status === "help" || status === "unknown" || status === "started" || status === "held") {
-        yield* Activity.make({
+        yield* fenced(executionId)({
           name: "park-for-owner",
           error: Schema.String,
           execute: home
@@ -140,7 +144,7 @@ export const DesktopAttemptLive = Workflows.layer(
             )
             .pipe(Effect.mapError(storage)),
         });
-        yield* Activity.make({
+        yield* fenced(executionId)({
           name: "help-notice",
           error: Schema.String,
           execute: home
@@ -168,7 +172,7 @@ export const DesktopAttemptLive = Workflows.layer(
         });
         status = decision === "accept" ? "completed" : "unknown";
       }
-      yield* Activity.make({
+      yield* fenced(executionId)({
         name: "save-result",
         success: Schema.String,
         error: Schema.String,

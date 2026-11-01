@@ -1,3 +1,4 @@
+import { makeRecoveryGuard, guardedActivities } from "../recovery-guard.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Workflows from "alchemy/Workflows";
 import * as Effect from "effect/Effect";
@@ -9,7 +10,7 @@ import * as Schema from "effect/Schema";
 import type * as cf from "@cloudflare/workers-types";
 import * as Chat from "effect/ai/Chat";
 import * as Prompt from "effect/ai/Prompt";
-import { Activity } from "effect/workflow";
+import {} from "effect/workflow";
 import { HomeDO, ChatDO } from "../actors.ts";
 import { Delegation } from "../delegation-definition.ts";
 import { autonomyTools, DelegateInput, LimitToolInput } from "../autonomy-tools.ts";
@@ -59,6 +60,8 @@ const compactHistory = (body: string) => {
 export const TurnLive = Workflows.layer(
   Turn,
   Effect.gen(function* () {
+    const recovery = yield* makeRecoveryGuard;
+    const fenced = (id: string) => guardedActivities(recovery(Turn._tag, id));
     const homes = yield* HomeDO,
       chats = yield* ChatDO;
     const env = (yield* Cloudflare.WorkerEnvironment) as {
@@ -69,6 +72,7 @@ export const TurnLive = Workflows.layer(
     };
     return Effect.fn(
       function* (payload, executionId) {
+        yield* recovery(Turn._tag, executionId);
         const chat = chats.getByName(payload.chatId, { locationHint: "weur" });
         const home = homes.getByName("owner", { locationHint: "weur" });
         const getConfig = Effect.gen(function* () {
@@ -82,7 +86,7 @@ export const TurnLive = Workflows.layer(
         for (let round = 0; round < maxRounds; round++) {
           let retryBudget = 0,
             modelFailures = 0;
-          maxRounds = yield* Activity.make({
+          maxRounds = yield* fenced(executionId)({
             name: `round/${round}`,
             success: Schema.Number,
             error: Schema.String,
@@ -340,7 +344,7 @@ export const TurnLive = Workflows.layer(
           if (!stored) return yield* Effect.fail("ROUND_MISSING");
           const result = JSON.parse(stored.body) as ModelRound;
           if (result.calls.length === 0) {
-            yield* Activity.make({
+            yield* fenced(executionId)({
               name: "finish",
               error: Schema.String,
               execute: Effect.gen(function* () {
@@ -388,7 +392,7 @@ export const TurnLive = Workflows.layer(
             const call = result.calls[index]!,
               tool = result.tools.find((item) => item.name === call.name);
             const id = `${executionId}/${round}/${index}`;
-            const approvalId = yield* Activity.make({
+            const approvalId = yield* fenced(executionId)({
               name: `authorize/${round}/${index}`,
               success: Schema.String,
               error: Schema.String,
@@ -477,14 +481,14 @@ export const TurnLive = Workflows.layer(
               }),
             });
             if (approvalId)
-              yield* Activity.make({
+              yield* fenced(executionId)({
                 name: `start-approval/${round}/${index}`,
                 success: Schema.String,
                 execute: Approval.execute({ id: approvalId }, { discard: true }),
               });
             const approved = approvalId ? yield* Approval.execute({ id: approvalId }) : true;
             if (tool?.connectionId === "kitty" && approved) {
-              const mode = yield* Activity.make({
+              const mode = yield* fenced(executionId)({
                 name: `kitty-tool/${round}/${index}`,
                 success: Schema.String,
                 error: Schema.String,
@@ -627,7 +631,7 @@ export const TurnLive = Workflows.layer(
                   kittyId: payload.kittyId,
                   depth: payload.depth ?? 0,
                 };
-                yield* Activity.make({
+                yield* fenced(executionId)({
                   name: `delegation-start/${round}/${index}`,
                   success: Schema.String,
                   execute: Delegation.execute(child, { discard: true }),
@@ -637,7 +641,7 @@ export const TurnLive = Workflows.layer(
               continue;
             }
             if (tool?.connectionId === "desktop" && approved) {
-              yield* Activity.make({
+              yield* fenced(executionId)({
                 name: `desktop-job/${round}/${index}`,
                 success: Schema.String,
                 error: Schema.String,
@@ -649,7 +653,7 @@ export const TurnLive = Workflows.layer(
                   )
                   .pipe(Effect.mapError(storageError), Effect.as(id)),
               });
-              yield* Activity.make({
+              yield* fenced(executionId)({
                 name: `desktop-start/${round}/${index}`,
                 success: Schema.String,
                 execute: DesktopAttempt.execute(
@@ -672,7 +676,7 @@ export const TurnLive = Workflows.layer(
               });
               continue;
             }
-            yield* Activity.make({
+            yield* fenced(executionId)({
               name: `tool/${round}/${index}`,
               success: Schema.String,
               error: Schema.String,
@@ -781,7 +785,7 @@ export const TurnLive = Workflows.layer(
             return Effect.gen(function* () {
               const home = homes.getByName("owner", { locationHint: "weur" }),
                 chat = chats.getByName(payload.chatId, { locationHint: "weur" });
-              const mode = yield* Activity.make({
+              const mode = yield* fenced(executionId)({
                 name: "terminal-plan",
                 success: Schema.Boolean,
                 error: Schema.String,
@@ -828,14 +832,14 @@ export const TurnLive = Workflows.layer(
                   kittyId: payload.kittyId,
                   depth: payload.depth ?? 0,
                 };
-                yield* Activity.make({
+                yield* fenced(executionId)({
                   name: "terminal-backup-start",
                   success: Schema.String,
                   execute: Delegation.execute(child, { discard: true }),
                 });
                 yield* Delegation.execute(child);
               }
-              yield* Activity.make({
+              yield* fenced(executionId)({
                 name: "terminal-result",
                 error: Schema.String,
                 execute: Effect.gen(function* () {

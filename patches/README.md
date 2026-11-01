@@ -1,9 +1,19 @@
-# Alchemy beta.84 with Effect 4.1
+# Pinned Alchemy compatibility and workflow fixes
 
-The published Alchemy package imports the removed `effect/Crypto` entrypoint. This pnpm patch
-uses the Effect 4.1 SecureRandom and Digest services for OAuth state and PKCE and supplies their
-WebCrypto layers in the Node/Bun platform service layer. It updates source, emitted JS and
-declarations. It does not alter workflow replay or persistence.
+The pnpm patches apply to Alchemy and `@alchemy.run/cloudflare` 2.0.0-beta.84 with Effect 4.1.1.
+They update source and emitted JavaScript together.
 
-`apps/gateway/src/alchemy-compat.test.ts` verifies fresh state, verifier format and the exact S256
-challenge. Run the deployed Phase 3 engine suite before changing this patch or upgrading pins.
+- OAuth uses Effect 4.1 SecureRandom/Digest instead of the removed `effect/Crypto` entrypoint.
+- Durable callback retries reset only when the workflow journal makes progress. Explicit operator
+  resumes can re-arm parked callbacks; repeated durable clocks do not exhaust the retry counter.
+- Activity failures are journaled and reach workflow error handlers even when the parent has
+  `SuspendOnFailure`. Explicit activity suspension remains unjournaled and retryable.
+- Workflow creation/completion times are durable metadata. Recovery guards can reject old runs
+  even when they were not registered before a restore.
+- Owner-only administration supports workflow PITR, immutable row capture and bounded export
+  reads. Purging completed journals retains the execution/result tombstone to prevent replay.
+
+The cloud engine suite exercises 3/50/200/500 activities, deferreds, dedupe and failure handling.
+Additional probes cover annotated activity errors, child workflows, storage suspension and durable
+clocks. Re-run these on a deployed Cloudflare runtime when changing a patch or upgrading pins;
+`WorkflowEngine.layerMemory` does not reproduce the Durable Object engine's behavior.

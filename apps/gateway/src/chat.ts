@@ -1,3 +1,4 @@
+import { makeStorageAdmin } from "./storage-admin.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import { WorkflowEngine } from "effect/workflow";
 import * as Effect from "effect/Effect";
@@ -15,6 +16,7 @@ interface Row {
 const makeChat = Effect.gen(function* () {
   const state = yield* Cloudflare.DurableObjectState;
   const engine = yield* WorkflowEngine.WorkflowEngine;
+  const env = (yield* Cloudflare.WorkerEnvironment) as { KITTIES_KEK: string };
   return Effect.sync(() => {
     const sql = state.raw.storage.sql;
     sql.exec(
@@ -57,6 +59,14 @@ const makeChat = Effect.gen(function* () {
       Effect.catchCause(() => Effect.promise(() => state.raw.storage.setAlarm(Date.now() + 5000))),
     );
     return {
+      ...makeStorageAdmin(state, env.KITTIES_KEK, [
+        "messages",
+        "events",
+        "chat_state",
+        "rounds",
+        "model_rounds",
+        "tool_results",
+      ]),
       enqueue: (payload: typeof Turn.payloadSchema.Type, start = true) =>
         Effect.gen(function* () {
           if (

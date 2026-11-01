@@ -1,3 +1,5 @@
+import { makeRecovery } from "./recovery.ts";
+import { PurgeLive } from "./workflows/purge.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import { Stage } from "alchemy/Stage";
 import * as Workflows from "alchemy/Workflows";
@@ -7,7 +9,9 @@ import * as Effect from "effect/Effect";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import { GuestAssets } from "./resources.ts";
+import { ExportLive } from "./workflows/export.ts";
+import { RestoreLive } from "./workflows/restore.ts";
+import { RetainedExports, GuestAssets } from "./resources.ts";
 import { WorkflowEngine } from "effect/workflow";
 import { Health, Session } from "@kitties/domain";
 import { HomeDO, KittyDO, ChatDO } from "./actors.ts";
@@ -86,6 +90,7 @@ const props = Effect.gen(function* () {
       GUEST_URL:
         stage === "local" ? "http://localhost:1338" : `https://guest-${stage}.kitties.rccpr.tech`,
       BLOBS: blobs,
+      EXPORTS: yield* RetainedExports,
     },
   };
 });
@@ -110,11 +115,17 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
     const application = yield* makeApplication;
     const oauth = yield* makeOAuth;
     const lifecycle = yield* makeLifecycle;
+
     const autonomy = yield* makeAutonomy;
     const receiveWebhook = yield* makeWebhooks;
     const notifications = yield* makeNotifications;
+    const recovery = yield* makeRecovery;
     yield* Cloudflare.Workers.cron("* * * * *", () =>
-      lifecycle.pipe(Effect.andThen(autonomy.tick), Effect.andThen(notifications.tick)),
+      lifecycle.pipe(
+        Effect.andThen(autonomy.tick),
+        Effect.andThen(notifications.tick),
+        Effect.andThen(recovery.tick()),
+      ),
     );
     const env = (yield* Cloudflare.WorkerEnvironment) as {
       PUBLIC_URL: string;
@@ -140,7 +151,7 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
         Effect.gen(function* () {
           if (env.STAGE !== "next" && env.STAGE !== "e2e") return { status: 404, body: "" };
           if (
-            !/^\/v1\/(features|kitties|chats|providers|connections|approvals|runs|computer-runs|releases|vault|help|artifacts|skills|goals|hooks|approval-rules|notifications)(?:\/|$)/.test(
+            !/^\/v1\/(recovery|features|kitties|chats|providers|connections|approvals|runs|computer-runs|releases|vault|help|artifacts|skills|goals|hooks|approval-rules|notifications)(?:\/|$)/.test(
               path,
             )
           )
@@ -268,7 +279,7 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
           return json(
             Schema.decodeUnknownSync(Health)({
               ok: true,
-              version: "effect-skeleton",
+              version: "effect-2026.11.01",
               runtime: "boat",
               stage: env.STAGE,
             }),
@@ -346,6 +357,9 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
       Layer.mergeAll(
         ProbeLive,
         AdvancedProbeLive,
+        ExportLive,
+        PurgeLive,
+        RestoreLive,
         TurnLive,
         DistillLive,
         GoalSlotLive,

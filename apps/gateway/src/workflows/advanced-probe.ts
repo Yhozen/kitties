@@ -1,3 +1,4 @@
+import { guardedActivities } from "../recovery-guard.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import { makeCallback } from "alchemy/Callback";
 import * as Workflows from "alchemy/Workflows";
@@ -8,7 +9,10 @@ import { HomeDO } from "../actors.ts";
 import { Probe } from "./probe.ts";
 
 export const AdvancedProbe = Workflow.make("AdvancedProbeV1", {
-  payload: { id: Schema.String, mode: Schema.Literals(["children", "suspend"]) },
+  payload: {
+    id: Schema.String,
+    mode: Schema.Literals(["children", "suspend", "activity-failure", "activity-suspension"]),
+  },
   success: Schema.Number,
   error: Schema.String,
   idempotencyKey: ({ id }) => id,
@@ -20,6 +24,33 @@ export const AdvancedProbeLive = Workflows.layer(
     const homes = yield* HomeDO;
     return Effect.fn(function* ({ id, mode }) {
       const home = homes.getByName("owner", { locationHint: "weur" });
+      if (mode === "activity-suspension")
+        return yield* guardedActivities(Effect.void)({
+          name: "retryable-storage",
+          success: Schema.Number,
+          error: Schema.String,
+          execute: Effect.gen(function* () {
+            if (
+              !(yield* home
+                .read("probe-repair", id)
+                .pipe(Effect.mapError(() => "STORAGE_UNAVAILABLE")))
+            )
+              return yield* Effect.fail("STORAGE_UNAVAILABLE");
+            yield* home.recordProbeCall(id, 0).pipe(Effect.mapError(() => "STORAGE_UNAVAILABLE"));
+            return 1;
+          }),
+        });
+      if (mode === "activity-failure") {
+        return yield* Activity.make({
+          name: "handled-failure",
+          success: Schema.Number,
+          error: Schema.String,
+          execute: home.recordProbeCall(id, 0).pipe(
+            Effect.mapError(() => "STORAGE_FAILED"),
+            Effect.andThen(Effect.fail("TERMINAL_ACTIVITY")),
+          ),
+        }).pipe(Effect.catch((error) => Effect.succeed(error === "TERMINAL_ACTIVITY" ? 1 : 0)));
+      }
       if (mode === "suspend") {
         yield* Activity.make({
           name: "before-failure",

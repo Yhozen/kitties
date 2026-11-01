@@ -1,8 +1,9 @@
+import { makeRecoveryGuard, guardedActivities } from "../recovery-guard.ts";
 import * as Workflows from "alchemy/Workflows";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { Activity, DurableClock } from "effect/workflow";
+import { DurableClock } from "effect/workflow";
 import { buildPushPayload, type PushSubscription } from "@block65/webcrypto-web-push";
 import { HomeDO } from "../actors.ts";
 import { Notify } from "../notification-definition.ts";
@@ -11,11 +12,14 @@ import { sha256 } from "../kitty.ts";
 export const NotifyLive = Workflows.layer(
   Notify,
   Effect.gen(function* () {
+    const recovery = yield* makeRecoveryGuard;
+    const fenced = (id: string) => guardedActivities(recovery(Notify._tag, id));
     const homes = yield* HomeDO,
       env = (yield* Cloudflare.WorkerEnvironment) as { KITTIES_KEK: string };
     return Effect.fn(function* ({ id }, executionId) {
+      yield* recovery(Notify._tag, executionId);
       const home = homes.getByName("owner", { locationHint: "weur" });
-      const due = yield* Activity.make({
+      const due = yield* fenced(executionId)({
         name: "due",
         success: Schema.Number,
         error: Schema.String,
@@ -30,7 +34,7 @@ export const NotifyLive = Workflows.layer(
         duration: Math.max(1, due - Date.now()),
         inMemoryThreshold: 0,
       });
-      yield* Activity.make({
+      yield* fenced(executionId)({
         name: "deliver",
         success: Schema.String,
         error: Schema.String,

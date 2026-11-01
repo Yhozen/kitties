@@ -1,10 +1,11 @@
+import { makeRecoveryGuard, guardedActivities } from "../recovery-guard.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Workflows from "alchemy/Workflows";
 import * as Effect from "effect/Effect";
 import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
 import * as Schedule from "effect/Schedule";
-import { Activity, DurableClock } from "effect/workflow";
+import { DurableClock } from "effect/workflow";
 import { HomeDO, KittyDO } from "../actors.ts";
 import { ComputerOp } from "../computer-definition.ts";
 import { boatClient, ownsSandbox, activeSandbox, readySandbox, type BoatSandbox } from "../boat.ts";
@@ -17,6 +18,8 @@ const storage = () => "STORAGE_UNAVAILABLE";
 export const ComputerOpLive = Workflows.layer(
   ComputerOp,
   Effect.gen(function* () {
+    const recovery = yield* makeRecoveryGuard;
+    const fenced = (id: string) => guardedActivities(recovery(ComputerOp._tag, id));
     const homes = yield* HomeDO,
       kitties = yield* KittyDO;
     const env = (yield* Cloudflare.WorkerEnvironment) as {
@@ -50,7 +53,8 @@ export const ComputerOpLive = Workflows.layer(
         Effect.map((value) => value.sandbox),
       );
     return Effect.fn(
-      function* (payload, _executionId) {
+      function* (payload, executionId) {
+        yield* recovery(ComputerOp._tag, executionId);
         const home = homes.getByName("owner", { locationHint: "weur" }),
           kitty = kitties.getByName(payload.kittyId, { locationHint: "weur" });
         const read = Effect.gen(function* () {
@@ -63,7 +67,7 @@ export const ComputerOpLive = Workflows.layer(
             .updateComputer(payload.operationId, JSON.stringify(state))
             .pipe(Effect.mapError(storage), Effect.asVoid);
         const action = (name: string, execute: Effect.Effect<void, string>) =>
-          Activity.make({
+          fenced(executionId)({
             name,
             success: Schema.String,
             error: Schema.String,
@@ -73,7 +77,7 @@ export const ComputerOpLive = Workflows.layer(
           Effect.gen(function* () {
             for (let index = 0; index < 360; index++) {
               if (
-                yield* Activity.make({
+                yield* fenced(executionId)({
                   name: `${name}/${index}`,
                   success: Schema.Boolean,
                   error: Schema.String,
@@ -274,7 +278,7 @@ export const ComputerOpLive = Workflows.layer(
           );
           return payload.kittyId;
         }
-        const mode = yield* Activity.make({
+        const mode = yield* fenced(executionId)({
           name: "plan",
           success: Schema.Literals(["ready", "create", "resume"]),
           error: Schema.String,

@@ -31,6 +31,7 @@ import { makeOwnerData } from "./owner-data.ts";
 import { makeWorkspaceData } from "./workspace-data.ts";
 import { makeAutonomy } from "./autonomy.ts";
 import { nativeBase } from "./native-tools.ts";
+import { makeRecovery } from "./recovery.ts";
 import { makeChatgpt } from "./chatgpt.ts";
 import { makeOAuth } from "./oauth.ts";
 import { makeNotifications } from "./notifications.ts";
@@ -59,6 +60,7 @@ export const makeApplication = Effect.gen(function* () {
   const notifications = yield* makeNotifications;
   const oauth = yield* makeOAuth;
   const chatgpt = yield* makeChatgpt;
+  const recovery = yield* makeRecovery;
   const env = (yield* Cloudflare.WorkerEnvironment) as {
     KITTIES_KEK: string;
     STAGE: string;
@@ -74,6 +76,10 @@ export const makeApplication = Effect.gen(function* () {
       const url = new URL(request.url),
         path = url.pathname,
         method = request.method;
+      const recoveryResponse = yield* recovery.route(request);
+      if (recoveryResponse) return recoveryResponse;
+      if (path.startsWith("/v1/") && method !== "GET" && !(yield* recovery.ready()))
+        return json({ code: "RECOVERY_IN_PROGRESS", params: {} }, 503);
       const signInResponse = yield* chatgpt(request);
       if (signInResponse) return signInResponse;
       const oauthResponse = yield* oauth.route(request);

@@ -1,7 +1,8 @@
+import { makeRecoveryGuard, guardedActivities } from "../recovery-guard.ts";
 import * as Workflows from "alchemy/Workflows";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { Activity } from "effect/workflow";
+import {} from "effect/workflow";
 import { HomeDO, ChatDO } from "../actors.ts";
 import { Delegation } from "../delegation-definition.ts";
 import { Turn } from "../turn-definition.ts";
@@ -11,12 +12,15 @@ const storage = () => "STORAGE_UNAVAILABLE";
 export const DelegationLive = Workflows.layer(
   Delegation,
   Effect.gen(function* () {
+    const recovery = yield* makeRecoveryGuard;
+    const fenced = (id: string) => guardedActivities(recovery(Delegation._tag, id));
     const homes = yield* HomeDO,
       chats = yield* ChatDO;
-    return Effect.fn(function* (payload) {
+    return Effect.fn(function* (payload, executionId) {
+      yield* recovery(Delegation._tag, executionId);
       const home = homes.getByName("owner", { locationHint: "weur" }),
         parent = chats.getByName(payload.chatId, { locationHint: "weur" });
-      const keys = yield* Activity.make({
+      const keys = yield* fenced(executionId)({
         name: "plan",
         success: Schema.Array(Schema.String),
         error: Schema.String,
@@ -87,7 +91,7 @@ export const DelegationLive = Workflows.layer(
       // Persist every start before joining any child. Replay never changes the fan-out set.
       const started = yield* Effect.all(
         children.map((child, index) =>
-          Activity.make({
+          fenced(executionId)({
             name: `start/${index}`,
             success: Schema.String,
             error: Schema.String,
@@ -110,7 +114,7 @@ export const DelegationLive = Workflows.layer(
       );
       for (let index = 0; index < children.length; index++)
         if (started[index]) yield* Turn.execute(children[index]!);
-      yield* Activity.make({
+      yield* fenced(executionId)({
         name: "collect",
         success: Schema.String,
         error: Schema.String,

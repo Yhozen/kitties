@@ -1,3 +1,4 @@
+import { RecoveryView, RecoveryKind } from "@kitties/domain/recovery";
 import { Health, Session } from "@kitties/domain";
 import * as HttpApi from "effect/http-api/HttpApi";
 import * as HttpApiClient from "effect/http-api/HttpApiClient";
@@ -40,6 +41,41 @@ import {
 } from "@kitties/domain/entities";
 
 export const Api = HttpApi.make("Kitties").add(
+  HttpApiGroup.make("recovery").add(
+    HttpApiEndpoint.post("resume", "/v1/recovery/resume", {
+      payload: Schema.Struct({
+        kind: Schema.Literals(["export", "restore", "purge"]),
+        operationId: Id,
+      }),
+      success: Schema.Struct({ ok: Schema.Boolean }),
+    }),
+    HttpApiEndpoint.get("status", "/v1/recovery", { success: RecoveryView }),
+    HttpApiEndpoint.post("export", "/v1/recovery/exports", {
+      payload: Schema.Struct({ operationId: Id }),
+      success: Schema.Struct({ executionId: Schema.String }),
+    }),
+    HttpApiEndpoint.post("purge", "/v1/recovery/purge", {
+      payload: Schema.Struct({ operationId: Id }),
+      success: Schema.Struct({ executionId: Schema.String }),
+    }),
+    HttpApiEndpoint.post("bookmark", "/v1/recovery/bookmark", {
+      payload: Schema.Struct({
+        kind: RecoveryKind,
+        name: Schema.String,
+        at: Schema.optional(Schema.Number),
+      }),
+      success: Schema.Struct({ bookmark: Schema.String }),
+    }),
+    HttpApiEndpoint.post("restore", "/v1/recovery/restore", {
+      payload: Schema.Struct({
+        operationId: Id,
+        kind: RecoveryKind,
+        name: Schema.String,
+        bookmark: Schema.String,
+      }),
+      success: Schema.Struct({ executionId: Schema.String }),
+    }),
+  ),
   HttpApiGroup.make("signin").add(
     HttpApiEndpoint.get("features", "/v1/features", {
       success: Schema.Struct({ chatgpt: Schema.Boolean }),

@@ -5,12 +5,19 @@ import * as Effect from "effect/Effect";
 import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
+import { RecoveryDO } from "./recovery-store.ts";
+import { makeStorageAdmin } from "./storage-admin.ts";
 import { freshMemory, updateMemory, type Memory, type MemoryCommand } from "./memory.ts";
 import { makeOAuthStorage, type OAuthConfig } from "./oauth-core.ts";
 import { authorization, type RuleMode } from "./approval-policy.ts";
 
 const makeActor = Effect.gen(function* () {
   const state = yield* Cloudflare.DurableObjectState;
+  const roots = yield* RecoveryDO;
+  const register = (kind: string, id: string) =>
+    kind === "kitty" || kind === "chat"
+      ? roots.getByName("control", { locationHint: "weur" }).register(kind, id)
+      : Effect.void;
   const env = (yield* Cloudflare.WorkerEnvironment) as { KITTIES_KEK: string };
   return Effect.gen(function* () {
     const database = yield* Layer.buildWithScope(
@@ -142,6 +149,13 @@ const makeActor = Effect.gen(function* () {
         return { body, spent };
       });
     return {
+      ...makeStorageAdmin(state, env.KITTIES_KEK, [
+        "records",
+        "charges",
+        "connector_effects",
+        "capacity_leases",
+        "webhook_deliveries",
+      ]),
       oauthBegin: (id: string, config: OAuthConfig) =>
         Effect.tryPromise({ try: () => oauth.begin(id, config), catch: oauthError }),
       oauthFinish: (state: string, code: string, issuer?: string, expectedId?: string) =>
@@ -572,7 +586,7 @@ const makeActor = Effect.gen(function* () {
         }),
       insert: (kind: string, id: string, body: string) =>
         sql`INSERT OR IGNORE INTO records VALUES (${kind},${id},${body},${Date.now()})`.pipe(
-          Effect.asVoid,
+          Effect.andThen(register(kind, id)),
         ),
       charge: (id: string, day: string, kitty: string, tokens: number, actions: number) =>
         Effect.sync(() => {
@@ -609,7 +623,7 @@ const makeActor = Effect.gen(function* () {
         ),
       write: (kind: string, id: string, body: string) =>
         sql`INSERT INTO records (kind,id,body,updated_at) VALUES (${kind},${id},${body},${Date.now()}) ON CONFLICT(kind,id) DO UPDATE SET body=excluded.body, updated_at=excluded.updated_at`.pipe(
-          Effect.asVoid,
+          Effect.andThen(register(kind, id)),
         ),
       list: (kind: string) =>
         sql<{
