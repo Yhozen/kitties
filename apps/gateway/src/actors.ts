@@ -6,10 +6,12 @@ import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
 import { freshMemory, updateMemory, type Memory, type MemoryCommand } from "./memory.ts";
+import { makeOAuthStorage, type OAuthConfig } from "./oauth-core.ts";
 import { authorization, type RuleMode } from "./approval-policy.ts";
 
 const makeActor = Effect.gen(function* () {
   const state = yield* Cloudflare.DurableObjectState;
+  const env = (yield* Cloudflare.WorkerEnvironment) as { KITTIES_KEK: string };
   return Effect.gen(function* () {
     const database = yield* Layer.buildWithScope(
       SqliteClient.layer({ storage: state.raw.storage }),
@@ -37,6 +39,33 @@ const makeActor = Effect.gen(function* () {
     state.raw.storage.sql.exec(
       "CREATE TABLE IF NOT EXISTS webhook_deliveries (id TEXT PRIMARY KEY,digest TEXT NOT NULL,body TEXT NOT NULL,at INTEGER NOT NULL)",
     );
+    const raw = state.raw.storage.sql;
+    const oauthGet = (kind: string, id: string) =>
+      raw
+        .exec<{ body: string }>("SELECT body FROM records WHERE kind=? AND id=?", kind, id)
+        .toArray()[0]?.body ?? null;
+    const oauth = makeOAuthStorage(
+      {
+        get: oauthGet,
+        put: (kind, id, body) => {
+          raw.exec(
+            "INSERT INTO records VALUES (?,?,?,?) ON CONFLICT(kind,id) DO UPDATE SET body=excluded.body,updated_at=excluded.updated_at",
+            kind,
+            id,
+            body,
+            Date.now(),
+          );
+        },
+        take: (kind, id) =>
+          state.raw.storage.transactionSync(() => {
+            const body = oauthGet(kind, id);
+            raw.exec("DELETE FROM records WHERE kind=? AND id=?", kind, id);
+            return body;
+          }),
+      },
+      env.KITTIES_KEK,
+    );
+    const oauthError = () => "OAUTH_AUTHORIZATION_REQUIRED";
     const prepareTurn = (id: string, kittyId: string, health: string) =>
       Effect.sync(() =>
         state.raw.storage.transactionSync(() => {
@@ -53,6 +82,15 @@ const makeActor = Effect.gen(function* () {
             const provider = kitty.providerId ? get("provider", kitty.providerId) : undefined;
             body = JSON.stringify({
               kitty,
+              team: raw
+                .exec<{ id: string; body: string }>(
+                  "SELECT id,body FROM records WHERE kind='kitty' ORDER BY id",
+                )
+                .toArray()
+                .map((row) => ({
+                  id: row.id,
+                  name: (JSON.parse(row.body) as { name: string }).name,
+                })),
               desktop: get("desktop-enabled", kittyId) === "true",
               provider: provider ? JSON.parse(provider) : null,
               connections: raw
@@ -104,6 +142,14 @@ const makeActor = Effect.gen(function* () {
         return { body, spent };
       });
     return {
+      oauthBegin: (id: string, config: OAuthConfig) =>
+        Effect.tryPromise({ try: () => oauth.begin(id, config), catch: oauthError }),
+      oauthFinish: (state: string, code: string, issuer?: string) =>
+        Effect.tryPromise({ try: () => oauth.finish(state, code, issuer), catch: oauthError }),
+      oauthToken: (id: string, url: string) =>
+        Effect.tryPromise({ try: () => oauth.token(id, url), catch: oauthError }),
+      oauthStatus: (id: string) => Effect.sync(() => oauth.status(id)),
+      oauthDisconnect: (id: string) => Effect.sync(() => oauth.disconnect(id)),
       queueNotice: (
         eventId: string,
         kind: string,
@@ -176,7 +222,9 @@ const makeActor = Effect.gen(function* () {
               raw
                 .exec<{ body: string }>("SELECT body FROM records WHERE kind=? AND id=?", kind, id)
                 .toArray()[0]?.body;
-          const rule = get("approval-rule", policyKey),
+          const parts = JSON.parse(policyKey) as string[];
+          const wildcard = JSON.stringify([parts[0], parts[1], "*"]);
+          const rule = get("approval-rule", policyKey) ?? get("approval-rule", wildcard),
             trust = get("approval-trust", policyKey),
             memory = get("memory", kittyId);
           return authorization({

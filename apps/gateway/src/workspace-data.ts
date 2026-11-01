@@ -20,6 +20,17 @@ export const makeWorkspaceData = Effect.gen(function* () {
       const path = new URL(request.url).pathname,
         method = request.method,
         home = homes.getByName("owner", { locationHint: "weur" });
+      const journalRoute = path.match(/^\/v1\/kitties\/([a-zA-Z0-9_-]{1,128})\/journal$/);
+      if (journalRoute && method === "GET") {
+        if (!(yield* home.read("kitty", journalRoute[1]!)))
+          return json({ code: "KITTY_NOT_FOUND", params: {} }, 404);
+        return json(
+          (yield* home.list("kitty-journal"))
+            .map((row) => JSON.parse(row.body) as { kittyId: string })
+            .filter((row) => row.kittyId === journalRoute[1])
+            .slice(-200),
+        );
+      }
       const distillRoute = path.match(/^\/v1\/kitties\/([a-zA-Z0-9_-]{1,128})\/distill$/);
       if (distillRoute && method === "POST") {
         if (!(yield* home.read("kitty", distillRoute[1]!)))

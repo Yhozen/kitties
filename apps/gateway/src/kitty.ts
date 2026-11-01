@@ -84,7 +84,10 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
           state.raw.storage.setAlarm(at).catch(() => {});
         }
       };
-      const sockets = (role: string) => state.raw.getWebSockets(role);
+      // Hibernated peers can remain CLOSING after a VM is archived. They must
+      // not consume admission slots or keep idle/viewer leases alive.
+      const sockets = (role: string) =>
+        state.raw.getWebSockets(role).filter((socket) => socket.readyState === 1);
       const send = (socket: Cloudflare.RawWebSocket, body: unknown) =>
         socket.send(JSON.stringify(body));
       const publish = (body: unknown) => {

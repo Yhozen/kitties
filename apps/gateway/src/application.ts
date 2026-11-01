@@ -30,6 +30,8 @@ import { readBody } from "./request.ts";
 import { makeOwnerData } from "./owner-data.ts";
 import { makeWorkspaceData } from "./workspace-data.ts";
 import { makeAutonomy } from "./autonomy.ts";
+import { nativeBase } from "./native-tools.ts";
+import { makeOAuth } from "./oauth.ts";
 import { makeNotifications } from "./notifications.ts";
 
 const json = (body: unknown, status = 200) =>
@@ -54,6 +56,7 @@ export const makeApplication = Effect.gen(function* () {
   const ownerData = yield* makeOwnerData;
   const autonomy = yield* makeAutonomy;
   const notifications = yield* makeNotifications;
+  const oauth = yield* makeOAuth;
   const env = (yield* Cloudflare.WorkerEnvironment) as { KITTIES_KEK: string; STAGE: string };
   const home = () => homes.getByName("owner", { locationHint: "weur" });
   const list = <A>(kind: string) =>
@@ -65,6 +68,8 @@ export const makeApplication = Effect.gen(function* () {
       const url = new URL(request.url),
         path = url.pathname,
         method = request.method;
+      const oauthResponse = yield* oauth.route(request);
+      if (oauthResponse) return oauthResponse;
       const ownerResponse = yield* ownerData(request);
       if (ownerResponse) return ownerResponse;
       const workspaceResponse = yield* workspaceData(request);
@@ -101,6 +106,11 @@ export const makeApplication = Effect.gen(function* () {
             return json({ executionId: record.executionId }, 202);
           }
           const kind = computerRoute[2] as "start" | "sleep" | "restore" | "delete" | "upgrade";
+          // Claim synchronously: concurrent owner/idle requests must report busy
+          // before a workflow journals a terminal begin failure.
+          yield* kitty
+            .beginComputer(id, body.operationId, kind)
+            .pipe(Effect.mapError(() => "COMPUTER_BUSY_OR_INVALID_STATE"));
           const run = yield* computers.start({ kittyId: id, operationId: body.operationId, kind });
           yield* home().write(
             "computer-run",
@@ -145,6 +155,11 @@ export const makeApplication = Effect.gen(function* () {
             try: () => {
               const url = publicHttps(body.url);
               if (url.search) throw Error();
+              if (
+                (body.kind === "google" || body.kind === "m365") &&
+                body.url !== nativeBase[body.kind]
+              )
+                throw Error();
             },
             catch: () => "HOST_DENIED",
           });
@@ -157,23 +172,33 @@ export const makeApplication = Effect.gen(function* () {
             : saved
               ? (JSON.parse(saved) as Connection).secret
               : undefined;
+          if (saved) {
+            const old = JSON.parse(saved) as Connection;
+            if (old.url !== config.url || old.kind !== config.kind || token)
+              yield* home().oauthDisconnect(id);
+          }
           const connection: Connection = { ...config, id, ...(secret ? { secret } : {}) };
           yield* home().write("connection", id, JSON.stringify(connection));
           return json({ ...config, id, hasToken: !!secret });
         }
         if (method === "DELETE" && !connectionRoute[2]) {
+          yield* home().oauthDisconnect(id);
           yield* home().remove("connection", id);
           return HttpServerResponse.empty({ status: 204 });
         }
         if (method === "POST" && connectionRoute[2] === "test") {
           if (!saved) return json({ code: "NOT_FOUND", params: {} }, 404);
           const connection = JSON.parse(saved) as Connection;
-          const token = connection.secret
-            ? yield* Effect.tryPromise({
-                try: () => open(env.KITTIES_KEK, `connections:${id}:token`, connection.secret!),
-                catch: () => "KEY_UNAVAILABLE",
-              })
-            : undefined;
+          const oauthStatus = yield* home().oauthStatus(id);
+          const token =
+            oauthStatus !== "disconnected"
+              ? yield* home().oauthToken(id, connection.url)
+              : connection.secret
+                ? yield* Effect.tryPromise({
+                    try: () => open(env.KITTIES_KEK, `connections:${id}:token`, connection.secret!),
+                    catch: () => "KEY_UNAVAILABLE",
+                  })
+                : undefined;
           return json({ tools: yield* discoverTools(connection, token) });
         }
       }
@@ -322,7 +347,7 @@ export const makeApplication = Effect.gen(function* () {
         return json(chat, 201);
       }
       const chatRoute = path.match(
-        /^\/v1\/chats\/([a-zA-Z0-9_-]{1,128})(?:\/(messages|events|cancel|resume))?$/,
+        /^\/v1\/chats\/([a-zA-Z0-9_-]{1,128})(?:\/(messages|events|cancel|resume|replay))?$/,
       );
       if (chatRoute) {
         const id = chatRoute[1]!,
@@ -330,6 +355,21 @@ export const makeApplication = Effect.gen(function* () {
         if (!saved) return json({ code: "NOT_FOUND", params: {} }, 404);
         const profile = JSON.parse(saved) as ChatProfile,
           chat = chats.getByName(id, { locationHint: "weur" });
+        if (method === "PUT" && !chatRoute[2]) {
+          const body = yield* readBody(request, ChatInput);
+          for (const member of body.members)
+            if (!(yield* home().read("kitty", member)))
+              return json({ code: "KITTY_NOT_FOUND", params: {} }, 400);
+          const updated = { ...profile, ...body };
+          yield* home().write("chat", id, JSON.stringify(updated));
+          return json(updated);
+        }
+        if (method === "DELETE" && !chatRoute[2]) {
+          for (const runId of yield* chat.retire()) yield* turns.get(runId).interrupt;
+          yield* home().remove("chat", id);
+          return HttpServerResponse.empty({ status: 204 });
+        }
+        if (method === "GET" && chatRoute[2] === "replay") return json(yield* chat.replay());
         if (method === "GET" && !chatRoute[2])
           return json({ ...profile, ...(yield* chat.snapshot()) });
         if (method === "POST" && chatRoute[2] === "messages") {
@@ -373,6 +413,29 @@ export const makeApplication = Effect.gen(function* () {
               );
               yield* approvals.get(record.executionId).signal(ApprovalDecision, false);
             }
+            const cancelled = new Set([`${id}:${body.messageId}`]);
+            const children = (yield* home().list("delegation-child")).map(
+              (child) =>
+                JSON.parse(child.body) as {
+                  chatId: string;
+                  messageId: string;
+                  parentChatId: string;
+                  parentMessageId: string;
+                },
+            );
+            for (let depth = 0; depth < 2; depth++)
+              for (const child of children) {
+                if (
+                  !cancelled.has(`${child.parentChatId}:${child.parentMessageId}`) ||
+                  cancelled.has(`${child.chatId}:${child.messageId}`)
+                )
+                  continue;
+                cancelled.add(`${child.chatId}:${child.messageId}`);
+                const actor = chats.getByName(child.chatId, { locationHint: "weur" }),
+                  run = yield* actor.run(child.messageId);
+                yield* actor.finish(child.messageId, "cancelled");
+                if (run?.run_id) yield* turns.get(run.run_id).interrupt;
+              }
             if (row.run_id) yield* turns.get(row.run_id).interrupt;
           } else if (row.run_id)
             yield* Turn.resume(row.run_id).pipe(

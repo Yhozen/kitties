@@ -1,0 +1,42 @@
+{
+  "date": "2026-11-01T17:13:52.727Z",
+  "base": "http://localhost:1339",
+  "cases": [
+    {
+      "name": "clock-deferred-replay-dedupe",
+      "steps": 3,
+      "replaySignalToResultMs": 152.73742299999998,
+      "totalMs": 441.85014199999995
+    },
+    {
+      "name": "clock-deferred-replay-dedupe",
+      "steps": 50,
+      "replaySignalToResultMs": 240.80156499999998,
+      "totalMs": 431.98343
+    },
+    {
+      "name": "clock-deferred-replay-dedupe",
+      "steps": 200,
+      "replaySignalToResultMs": 679.3168030000002,
+      "totalMs": 2192.906384
+    },
+    {
+      "name": "clock-deferred-replay-dedupe",
+      "steps": 500,
+      "replaySignalToResultMs": 606.8649070000001,
+      "totalMs": 2214.512469
+    },
+    {
+      "name": "failed-activity-journaled",
+      "status": "pass"
+    },
+    {
+      "name": "interrupt-durable-wait",
+      "status": "pass"
+    },
+    {
+      "name": "owner-route-isolation",
+      "status": "pass"
+    }
+  ]
+}

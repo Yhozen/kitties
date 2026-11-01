@@ -1,0 +1,19 @@
+{
+  "date": "2026-11-01T17:29:39Z",
+  "runtime": "local Alchemy workerd and Google Chrome, desktop and Pixel 7 emulation",
+  "status": "passed",
+  "unitTests": 37,
+  "playwrightTests": 10,
+  "checks": [
+    "streamed chat",
+    "reload persistence",
+    "messageId deduplication",
+    "feedback idempotence",
+    "vault and connection token redaction",
+    "cross-origin mutation denial",
+    "installable shell",
+    "offline shell without API caching",
+    "Spanish, Portuguese and English preference routing"
+  ],
+  "limits": "Chrome mobile emulation does not establish physical Android or iOS installation, push delivery or locked-phone approval. OAuth live acceptance remains separate."
+}

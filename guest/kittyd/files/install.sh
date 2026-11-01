@@ -62,7 +62,35 @@ PrivateTmp=no
 [Install]
 WantedBy=multi-user.target
 UNIT
+cat > /etc/systemd/system/kitties-perception.service <<'UNIT'
+[Unit]
+Description=Kitties desktop accessibility helper
+After=kitties-desktop.service
+Requires=kitties-desktop.service
+[Service]
+Type=simple
+User=kitty
+Group=kittyd
+Environment=DISPLAY=:99
+Environment=HOME=/home/kitty
+ExecStart=/usr/local/lib/kittyd/kittyd --perception
+Restart=always
+RestartSec=1
+RuntimeDirectory=kitties-perception
+RuntimeDirectoryMode=0750
+UMask=0007
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/run/kitties-perception /home/kitty/.cache
+PrivateTmp=no
+[Install]
+WantedBy=multi-user.target
+UNIT
+install -d -o kitty -g kitty -m 0700 /home/kitty/.cache
 systemctl daemon-reload
+systemctl enable kitties-perception
+systemctl restart kitties-perception
 systemctl enable kittyd
 systemctl restart kittyd
 rm -f "$bootstrap/config.json" "$bootstrap/artifact.json"

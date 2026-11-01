@@ -71,7 +71,7 @@ export const ComputerOpLive = Workflows.layer(
           });
         const poll = (name: string, check: Effect.Effect<boolean, string>) =>
           Effect.gen(function* () {
-            for (let index = 0; index < 180; index++) {
+            for (let index = 0; index < 360; index++) {
               if (
                 yield* Activity.make({
                   name: `${name}/${index}`,

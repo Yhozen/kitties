@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { useEffect, useRef, useState } from "preact/hooks";
 const namedKeys: Record<string,string> = {Enter:"Return",Backspace:"BackSpace",Tab:"Tab",Escape:"Escape",Delete:"Delete",ArrowUp:"Up",ArrowDown:"Down",ArrowLeft:"Left",ArrowRight:"Right",Home:"Home",End:"End",PageUp:"Prior",PageDown:"Next"};
 const xKeys=(event:KeyboardEvent) => {
@@ -14,7 +15,7 @@ export default function WSDesktop({ id, onClose }: { id: string; onClose: () => 
   const socket = useRef<WebSocket | undefined>(undefined);
   const grant = useRef<Receipt | undefined>(undefined);
   const alive = useRef(true);
-  const [status, setStatus] = useState("Conectando…");
+  const [status, setStatus] = useState(t("Connecting…"));
   const [controlling, setControlling] = useState(false);
   const [clipboard, setClipboard] = useState("");
   const [error, setError] = useState("");
@@ -69,12 +70,12 @@ export default function WSDesktop({ id, onClose }: { id: string; onClose: () => 
           setControlling(true);
           canvas.current?.focus();
         }
-        if (body.type === "held") setError("El escritorio está ocupado. Inténtalo de nuevo.");
+        if (body.type === "held") setError(t("The desktop is busy. Try again."));
         if (body.type === "control_revoked") reset();
-        if (body.type === "error") { reset(); setError("Se perdió el control. Puedes volver a tomarlo."); }
+        if (body.type === "error") { reset(); setError(t("Control was lost. You can take it again.")); }
         if (body.type === "ack" && body.intentId === inFlight.current) {
           inFlight.current = undefined;
-          if (body.status !== "completed") { reset(); setError("No se pudo confirmar la entrada."); }
+          if (body.status !== "completed") { reset(); setError(t("Could not confirm the input.")); }
           else {
             if (body.result && queue.current.length === 0) setClipboard(body.result);
             setPending(queue.current.length);
@@ -84,7 +85,7 @@ export default function WSDesktop({ id, onClose }: { id: string; onClose: () => 
       };
       control.onclose = () => {
         reset();
-        setStatus("Reconectando…");
+        setStatus(t("Reconnecting…"));
         frames?.close();
         if (alive.current) retry = setTimeout(connect, 1500);
       };
@@ -123,7 +124,7 @@ export default function WSDesktop({ id, onClose }: { id: string; onClose: () => 
   return <section class="ws-desktop" aria-label="Escritorio">
     <header><strong>{status}</strong><span>{pending ? `${pending} entradas pendientes` : ""}</span>
       <button onClick={() => controlling ? release() : send({ type: "grant" })}>{controlling ? "Devolver control" : "Tomar control"}</button>
-      <button onClick={onClose}>Cerrar</button></header>
+      <button onClick={onClose}>{t("Close")}</button></header>
     {error && <p role="alert">{error}</p>}
     <canvas ref={canvas} tabIndex={0} aria-label="Pantalla remota" style={{ width: "100%", background: "#151821", touchAction: "none" }}
       onClick={(e) => input("click", { ...point(e), button: 1 })}
@@ -137,7 +138,7 @@ export default function WSDesktop({ id, onClose }: { id: string; onClose: () => 
         else if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) input("type", { text: e.key });
       }} />
     <footer><input aria-label="Portapapeles" value={clipboard} onInput={(e) => setClipboard(e.currentTarget.value)} />
-      <button disabled={!controlling} onClick={() => input("clipboard_write", { text: clipboard })}>Copiar al escritorio</button>
-      <button disabled={!controlling} onClick={() => input("clipboard_read", {})}>Leer portapapeles</button></footer>
+      <button disabled={!controlling} onClick={() => input("clipboard_write", { text: clipboard })}>{t("Copy to desktop")}</button>
+      <button disabled={!controlling} onClick={() => input("clipboard_read", {})}>{t("Read clipboard")}</button></footer>
   </section>;
 }

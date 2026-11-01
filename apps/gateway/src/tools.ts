@@ -1,6 +1,7 @@
 import * as Effect from "effect/Effect";
 import * as McpClient from "effect/ai/McpClient";
 import type { Connection, ToolDefinition, ToolCall } from "./entities.ts";
+import { nativeTools, executeNative } from "./native-tools.ts";
 import { withMcp } from "./mcp.ts";
 import { allowedFetch, publicHttps } from "./outbound.ts";
 
@@ -8,6 +9,8 @@ export const discoverTools = (
   connection: Connection,
   token?: string,
 ): Effect.Effect<ToolDefinition[], string> => {
+  if (connection.kind === "google" || connection.kind === "m365")
+    return Effect.succeed(nativeTools(connection));
   const prefix = `c_${connection.id.replace(/[^a-zA-Z0-9]/g, "")}_`;
   if (connection.kind === "mcp")
     return withMcp(connection.url, token, (client) =>
@@ -61,7 +64,8 @@ export const discoverTools = (
 };
 export const needsApproval = (connection: Connection, tool: ToolDefinition, params: unknown) => {
   if (!connection.allowReads) return true;
-  if (connection.kind === "mcp") return !tool.readOnly || tool.destructive;
+  if (["mcp", "google", "m365"].includes(connection.kind))
+    return !tool.readOnly || tool.destructive;
   if (connection.kind === "ntfy") return true;
   const method = (params as { method?: unknown })?.method;
   return method !== "GET" && method !== "HEAD";
@@ -96,6 +100,11 @@ export const executeTool = (
   tool: ToolDefinition,
   call: ToolCall,
 ): Effect.Effect<unknown, string> => {
+  if (connection.kind === "google" || connection.kind === "m365")
+    return Effect.tryPromise({
+      try: () => executeNative(connection, token, tool, call),
+      catch: () => "TOOL_UNAVAILABLE",
+    });
   if (connection.kind === "mcp")
     return withMcp(connection.url, token, (client) =>
       Effect.gen(function* () {

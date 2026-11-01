@@ -22,6 +22,7 @@ export const KittyInput = Schema.Struct({
   name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80)),
   soul: Schema.String.check(Schema.isMaxLength(32000)),
   providerId: Schema.optional(Id),
+  backupId: Schema.optional(Id),
   breed: Schema.optional(Schema.String),
   color: Schema.optional(Schema.String),
   limits: Schema.optional(
@@ -173,9 +174,14 @@ export const HookView = Schema.Struct({
   hasSecret: Schema.Boolean,
 });
 
+export const OAuthStartInput = Schema.Struct({
+  clientId: Schema.optional(Schema.String.check(Schema.isMaxLength(2048))),
+  clientSecret: Schema.optional(Schema.String.check(Schema.isMaxLength(8192))),
+  scope: Schema.optional(Schema.String.check(Schema.isMaxLength(4096))),
+});
 export const ConnectionInput = Schema.Struct({
   name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80)),
-  kind: Schema.Literals(["mcp", "http", "ntfy"]),
+  kind: Schema.Literals(["mcp", "http", "ntfy", "google", "m365"]),
   url: Schema.String.check(Schema.isMaxLength(2048)),
   token: Schema.optional(Schema.String.check(Schema.isMaxLength(16384))),
   allowReads: Schema.Boolean,

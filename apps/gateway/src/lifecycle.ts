@@ -26,9 +26,23 @@ export const makeLifecycle = Effect.gen(function* () {
             state = yield* kitty.computer();
           if (!state?.remoteId || ["absent", "sleeping", "deleted"].includes(state.phase)) return;
           if (state.operation) {
-            const saved = yield* home.read("computer-run", state.operation.id);
-            if (saved) {
-              const run = JSON.parse(saved) as { executionId: string };
+            // Starting is idempotent and also repairs a crash between the actor
+            // claiming an operation and the Worker publishing its run receipt.
+            const run = yield* computers.start({
+              kittyId: record.id,
+              operationId: state.operation.id,
+              kind: state.operation.kind,
+            });
+            yield* home.write(
+              "computer-run",
+              state.operation.id,
+              JSON.stringify({
+                kittyId: record.id,
+                executionId: run.executionId,
+                kind: state.operation.kind,
+              }),
+            );
+            {
               // Re-arm a callback interrupted by deployment. Activity journals and
               // the exact creation receipt prevent duplicate lifecycle effects.
               yield* ComputerOp.resume(run.executionId).pipe(
@@ -77,6 +91,7 @@ export const makeLifecycle = Effect.gen(function* () {
             Date.now() - state.lastActiveAt > 900000
           ) {
             const operationId = `idle-${state.generation}-${Math.floor(Date.now() / 900000)}`;
+            yield* kitty.beginComputer(record.id, operationId, "sleep");
             const run = yield* computers.start({ kittyId: record.id, operationId, kind: "sleep" });
             yield* home.write(
               "computer-run",

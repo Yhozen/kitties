@@ -16,6 +16,7 @@ import { DesktopAttemptLive } from "./workflows/desktop.ts";
 import { ComputerOpLive } from "./workflows/computer.ts";
 import { TurnLive } from "./workflows/turn.ts";
 import { DistillLive } from "./workflows/distill.ts";
+import { DelegationLive } from "./workflows/delegation.ts";
 import { GoalSlotLive } from "./workflows/goal.ts";
 import { makeAutonomy } from "./autonomy.ts";
 import { makeWebhooks } from "./webhooks.ts";
@@ -26,6 +27,7 @@ import { ApprovalLive } from "./workflows/approval.ts";
 import { makeLifecycle } from "./lifecycle.ts";
 import { chatEvents } from "./chat-stream.ts";
 import * as Stream from "effect/Stream";
+import { makeOAuth } from "./oauth.ts";
 import { makeApplication } from "./application.ts";
 import { ownerError } from "./security.ts";
 import type { GuestConfig } from "./kitty.ts";
@@ -69,7 +71,7 @@ const props = Effect.gen(function* () {
       sessionDuration: "720h",
       policies: [{ decision: "allow" as const, include: [{ email }] }],
     },
-    dev: { access: { identity: { email } } },
+    dev: { port: 1337, strictPort: true, access: { identity: { email } } },
     env: {
       PUBLIC_URL: Cloudflare.Worker.URL,
       ACCESS_EMAIL: email,
@@ -103,6 +105,7 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
     const timers = yield* Workflows.RunWorkflow(TimerProbe);
     const callbacks = yield* CallbackProbeDO;
     const application = yield* makeApplication;
+    const oauth = yield* makeOAuth;
     const lifecycle = yield* makeLifecycle;
     const autonomy = yield* makeAutonomy;
     const receiveWebhook = yield* makeWebhooks;
@@ -122,6 +125,8 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
       );
     return {
       receiveWebhook,
+      finishOAuth: (state: string, code: string, issuer?: string) =>
+        oauth.callback(state, code, issuer),
       timerStart: (id: string) => timers.start({ id }).pipe(Effect.map((run) => run.executionId)),
       timerStatus: (id: string) => timers.get(id).status,
       verifyChatStream: (id: string) =>
@@ -341,6 +346,7 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
         TurnLive,
         DistillLive,
         GoalSlotLive,
+        DelegationLive,
         TimerProbeLive,
         NotifyLive,
         ApprovalLive,

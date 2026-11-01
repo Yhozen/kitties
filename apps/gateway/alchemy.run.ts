@@ -8,6 +8,7 @@ import { GuestAssets } from "./src/resources.ts";
 import { KittyDO } from "./src/kitty.ts";
 import Verification from "./src/verification.ts";
 import AcceptanceFixture from "./src/acceptance-fixture.ts";
+import OAuthIngress from "./src/oauth-ingress.ts";
 import HookIngress from "./src/hook-ingress.ts";
 
 export default Alchemy.Stack(
@@ -17,6 +18,7 @@ export default Alchemy.Stack(
     const assets = yield* GuestAssets;
     const worker = yield* Gateway;
     yield* HookIngress;
+    yield* OAuthIngress;
     const stage = yield* Stage;
     if (stage === "next") {
       yield* Verification;
@@ -24,6 +26,7 @@ export default Alchemy.Stack(
     }
     const ingress = yield* Cloudflare.Worker("GuestIngress", {
       main: new URL("./src/guest-ingress.ts", import.meta.url).pathname,
+      dev: { port: 1338, strictPort: true },
       domain: stage === "local" ? undefined : `guest-${stage}.kitties.rccpr.tech`,
       workersDev: false,
       observability: {

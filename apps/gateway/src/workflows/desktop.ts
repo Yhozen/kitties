@@ -186,7 +186,10 @@ export const DesktopAttemptLive = Workflows.layer(
             .saveToolResult(
               payload.messageId,
               payload.callId,
-              JSON.stringify({ isFailure: status !== "completed", result }),
+              JSON.stringify({
+                isFailure: status !== "completed" || (result as { ok?: boolean })?.ok === false,
+                result,
+              }),
             )
             .pipe(Effect.mapError(storage));
           yield* home

@@ -46,3 +46,20 @@ test("offline navigation uses the cached public shell without caching owner API 
     page.getByText("Sin conexión. Vuelve a abrir la app cuando tengas conexión."),
   ).toBeVisible();
 });
+
+test("Portuguese and English preferences apply to application panels", async ({ page }) => {
+  await page.goto("/?lang=pt");
+  await expect(page.locator("html")).toHaveAttribute("lang", "pt");
+  await expect(page.locator(".next-caption[role=status]")).toHaveText("Seu espaço está pronto.");
+  await page.getByRole("button", { name: "Configurações", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Modelos e conexões", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("combobox", { name: "Language", exact: true }).selectOption("en");
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await expect(page.locator(".next-caption[role=status]")).toHaveText("Your space is ready.");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Models and connections", exact: true }),
+  ).toBeVisible();
+});

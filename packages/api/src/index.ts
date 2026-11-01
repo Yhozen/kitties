@@ -15,6 +15,7 @@ import {
   MessageInput,
   ChatDetail,
   ConnectionInput,
+  OAuthStartInput,
   ConnectionView,
   ApprovalView,
   MemoryView,
@@ -98,6 +99,10 @@ export const Api = HttpApi.make("Kitties").add(
     }),
   ),
   HttpApiGroup.make("workspace").add(
+    HttpApiEndpoint.get("journal", "/v1/kitties/:id/journal", {
+      params: { id: Id },
+      success: Schema.Array(Schema.Unknown),
+    }),
     HttpApiEndpoint.get("memory", "/v1/kitties/:id/memory", {
       params: { id: Id },
       success: MemoryView,
@@ -164,6 +169,23 @@ export const Api = HttpApi.make("Kitties").add(
     HttpApiEndpoint.get("session", "/v1/session", { success: Session }),
   ),
   HttpApiGroup.make("connections").add(
+    HttpApiEndpoint.get("oauthStatus", "/v1/connections/:id/oauth", {
+      params: { id: Id },
+      success: Schema.Struct({ status: Schema.String }),
+    }),
+    HttpApiEndpoint.post("oauthDiscover", "/v1/connections/:id/oauth/discover", {
+      params: { id: Id },
+      success: Schema.Unknown,
+    }),
+    HttpApiEndpoint.post("oauthStart", "/v1/connections/:id/oauth/start", {
+      params: { id: Id },
+      payload: OAuthStartInput,
+      success: Schema.Struct({ url: Schema.String, expiresAt: Schema.Number }),
+    }),
+    HttpApiEndpoint.delete("oauthDisconnect", "/v1/connections/:id/oauth", {
+      params: { id: Id },
+      success: Schema.Void,
+    }),
     HttpApiEndpoint.get("list", "/v1/connections", { success: Schema.Array(ConnectionView) }),
     HttpApiEndpoint.put("save", "/v1/connections/:id", {
       params: { id: Id },
@@ -227,6 +249,22 @@ export const Api = HttpApi.make("Kitties").add(
     }),
   ),
   HttpApiGroup.make("chats").add(
+    HttpApiEndpoint.put("save", "/v1/chats/:id", {
+      params: { id: Id },
+      payload: ChatInput,
+      success: ChatView,
+    }),
+    HttpApiEndpoint.delete("remove", "/v1/chats/:id", { params: { id: Id }, success: Schema.Void }),
+    HttpApiEndpoint.get("replay", "/v1/chats/:id/replay", {
+      params: { id: Id },
+      success: Schema.Array(
+        Schema.Struct({
+          messageId: Schema.String,
+          callId: Schema.String,
+          screenshot: Schema.String,
+        }),
+      ),
+    }),
     HttpApiEndpoint.get("get", "/v1/chats/:id", { params: { id: Id }, success: ChatDetail }),
     HttpApiEndpoint.post("cancel", "/v1/chats/:id/cancel", {
       params: { id: Id },

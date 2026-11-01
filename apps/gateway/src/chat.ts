@@ -59,11 +59,18 @@ const makeChat = Effect.gen(function* () {
     return {
       enqueue: (payload: typeof Turn.payloadSchema.Type) =>
         Effect.gen(function* () {
+          if (
+            sql
+              .exec("SELECT key FROM chat_state WHERE key=?", `cancel:${payload.messageId}`)
+              .toArray().length
+          )
+            return { conflict: false, duplicate: false, cancelled: true };
           const body = JSON.stringify(payload);
           const row = sql
             .exec<Row>("SELECT * FROM messages WHERE id=?", payload.messageId)
             .toArray()[0];
-          if (row && row.payload !== body) return { conflict: true, duplicate: false };
+          if (row && row.payload !== body)
+            return { conflict: true, duplicate: false, cancelled: false };
           if (!row) {
             state.raw.storage.transactionSync(() => {
               sql.exec(
@@ -84,7 +91,7 @@ const makeChat = Effect.gen(function* () {
           yield* Effect.promise(() => state.raw.storage.setAlarm(Date.now() + 1));
           // The alarm is the recovery path; start the durable run immediately on a warm request.
           yield* safePump;
-          return { conflict: false, duplicate: !!row };
+          return { conflict: false, duplicate: !!row, cancelled: false };
         }),
       messages: () =>
         Effect.sync(() =>
@@ -214,6 +221,42 @@ const makeChat = Effect.gen(function* () {
                 round,
               )
               .toArray()[0] ?? null,
+        ),
+      replay: () =>
+        Effect.sync(() => {
+          const result: { messageId: string; callId: string; screenshot: string }[] = [];
+          for (const row of sql
+            .exec<{ id: string; call_id: string; body: string }>(
+              "SELECT id,call_id,body FROM tool_results ORDER BY rowid DESC LIMIT 1000",
+            )
+            .toArray()
+            .reverse()) {
+            const value = JSON.parse(row.body) as { result?: { screenshot?: unknown } };
+            if (
+              typeof value.result?.screenshot === "string" &&
+              /^screenshots\/[a-zA-Z0-9_-]+\/[0-9]+\/[a-zA-Z0-9_.-]+$/.test(value.result.screenshot)
+            )
+              result.push({
+                messageId: row.id,
+                callId: row.call_id,
+                screenshot: value.result.screenshot,
+              });
+          }
+          return result;
+        }),
+      retire: () =>
+        Effect.sync(() =>
+          state.raw.storage.transactionSync(() => {
+            const rows = sql
+              .exec<Row>("SELECT * FROM messages WHERE status IN ('queued','running')")
+              .toArray();
+            for (const row of rows) {
+              sql.exec("INSERT OR IGNORE INTO chat_state VALUES (?, 'true')", `cancel:${row.id}`);
+              event({ type: "cancelled", messageId: row.id });
+            }
+            sql.exec("UPDATE messages SET status='cancelled' WHERE status IN ('queued','running')");
+            return rows.flatMap((row) => (row.run_id ? [row.run_id] : []));
+          }),
         ),
       toolResult: (id: string, callId: string) =>
         Effect.sync(
@@ -350,6 +393,8 @@ const makeChat = Effect.gen(function* () {
       finish: (id: string, status: string) =>
         Effect.gen(function* () {
           state.raw.storage.transactionSync(() => {
+            if (status === "cancelled")
+              sql.exec("INSERT OR IGNORE INTO chat_state VALUES (?, 'true')", `cancel:${id}`);
             const row = sql.exec<Row>("SELECT * FROM messages WHERE id=?", id).toArray()[0];
             if (row?.status !== "running" && row?.status !== "queued") return;
             sql.exec("UPDATE messages SET status=? WHERE id=?", status, id);

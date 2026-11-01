@@ -10,6 +10,8 @@ import * as Chat from "effect/ai/Chat";
 import * as Prompt from "effect/ai/Prompt";
 import { Activity } from "effect/workflow";
 import { HomeDO, ChatDO } from "../actors.ts";
+import { Delegation } from "../delegation-definition.ts";
+import { autonomyTools, DelegateInput, LimitToolInput } from "../autonomy-tools.ts";
 import { DesktopAttempt } from "../desktop-definition.ts";
 import { desktopTools } from "../desktop-tools.ts";
 import { Turn } from "../turn-definition.ts";
@@ -31,6 +33,7 @@ interface RunConfig {
   provider: Provider | null;
   connections: Connection[];
   desktop?: boolean;
+  team?: { id: string; name: string }[];
   memory?: Memory;
   skills?: { name: string; body: string; status: string }[];
 }
@@ -143,22 +146,34 @@ export const TurnLive = Workflows.layer(
                 connections,
                 (connection) =>
                   Effect.gen(function* () {
-                    const token = connection.secret
-                      ? yield* Effect.tryPromise({
-                          try: () =>
-                            open(
-                              env.KITTIES_KEK,
-                              `connections:${connection.id}:token`,
-                              connection.secret!,
-                            ),
-                          catch: () => "KEY_UNAVAILABLE",
-                        })
-                      : undefined;
+                    const oauthStatus = yield* home
+                      .oauthStatus(connection.id)
+                      .pipe(Effect.mapError(storageError));
+                    const token =
+                      oauthStatus !== "disconnected"
+                        ? yield* home
+                            .oauthToken(connection.id, connection.url)
+                            .pipe(Effect.mapError(() => "OAUTH_AUTHORIZATION_REQUIRED"))
+                        : connection.secret
+                          ? yield* Effect.tryPromise({
+                              try: () =>
+                                open(
+                                  env.KITTIES_KEK,
+                                  `connections:${connection.id}:token`,
+                                  connection.secret!,
+                                ),
+                              catch: () => "KEY_UNAVAILABLE",
+                            })
+                          : undefined;
                     return yield* discoverTools(connection, token);
                   }).pipe(Effect.catch(() => Effect.succeed([]))),
                 { concurrency: 4 },
               ).pipe(Effect.map((groups) => groups.flat().slice(0, 64)));
-              const tools = config.desktop ? [...remoteTools, ...desktopTools] : remoteTools;
+              const tools = [
+                ...remoteTools,
+                ...autonomyTools(config.team ?? [], payload.kittyId, payload.depth ?? 0),
+                ...(config.desktop ? desktopTools : []),
+              ];
               const previousRound = start.previous;
               const previous = start.history;
               const session = yield* (
@@ -316,6 +331,20 @@ export const TurnLive = Workflows.layer(
                   .finish(payload.messageId, "completed")
                   .pipe(Effect.mapError(storageError));
                 yield* home
+                  .insert(
+                    "kitty-journal",
+                    executionId,
+                    JSON.stringify({
+                      id: executionId,
+                      kittyId: payload.kittyId,
+                      kind: "completed",
+                      chatId: payload.chatId,
+                      messageId: payload.messageId,
+                      at: Date.now(),
+                    }),
+                  )
+                  .pipe(Effect.mapError(storageError));
+                yield* home
                   .queueNotice(executionId, "completed", "Tu kitty terminó una tarea", "/", false)
                   .pipe(Effect.mapError(storageError));
                 yield* home
@@ -349,7 +378,7 @@ export const TurnLive = Workflows.layer(
                   (item) => item.id === tool?.connectionId,
                 );
                 if (!tool) return yield* Effect.fail("TOOL_NOT_FOUND");
-                if (tool.connectionId !== "desktop" && !connection)
+                if (!["desktop", "kitty"].includes(tool.connectionId) && !connection)
                   return yield* Effect.fail("TOOL_NOT_FOUND");
                 const policyKey = JSON.stringify([
                   payload.kittyId,
@@ -357,6 +386,9 @@ export const TurnLive = Workflows.layer(
                   tool.remoteName,
                 ]);
                 const always =
+                  (tool.connectionId === "kitty" &&
+                    tool.remoteName === "limit" &&
+                    (call.params as { mode?: unknown })?.mode === "none") ||
                   tool.destructive ||
                   tool.remoteName === "type_secret" ||
                   /(?:pay|charge|refund|transfer|delete|publish)/i.test(tool.remoteName) ||
@@ -366,9 +398,11 @@ export const TurnLive = Workflows.layer(
                     payload.kittyId,
                     policyKey,
                     always,
-                    tool.connectionId === "desktop"
-                      ? tool.remoteName !== "type_secret"
-                      : !!connection && !needsApproval(connection, tool, call.params),
+                    tool.connectionId === "kitty"
+                      ? true
+                      : tool.connectionId === "desktop"
+                        ? tool.remoteName !== "type_secret"
+                        : !!connection && !needsApproval(connection, tool, call.params),
                   )
                   .pipe(Effect.mapError(storageError));
                 if (verdict === "never") return yield* Effect.fail("ACTION_BLOCKED");
@@ -429,6 +463,158 @@ export const TurnLive = Workflows.layer(
                 execute: Approval.execute({ id: approvalId }, { discard: true }),
               });
             const approved = approvalId ? yield* Approval.execute({ id: approvalId }) : true;
+            if (tool?.connectionId === "kitty" && approved) {
+              const mode = yield* Activity.make({
+                name: `kitty-tool/${round}/${index}`,
+                success: Schema.String,
+                error: Schema.String,
+                execute: Effect.gen(function* () {
+                  if (
+                    (yield* chat.run(payload.messageId).pipe(Effect.mapError(storageError)))
+                      ?.status === "cancelled"
+                  )
+                    return "cancelled";
+                  if (
+                    yield* chat
+                      .toolResult(payload.messageId, call.id)
+                      .pipe(Effect.mapError(storageError))
+                  )
+                    return "done";
+                  const config = yield* getConfig;
+                  let output: unknown;
+                  if (tool.remoteName === "delegate" || tool.remoteName === "give_up") {
+                    let tasks: typeof DelegateInput.Type;
+                    if (tool.remoteName === "give_up") {
+                      const reason = (call.params as { reason?: unknown })?.reason;
+                      if (typeof reason !== "string" || reason.length > 1000)
+                        return yield* Effect.fail("INVALID_ARGUMENTS");
+                      if (
+                        !config.kitty.backupId ||
+                        config.kitty.backupId === payload.kittyId ||
+                        (payload.depth ?? 0) >= 2
+                      ) {
+                        yield* home
+                          .queueNotice(
+                            id,
+                            "health",
+                            "Tu kitty necesita ayuda",
+                            "/?panel=health",
+                            true,
+                          )
+                          .pipe(Effect.mapError(storageError));
+                        output = { code: "HELP_REQUIRED", reason };
+                        yield* chat
+                          .saveToolResult(
+                            payload.messageId,
+                            call.id,
+                            JSON.stringify({ isFailure: true, result: output }),
+                          )
+                          .pipe(Effect.mapError(storageError));
+                        return "done";
+                      }
+                      tasks = {
+                        tasks: [
+                          {
+                            kittyId: config.kitty.backupId,
+                            instruction:
+                              `Take over this task: ${payload.text}\nThe previous kitty could not finish: ${reason}`.slice(
+                                0,
+                                16000,
+                              ),
+                          },
+                        ],
+                      };
+                    } else
+                      tasks = yield* Schema.decodeUnknownEffect(DelegateInput)(call.params).pipe(
+                        Effect.mapError(() => "INVALID_ARGUMENTS"),
+                      );
+                    if ((payload.depth ?? 0) >= 2) return yield* Effect.fail("DELEGATION_DEPTH");
+                    yield* home
+                      .insert("delegation-job", id, JSON.stringify(tasks))
+                      .pipe(Effect.mapError(storageError));
+                    return "delegate";
+                  }
+                  if (tool.remoteName === "limit") {
+                    const params = yield* Schema.decodeUnknownEffect(LimitToolInput)(
+                      call.params,
+                    ).pipe(Effect.mapError(() => "INVALID_ARGUMENTS"));
+                    if (
+                      !config.connections.some(
+                        (connection) => connection.id === params.connectionId,
+                      )
+                    )
+                      return yield* Effect.fail("CONNECTION_NOT_FOUND");
+                    const key = JSON.stringify([
+                      payload.kittyId,
+                      params.connectionId,
+                      params.action,
+                    ]);
+                    if (params.mode === "none")
+                      yield* home.remove("approval-rule", key).pipe(Effect.mapError(storageError));
+                    else
+                      yield* home
+                        .write(
+                          "approval-rule",
+                          key,
+                          JSON.stringify({ ...params, id: key, kittyId: payload.kittyId }),
+                        )
+                        .pipe(Effect.mapError(storageError));
+                    output = { saved: true, ...params };
+                  } else if (tool.remoteName === "journal") {
+                    const rows = yield* home
+                      .list("kitty-journal")
+                      .pipe(Effect.mapError(storageError));
+                    output = {
+                      entries: rows
+                        .map((row) => JSON.parse(row.body) as { kittyId: string })
+                        .filter((row) => row.kittyId === payload.kittyId)
+                        .slice(-50),
+                      spent: yield* home
+                        .spent(new Date().toISOString().slice(0, 10), payload.kittyId)
+                        .pipe(Effect.mapError(storageError)),
+                    };
+                  } else return yield* Effect.fail("TOOL_NOT_FOUND");
+                  yield* home
+                    .insert(
+                      "kitty-journal",
+                      id,
+                      JSON.stringify({
+                        id,
+                        kittyId: payload.kittyId,
+                        kind: tool.remoteName,
+                        chatId: payload.chatId,
+                        at: Date.now(),
+                      }),
+                    )
+                    .pipe(Effect.mapError(storageError));
+                  yield* chat
+                    .saveToolResult(
+                      payload.messageId,
+                      call.id,
+                      JSON.stringify({ isFailure: false, result: output }),
+                    )
+                    .pipe(Effect.mapError(storageError));
+                  return "done";
+                }),
+              });
+              if (mode === "delegate") {
+                const child = {
+                  id,
+                  chatId: payload.chatId,
+                  messageId: payload.messageId,
+                  callId: call.id,
+                  kittyId: payload.kittyId,
+                  depth: payload.depth ?? 0,
+                };
+                yield* Activity.make({
+                  name: `delegation-start/${round}/${index}`,
+                  success: Schema.String,
+                  execute: Delegation.execute(child, { discard: true }),
+                });
+                yield* Delegation.execute(child);
+              }
+              continue;
+            }
             if (tool?.connectionId === "desktop" && approved) {
               yield* Activity.make({
                 name: `desktop-job/${round}/${index}`,
@@ -502,6 +688,25 @@ export const TurnLive = Workflows.layer(
                     }),
                   ),
                 );
+                const oauthStatus = yield* home
+                  .oauthStatus(connection.id)
+                  .pipe(Effect.mapError(storageError));
+                const token =
+                  oauthStatus !== "disconnected"
+                    ? yield* home
+                        .oauthToken(connection.id, connection.url)
+                        .pipe(Effect.mapError(() => "OAUTH_AUTHORIZATION_REQUIRED"))
+                    : connection.secret
+                      ? yield* Effect.tryPromise({
+                          try: () =>
+                            open(
+                              env.KITTIES_KEK,
+                              `connections:${connection.id}:token`,
+                              connection.secret!,
+                            ),
+                          catch: () => "KEY_UNAVAILABLE",
+                        })
+                      : undefined;
                 const claimed = yield* home
                   .claimEffect(id, digest)
                   .pipe(Effect.mapError(storageError));
@@ -515,17 +720,6 @@ export const TurnLive = Workflows.layer(
                   // Never repeat a request whose remote outcome is unknown.
                   return yield* Effect.fail("EFFECT_OUTCOME_UNKNOWN");
                 }
-                const token = connection.secret
-                  ? yield* Effect.tryPromise({
-                      try: () =>
-                        open(
-                          env.KITTIES_KEK,
-                          `connections:${connection.id}:token`,
-                          connection.secret!,
-                        ),
-                      catch: () => "KEY_UNAVAILABLE",
-                    })
-                  : undefined;
                 const output = yield* executeTool(connection, token, tool, call).pipe(
                   Effect.map((value) => ({ isFailure: false, result: value })),
                   Effect.catch(() =>

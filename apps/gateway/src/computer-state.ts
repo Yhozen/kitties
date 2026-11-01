@@ -61,7 +61,8 @@ export function beginOperation(
     throw Error("COMPUTER_BUSY");
   }
   if (kind === "restore" && !previous.checkpoint) throw Error("CHECKPOINT_REQUIRED");
-  if (kind === "start" && previous.phase === "sleeping") throw Error("USE_RESTORE");
+  if ((kind === "start" || kind === "upgrade") && previous.phase === "sleeping")
+    throw Error("USE_RESTORE");
   if ((kind === "sleep" || kind === "delete") && !previous.remoteId) throw Error("COMPUTER_ABSENT");
   if (kind === "start" && previous.phase === "ready") return previous;
   const generation = previous.generation + (kind === "restore" ? 1 : 0);

@@ -1,5 +1,6 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Effect from "effect/Effect";
+import { pkceChallenge } from "./oauth-core.ts";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 export class FixtureCounter extends Cloudflare.DurableObject<FixtureCounter>()(
   "FixtureCounter",
@@ -37,7 +38,85 @@ export default class AcceptanceFixture extends Cloudflare.Worker<AcceptanceFixtu
       fetch: Effect.gen(function* () {
         const request = yield* Cloudflare.Request,
           url = new URL(request.url);
-        if (request.method === "POST" && url.pathname === "/mcp") {
+        if (
+          request.method === "GET" &&
+          url.pathname === "/.well-known/oauth-protected-resource/oauth/mcp"
+        )
+          return HttpServerResponse.fromWeb(
+            Response.json({
+              resource: `${url.origin}/oauth/mcp`,
+              authorization_servers: [url.origin],
+              scopes_supported: ["fixture"],
+            }),
+          );
+        if (request.method === "GET" && url.pathname === "/.well-known/oauth-authorization-server")
+          return HttpServerResponse.fromWeb(
+            Response.json({
+              issuer: url.origin,
+              authorization_endpoint: `${url.origin}/oauth/authorize`,
+              token_endpoint: `${url.origin}/oauth/token`,
+              code_challenge_methods_supported: ["S256"],
+              client_id_metadata_document_supported: true,
+            }),
+          );
+        if (request.method === "GET" && url.pathname === "/oauth/authorize") {
+          const redirect = url.searchParams.get("redirect_uri"),
+            state = url.searchParams.get("state"),
+            challenge = url.searchParams.get("code_challenge");
+          if (
+            redirect !== "https://auth-next.kitties.rccpr.tech/oauth/callback" ||
+            !state ||
+            !challenge ||
+            url.searchParams.get("code_challenge_method") !== "S256"
+          )
+            return HttpServerResponse.empty({ status: 400 });
+          const callback = new URL(redirect);
+          callback.searchParams.set("state", state);
+          callback.searchParams.set("code", challenge);
+          callback.searchParams.set("iss", url.origin);
+          return HttpServerResponse.fromWeb(
+            new Response(null, {
+              status: 302,
+              headers: { Location: callback.href, "Cache-Control": "no-store" },
+            }),
+          );
+        }
+        if (request.method === "POST" && url.pathname === "/oauth/token") {
+          const text = yield* Effect.tryPromise(() => request.text()) as Effect.Effect<
+            string,
+            unknown
+          >;
+          const body = new URLSearchParams(text);
+          const grant = body.get("grant_type"),
+            id = body.get("client_id") ?? "default";
+          if (grant === "authorization_code") {
+            const challenge = yield* Effect.promise(() =>
+              pkceChallenge(body.get("code_verifier") ?? ""),
+            );
+            if (challenge !== body.get("code")) return HttpServerResponse.empty({ status: 400 });
+          } else if (grant === "refresh_token") {
+            yield* counters.getByName("counts").record(`refresh-${id}`);
+            if (body.get("refresh_token") !== "fixture-refresh")
+              return HttpServerResponse.empty({ status: 400 });
+          } else return HttpServerResponse.empty({ status: 400 });
+          return HttpServerResponse.fromWeb(
+            Response.json({
+              access_token: "fixture-access",
+              refresh_token: "fixture-refresh",
+              token_type: "Bearer",
+              expires_in: grant === "authorization_code" ? 1 : 3600,
+            }),
+          );
+        }
+        if (
+          request.method === "POST" &&
+          (url.pathname === "/mcp" || url.pathname === "/oauth/mcp")
+        ) {
+          if (
+            url.pathname === "/oauth/mcp" &&
+            request.headers.get("Authorization") !== "Bearer fixture-access"
+          )
+            return HttpServerResponse.empty({ status: 401 });
           const body = yield* Effect.tryPromise(() => request.json()) as Effect.Effect<
             { id?: string | number; method: string; params?: { arguments?: { probeId?: string } } },
             unknown
@@ -106,12 +185,18 @@ export default class AcceptanceFixture extends Cloudflare.Worker<AcceptanceFixtu
                   .map((part) => part.text ?? "")
                   .join("") ?? "");
           const desktop = user.match(/^fixture:desktop:([a-z_]+):(.*)$/s);
+          const kitty = user.match(/^fixture:kitty:([a-z_]+):(.*)$/s);
           const name = desktop
             ? body.tools?.find((tool) => tool.function.name === `desktop_${desktop[1]}`)?.function
                 .name
-            : body.tools?.[0]?.function.name;
+            : kitty
+              ? body.tools?.find((tool) => tool.function.name === `kitty_${kitty[1]}`)?.function
+                  .name
+              : body.tools?.[0]?.function.name;
           const tool =
-            last?.role === "user" && (user.startsWith("fixture:tool:") || !!desktop) && name;
+            last?.role === "user" &&
+            (user.startsWith("fixture:tool:") || !!desktop || !!kitty) &&
+            name;
           const encoder = new TextEncoder();
           const chunk = (delta: unknown, finish_reason: string | null = null) =>
             encoder.encode(
@@ -146,7 +231,9 @@ export default class AcceptanceFixture extends Cloudflare.Worker<AcceptanceFixtu
                           name,
                           arguments: desktop
                             ? desktop[2]!
-                            : JSON.stringify({ probeId: user.slice(13) }),
+                            : kitty
+                              ? kitty[2]!
+                              : JSON.stringify({ probeId: user.slice(13) }),
                         },
                       },
                     ],

@@ -62,7 +62,9 @@ export function setLang(next: Lang): void {
     /* kept for this visit only */
   }
   lang = next;
-  location.reload();
+  const url = new URL(location.href);
+  url.searchParams.delete("lang");
+  location.assign(url.href);
 }
 
 // t is a text of the page in its language; {name} in it takes vars.name.

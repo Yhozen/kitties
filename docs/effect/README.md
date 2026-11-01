@@ -31,8 +31,8 @@ table when a phase starts, when its exit criteria are measured, and when it merg
 | 5 | Brains: chat, providers, first MCP and native tools | deployed; UI and recovery acceptance in progress | [50 streamed turns](evidence/chat-stream-cloud.json): fixture first-token p95 1.872 s; [MCP approval/redeploy](evidence/tools-cloud.json), dedupe and cancel passed |
 | 6 | Lifecycle: sleep, restore, capacity | deployed; live restore drill in progress | [Persistence drill](evidence/lifecycle-persistence.json): file, cookie and package survived a new VM/generation; full chaos and capacity gates open |
 | 7 | Durable desktop tasks and perception | implementation in progress | Fenced child workflows, screenshot storage, vault references and durable help; live acceptance and perception A/B open |
-| 8 | Autonomy: goals, webhooks, approvals, notifications | goals and signed hooks deployed; notifications and rules in progress | [100 deliveries / 200 requests](evidence/webhooks-cloud.json), [goal chaining and disable fencing](evidence/goals-cloud.json); delegation and phone approval gates open |
-| 9 | Integrations: MCP with OAuth, Google and Microsoft | not started | — |
+| 8 | Autonomy: goals, webhooks, approvals, notifications | goals and signed hooks deployed; notifications/rules implemented; delegation acceptance in progress | [100 deliveries / 200 requests](evidence/webhooks-cloud.json), [goal chaining and disable fencing](evidence/goals-cloud.json); delegation fan-out, backup handoff, journal and limit tools implemented; cloud and phone approval gates open |
+| 9 | Integrations: MCP with OAuth, Google and Microsoft | implementation in progress; live authorization checks pending | Encrypted PKCE, single-use bypass callback, RFC 9728/8414 discovery, DCR/CIMD, refresh single-flight and minimal native file/calendar tools; [local acceptance](evidence/application-local.json) |
 | 10 | Hardening, backups, cutover, Go deleted | not started | — |
 
 ## Ground rules while the rewrite runs

@@ -58,6 +58,10 @@ class VerificationDO extends Cloudflare.DurableObject<VerificationDO>()(
     return Effect.sync(() => {
       const tick = Effect.gen(function* () {
         const saved = yield* state.storage.get<Checkpoint>("checkpoint");
+        if (!saved)
+          yield* gateway.probeSaveReport(
+            JSON.stringify({ status: "pending", verifier: "engine-progress-v2" }),
+          );
         const checkpoint = saved ?? { index: 0, id: `cloud-${Date.now()}`, results: [] };
         if (checkpoint.index >= cases.length) return;
         const spec = cases[checkpoint.index]!;
@@ -114,6 +118,8 @@ class VerificationDO extends Cloudflare.DurableObject<VerificationDO>()(
             date: new Date().toISOString(),
             status: "passed",
             runtime: "Cloudflare DurableObjectEngine",
+            verifier: "engine-progress-v2",
+            enginePatch: "journal-progress",
             cases: checkpoint.results,
           };
           yield* gateway.probeSaveReport(JSON.stringify(report));

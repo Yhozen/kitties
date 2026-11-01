@@ -14,6 +14,7 @@ export default class HookIngress extends Cloudflare.Worker<HookIngress>()(
     const stage = yield* Stage;
     return {
       main: import.meta.url,
+      dev: { port: 1339, strictPort: true },
       domain: stage === "local" ? undefined : `hooks-${stage}.kitties.rccpr.tech`,
       workersDev: false,
       observability: {

@@ -1,0 +1,11 @@
+export default {
+  "Could not load connections.": "No se pudieron cargar las conexiones.",
+  "Could not complete the operation. Check the connection and try again.": "No se pudo completar la operación. Revisa la conexión e inténtalo de nuevo.",
+  "Tools and connections": "Herramientas y conexiones",
+  "Actions need your approval. You can allow reads for each connection.": "Las acciones necesitan tu aprobación. Puedes permitir lecturas en cada conexión.",
+  "Connected": "Conectado", "Refreshing authorization…": "Renovando autorización…", "Sign in again": "Vuelve a iniciar sesión", "No OAuth authorization": "Sin autorización OAuth",
+  "{count} tools available.": "{count} herramientas disponibles.", "Test": "Probar", "Sign in": "Iniciar sesión", "Disconnect": "Desconectar", "Remove": "Eliminar",
+  "Register the redirect address shown by discovery in your OAuth app. MCP servers can register automatically when supported.": "Registra la dirección de retorno en tu aplicación OAuth. Los servidores MCP compatibles pueden registrarse automáticamente.",
+  "Redirect address: {url}": "Dirección de retorno: {url}", "Discover authorization": "Descubrir autorización", "Client ID (optional)": "ID de cliente (opcional)", "Client secret (optional)": "Secreto de cliente (opcional)", "Scopes (optional)": "Permisos (opcional)", "Prepare sign-in": "Preparar inicio de sesión", "Continue to authorization": "Continuar a la autorización", "I have finished signing in": "He terminado de iniciar sesión",
+  "Name": "Nombre", "Type": "Tipo", "HTTPS address": "Dirección HTTPS", "Token (optional)": "Token (opcional)", "Allow reads without asking": "Permitir lecturas sin preguntar", "Save connection": "Guardar conexión",
+};

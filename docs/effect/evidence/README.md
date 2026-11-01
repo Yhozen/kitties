@@ -22,3 +22,8 @@ Cloud results, real guest latency, constrained viewers and mobile device install
 - `goals-cloud.json`: real minute slot, next-slot chaining and disabled-revision fencing passed without manual resumes.
 
 Stream soak, physical phone approval, desktop replay/cancellation, native perception A/B, capacity and chaos acceptance remain open.
+
+- `engine-progress-local.json`: complete local 3/50/200/500-activity suite after the alarm-progress patch, including failure journaling, interruption and owner route isolation.
+- `application-local.json`: 37 unit tests plus ten desktop/mobile Chrome checks covering durable chat, duplicate POSTs, feedback and secret redaction. OAuth unit cases include PKCE, callback replay/mix-up, 20 concurrent refresh callers, eviction, disconnect during refresh, API-origin binding and redirect denial. Live OAuth/phone acceptance remains separate.
+
+Restore testing also exposed CLOSING hibernated sockets consuming both guest admission slots. The fix counts open sockets for admission and viewer leases. An in-progress restore will verify recovery after deployment; until then it is not a passing lifecycle result. Native AT-SPI now runs under the desktop UID through a restricted Unix socket, but focused-window discovery on Openbox remains unverified.

@@ -57,3 +57,9 @@ it("accepts stripped restore labels only with the exact deployment creation rece
   expect(ownsSandbox(machine, "other-deployment", "cat", 2, receipt)).toBe(false);
   expect(ownsSandbox(machine, "next-unique", "cat", 2, { ...receipt, body: "{}" })).toBe(false);
 });
+
+it("sleeping desktops require a new-generation restore for start and upgrade", () => {
+  const state = { ...freshComputer("cat", 1), phase: "sleeping" as const, remoteId: "bx_exact123" };
+  for (const kind of ["start", "upgrade"] as const)
+    expect(() => beginOperation(state, "op", kind, 2)).toThrow("USE_RESTORE");
+});
