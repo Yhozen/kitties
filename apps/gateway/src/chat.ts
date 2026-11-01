@@ -88,7 +88,15 @@ const makeChat = Effect.gen(function* () {
             });
           }
           // Delegation owns child starts so the workflow engine records the correct parent.
-          if (!start) return { conflict: false, duplicate: !!row, cancelled: false };
+          if (!start) {
+            const runId = yield* Turn.executionId(payload);
+            sql.exec(
+              "UPDATE messages SET status='running',run_id=? WHERE id=? AND status='queued'",
+              runId,
+              payload.messageId,
+            );
+            return { conflict: false, duplicate: !!row, cancelled: false };
+          }
           // Durable wake precedes the acknowledgment: a lost HTTP response cannot lose a turn.
           yield* Effect.promise(() => state.raw.storage.setAlarm(Date.now() + 1));
           // The alarm is the recovery path; start the durable run immediately on a warm request.
