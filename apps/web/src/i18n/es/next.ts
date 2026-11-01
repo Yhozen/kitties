@@ -9,4 +9,9 @@ export default {
   "Register the redirect address shown by discovery in your OAuth app. MCP servers can register automatically when supported.": "Registra la dirección de retorno en tu aplicación OAuth. Los servidores MCP compatibles pueden registrarse automáticamente.",
   "Redirect address: {url}": "Dirección de retorno: {url}", "Discover authorization": "Descubrir autorización", "Client ID (optional)": "ID de cliente (opcional)", "Client secret (optional)": "Secreto de cliente (opcional)", "Scopes (optional)": "Permisos (opcional)", "Prepare sign-in": "Preparar inicio de sesión", "Continue to authorization": "Continuar a la autorización", "I have finished signing in": "He terminado de iniciar sesión",
   "Name": "Nombre", "Type": "Tipo", "HTTPS address": "Dirección HTTPS", "Token (optional)": "Token (opcional)", "Allow reads without asking": "Permitir lecturas sin preguntar", "Save connection": "Guardar conexión",
+  "Sign in with ChatGPT": "Iniciar sesión con ChatGPT",
+  "Could not complete sign-in. Start again.": "No se pudo completar el inicio de sesión. Empieza de nuevo.",
+  "After signing in, copy the localhost callback address from your browser and paste it here.": "Después de iniciar sesión, copia la dirección de retorno de localhost de tu navegador y pégala aquí.",
+  "Callback address": "Dirección de retorno",
+  "Finish sign-in": "Completar inicio de sesión",
 };

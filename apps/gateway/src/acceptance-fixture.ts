@@ -184,6 +184,14 @@ export default class AcceptanceFixture extends Cloudflare.Worker<AcceptanceFixtu
                   ?.filter((part) => part.type === "text")
                   .map((part) => part.text ?? "")
                   .join("") ?? "");
+          const flaky = user.match(/^fixture:flaky:(\d):([a-zA-Z0-9_-]+)$/);
+          if (
+            flaky &&
+            (yield* counters.getByName("counts").record(`flaky-${flaky[2]}`)) <= Number(flaky[1])
+          )
+            return HttpServerResponse.fromWeb(
+              Response.json({ error: "temporary fixture failure" }, { status: 503 }),
+            );
           const desktop = user.match(/^fixture:desktop:([a-z_]+):(.*)$/s);
           const kitty = user.match(/^fixture:kitty:([a-z_]+):(.*)$/s);
           const name = desktop

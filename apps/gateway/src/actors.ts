@@ -144,8 +144,11 @@ const makeActor = Effect.gen(function* () {
     return {
       oauthBegin: (id: string, config: OAuthConfig) =>
         Effect.tryPromise({ try: () => oauth.begin(id, config), catch: oauthError }),
-      oauthFinish: (state: string, code: string, issuer?: string) =>
-        Effect.tryPromise({ try: () => oauth.finish(state, code, issuer), catch: oauthError }),
+      oauthFinish: (state: string, code: string, issuer?: string, expectedId?: string) =>
+        Effect.tryPromise({
+          try: () => oauth.finish(state, code, issuer, expectedId),
+          catch: oauthError,
+        }),
       oauthToken: (id: string, url: string) =>
         Effect.tryPromise({ try: () => oauth.token(id, url), catch: oauthError }),
       oauthStatus: (id: string) => Effect.sync(() => oauth.status(id)),

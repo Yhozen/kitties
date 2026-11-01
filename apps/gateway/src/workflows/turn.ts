@@ -2,6 +2,7 @@ import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Workflows from "alchemy/Workflows";
 import * as Effect from "effect/Effect";
 import * as Cause from "effect/Cause";
+import * as Schedule from "effect/Schedule";
 import * as Ref from "effect/Ref";
 import { memoryPrompt, type Memory } from "../memory.ts";
 import * as Schema from "effect/Schema";
@@ -23,6 +24,7 @@ import type {
   ModelRound,
   ApprovalRecord,
 } from "../entities.ts";
+import { chatgptConfig } from "../chatgpt-config.ts";
 import { open } from "../secrets.ts";
 import { providerText } from "../providers.ts";
 import { discoverTools, executeTool, needsApproval } from "../tools.ts";
@@ -62,6 +64,7 @@ export const TurnLive = Workflows.layer(
     const env = (yield* Cloudflare.WorkerEnvironment) as {
       KITTIES_KEK: string;
       STAGE: string;
+      CHATGPT_ENABLED: string;
       BLOBS: cf.R2Bucket;
     };
     return Effect.fn(
@@ -77,6 +80,8 @@ export const TurnLive = Workflows.layer(
         });
         let maxRounds = 100;
         for (let round = 0; round < maxRounds; round++) {
+          let retryBudget = 0,
+            modelFailures = 0;
           maxRounds = yield* Activity.make({
             name: `round/${round}`,
             success: Schema.Number,
@@ -104,6 +109,7 @@ export const TurnLive = Workflows.layer(
               );
               const config = JSON.parse(context.body) as RunConfig;
               const limit = config.kitty.limits?.max_rounds ?? 12;
+              retryBudget = config.kitty.limits?.retries ?? 2;
               if (start.completed) return limit;
               if (start.cancelled) return yield* Effect.fail("CANCELLED");
               const { kitty, provider, connections } = config,
@@ -136,12 +142,20 @@ export const TurnLive = Workflows.layer(
                   .pipe(Effect.mapError(storageError));
                 return limit;
               }
-              if (!provider?.secret) return yield* Effect.fail("PROVIDER_KEY_REQUIRED");
-              const secret = yield* Effect.tryPromise({
-                try: () =>
-                  open(env.KITTIES_KEK, `providers:${provider.id}:api-key`, provider.secret!),
-                catch: () => "KEY_UNAVAILABLE",
-              });
+              if (!provider || (provider.kind !== "chatgpt" && !provider.secret))
+                return yield* Effect.fail("PROVIDER_KEY_REQUIRED");
+              if (provider.kind === "chatgpt" && env.CHATGPT_ENABLED !== "true")
+                return yield* Effect.fail("FEATURE_DISABLED");
+              const secret =
+                provider.kind === "chatgpt"
+                  ? yield* home
+                      .oauthToken(`chatgpt-${provider.id}`, chatgptConfig.protectedUrl)
+                      .pipe(Effect.mapError(() => "OAUTH_AUTHORIZATION_REQUIRED"))
+                  : yield* Effect.tryPromise({
+                      try: () =>
+                        open(env.KITTIES_KEK, `providers:${provider.id}:api-key`, provider.secret!),
+                      catch: () => "KEY_UNAVAILABLE",
+                    });
               const remoteTools = yield* Effect.forEach(
                 connections,
                 (connection) =>
@@ -311,7 +325,13 @@ export const TurnLive = Workflows.layer(
                 )
                 .pipe(Effect.mapError(storageError));
               return limit;
-            }),
+            }).pipe(
+              Effect.retry({
+                times: 5,
+                schedule: Schedule.spaced("1 second"),
+                while: (error) => error === "PROVIDER_UNAVAILABLE" && modelFailures++ < retryBudget,
+              }),
+            ),
           });
           // Activities journal keys; the actor retains provider history and tool payloads.
           const stored = yield* chat
@@ -747,6 +767,128 @@ export const TurnLive = Workflows.layer(
       },
       (effect, payload, executionId) =>
         effect.pipe(
+          Effect.catch((error) => {
+            if (
+              ![
+                "ROUND_LIMIT",
+                "PROVIDER_UNAVAILABLE",
+                "DAILY_LIMIT",
+                "PROVIDER_KEY_REQUIRED",
+                "OAUTH_AUTHORIZATION_REQUIRED",
+              ].includes(error)
+            )
+              return Effect.fail(error);
+            return Effect.gen(function* () {
+              const home = homes.getByName("owner", { locationHint: "weur" }),
+                chat = chats.getByName(payload.chatId, { locationHint: "weur" });
+              const mode = yield* Activity.make({
+                name: "terminal-plan",
+                success: Schema.Boolean,
+                error: Schema.String,
+                execute: Effect.gen(function* () {
+                  if (
+                    (yield* chat.run(payload.messageId).pipe(Effect.mapError(storageError)))
+                      ?.status === "cancelled"
+                  )
+                    return false;
+                  const raw = yield* home
+                    .read("turn-config", executionId)
+                    .pipe(Effect.mapError(storageError));
+                  const config = raw ? (JSON.parse(raw) as RunConfig) : undefined;
+                  const backup = config?.kitty.backupId;
+                  if (!backup || backup === payload.kittyId || (payload.depth ?? 0) >= 2)
+                    return false;
+                  yield* home
+                    .insert(
+                      "delegation-job",
+                      `${executionId}/exhausted`,
+                      JSON.stringify({
+                        tasks: [
+                          {
+                            kittyId: backup,
+                            instruction:
+                              `Take over this task: ${payload.text}\nThe previous kitty stopped with ${error}.`.slice(
+                                0,
+                                16000,
+                              ),
+                          },
+                        ],
+                      }),
+                    )
+                    .pipe(Effect.mapError(storageError));
+                  return true;
+                }),
+              });
+              if (mode) {
+                const child = {
+                  id: `${executionId}/exhausted`,
+                  chatId: payload.chatId,
+                  messageId: payload.messageId,
+                  callId: "backup-exhaustion",
+                  kittyId: payload.kittyId,
+                  depth: payload.depth ?? 0,
+                };
+                yield* Activity.make({
+                  name: "terminal-backup-start",
+                  success: Schema.String,
+                  execute: Delegation.execute(child, { discard: true }),
+                });
+                yield* Delegation.execute(child);
+              }
+              yield* Activity.make({
+                name: "terminal-result",
+                error: Schema.String,
+                execute: Effect.gen(function* () {
+                  const saved = mode
+                    ? yield* chat
+                        .toolResult(payload.messageId, "backup-exhaustion")
+                        .pipe(Effect.mapError(storageError))
+                    : null;
+                  const delegated = saved
+                    ? (
+                        JSON.parse(saved) as {
+                          result: { delegations: { status: string; answer: string }[] };
+                        }
+                      ).result.delegations
+                    : [];
+                  const completed =
+                    delegated.length > 0 &&
+                    delegated.every((child) => child.status === "completed");
+                  yield* chat
+                    .resolveTurn(
+                      payload.messageId,
+                      completed ? delegated.map((child) => child.answer).join("\n\n") : error,
+                      completed ? "completed" : "failed",
+                    )
+                    .pipe(Effect.mapError(storageError));
+                  yield* home
+                    .write(
+                      "run-health",
+                      executionId,
+                      JSON.stringify({
+                        id: executionId,
+                        chatId: payload.chatId,
+                        messageId: payload.messageId,
+                        status: completed ? "completed" : "failed",
+                        code: error,
+                        updatedAt: Date.now(),
+                      }),
+                    )
+                    .pipe(Effect.mapError(storageError));
+                  yield* home
+                    .queueNotice(
+                      `${executionId}/terminal`,
+                      "health",
+                      completed ? "Tu kitty de apoyo terminó la tarea" : "Tu kitty necesita ayuda",
+                      "/?panel=health",
+                      true,
+                    )
+                    .pipe(Effect.mapError(storageError));
+                }),
+              });
+              return payload.messageId;
+            });
+          }),
           Effect.tapCause((cause) => {
             if (Cause.hasInterruptsOnly(cause)) return Effect.void;
             const error = cause.reasons.find((reason) => reason._tag === "Fail");

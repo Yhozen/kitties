@@ -75,6 +75,9 @@ const props = Effect.gen(function* () {
     env: {
       PUBLIC_URL: Cloudflare.Worker.URL,
       ACCESS_EMAIL: email,
+      CHATGPT_ENABLED: yield* Config.String("KITTIES_CHATGPT_ENABLED").pipe(
+        Config.withDefault("false"),
+      ),
       STAGE: stage,
       KITTIES_KEK: kek,
       BOAT_DEV_API_KEY: boatKey,
@@ -137,7 +140,7 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
         Effect.gen(function* () {
           if (env.STAGE !== "next" && env.STAGE !== "e2e") return { status: 404, body: "" };
           if (
-            !/^\/v1\/(kitties|chats|providers|connections|approvals|runs|computer-runs|releases|vault|help|artifacts|skills|goals|hooks|approval-rules|notifications)(?:\/|$)/.test(
+            !/^\/v1\/(features|kitties|chats|providers|connections|approvals|runs|computer-runs|releases|vault|help|artifacts|skills|goals|hooks|approval-rules|notifications)(?:\/|$)/.test(
               path,
             )
           )

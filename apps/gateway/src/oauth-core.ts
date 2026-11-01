@@ -1,3 +1,4 @@
+import { isChatgptConfig } from "./chatgpt-config.ts";
 import { publicHttps, allowedFetch } from "./outbound.ts";
 import { seal, open, type Envelope } from "./secrets.ts";
 
@@ -134,7 +135,7 @@ export function validateConfig(config: OAuthConfig) {
     config.issuer,
     config.authorizationEndpoint,
     config.tokenEndpoint,
-    config.redirectUri,
+    ...(isChatgptConfig(config) ? [] : [config.redirectUri]),
     config.protectedUrl,
   ])
     publicHttps(url);
@@ -248,7 +249,7 @@ export function makeOAuthStorage(storage: OAuthStorage, kek: string) {
         url.searchParams.set(key, value);
       return { url: url.href, expiresAt: flow.expiresAt };
     },
-    finish: async (state: string, code: string, issuer?: string) => {
+    finish: async (state: string, code: string, issuer?: string, expectedId?: string) => {
       if (!/^[\w-]{43}$/.test(state) || !code || code.length > 8192)
         throw Error("OAUTH_INVALID_CALLBACK");
       // Consume synchronously before any decryption/network await; callbacks are single-use.
@@ -257,6 +258,7 @@ export function makeOAuthStorage(storage: OAuthStorage, kek: string) {
       const flow = JSON.parse(
         await open(kek, `oauth-flow:${state}:pkce`, JSON.parse(saved) as Envelope),
       ) as Flow;
+      if (expectedId && flow.connectionId !== expectedId) throw Error("OAUTH_RESOURCE_MISMATCH");
       if (flow.expiresAt <= Date.now() || (issuer && issuer !== flow.config.issuer))
         throw Error("OAUTH_FLOW_EXPIRED");
       if (storage.get("oauth-attempt", flow.connectionId) !== state)

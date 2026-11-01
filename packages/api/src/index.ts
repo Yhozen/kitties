@@ -40,6 +40,28 @@ import {
 } from "@kitties/domain/entities";
 
 export const Api = HttpApi.make("Kitties").add(
+  HttpApiGroup.make("signin").add(
+    HttpApiEndpoint.get("features", "/v1/features", {
+      success: Schema.Struct({ chatgpt: Schema.Boolean }),
+    }),
+    HttpApiEndpoint.get("status", "/v1/providers/:id/signin", {
+      params: { id: Id },
+      success: Schema.Struct({ status: Schema.String }),
+    }),
+    HttpApiEndpoint.post("start", "/v1/providers/:id/signin", {
+      params: { id: Id },
+      success: Schema.Struct({ url: Schema.String, expiresAt: Schema.Number }),
+    }),
+    HttpApiEndpoint.post("finish", "/v1/providers/:id/signin/finish", {
+      params: { id: Id },
+      payload: Schema.Struct({ url: Schema.String }),
+      success: Schema.Struct({ ok: Schema.Boolean }),
+    }),
+    HttpApiEndpoint.delete("disconnect", "/v1/providers/:id/signin", {
+      params: { id: Id },
+      success: Schema.Void,
+    }),
+  ),
   HttpApiGroup.make("notifications").add(
     HttpApiEndpoint.get("get", "/v1/notifications", { success: NotificationView }),
     HttpApiEndpoint.put("save", "/v1/notifications", {

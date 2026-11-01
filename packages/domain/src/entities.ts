@@ -8,7 +8,7 @@ interface Envelope {
 
 export const ProviderInput = Schema.Struct({
   name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80)),
-  kind: Schema.Literals(["openai", "anthropic", "openrouter", "compat", "gemini"]),
+  kind: Schema.Literals(["openai", "anthropic", "openrouter", "compat", "gemini", "chatgpt"]),
   model: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
   baseUrl: Schema.optional(Schema.String),
   apiKey: Schema.optional(Schema.String.check(Schema.isMaxLength(8192))),

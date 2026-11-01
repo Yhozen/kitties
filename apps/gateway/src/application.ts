@@ -31,6 +31,7 @@ import { makeOwnerData } from "./owner-data.ts";
 import { makeWorkspaceData } from "./workspace-data.ts";
 import { makeAutonomy } from "./autonomy.ts";
 import { nativeBase } from "./native-tools.ts";
+import { makeChatgpt } from "./chatgpt.ts";
 import { makeOAuth } from "./oauth.ts";
 import { makeNotifications } from "./notifications.ts";
 
@@ -57,7 +58,12 @@ export const makeApplication = Effect.gen(function* () {
   const autonomy = yield* makeAutonomy;
   const notifications = yield* makeNotifications;
   const oauth = yield* makeOAuth;
-  const env = (yield* Cloudflare.WorkerEnvironment) as { KITTIES_KEK: string; STAGE: string };
+  const chatgpt = yield* makeChatgpt;
+  const env = (yield* Cloudflare.WorkerEnvironment) as {
+    KITTIES_KEK: string;
+    STAGE: string;
+    CHATGPT_ENABLED: string;
+  };
   const home = () => homes.getByName("owner", { locationHint: "weur" });
   const list = <A>(kind: string) =>
     home()
@@ -68,6 +74,8 @@ export const makeApplication = Effect.gen(function* () {
       const url = new URL(request.url),
         path = url.pathname,
         method = request.method;
+      const signInResponse = yield* chatgpt(request);
+      if (signInResponse) return signInResponse;
       const oauthResponse = yield* oauth.route(request);
       if (oauthResponse) return oauthResponse;
       const ownerResponse = yield* ownerData(request);
@@ -234,6 +242,8 @@ export const makeApplication = Effect.gen(function* () {
         const saved = yield* home().read("provider", id);
         if (method === "PUT" && !providerRoute[2]) {
           const body = yield* readBody(request, ProviderInput);
+          if (body.kind === "chatgpt" && env.CHATGPT_ENABLED !== "true")
+            return json({ code: "FEATURE_DISABLED", params: {} }, 404);
           yield* Effect.try({ try: () => providerBaseUrl(body), catch: () => "HOST_DENIED" });
           const { apiKey, ...config } = body;
           const old = saved ? (JSON.parse(saved) as Provider) : null;
@@ -248,12 +258,18 @@ export const makeApplication = Effect.gen(function* () {
           return json(viewProvider(provider));
         }
         if (method === "DELETE" && !providerRoute[2]) {
+          yield* home().oauthDisconnect(`chatgpt-${id}`);
           yield* home().remove("provider", id);
           return HttpServerResponse.empty({ status: 204 });
         }
         if (method === "POST" && providerRoute[2] === "test") {
           if (!saved) return json({ code: "NOT_FOUND", params: {} }, 404);
           const provider = JSON.parse(saved) as Provider;
+          if (provider.kind === "chatgpt")
+            return json({
+              ok: (yield* home().oauthStatus(`chatgpt-${id}`)) === "ready",
+              models: [provider.model],
+            });
           if (!provider.secret) return json({ code: "PROVIDER_KEY_REQUIRED", params: {} }, 400);
           const secret = yield* Effect.tryPromise({
             try: () => open(env.KITTIES_KEK, `providers:${id}:api-key`, provider.secret!),

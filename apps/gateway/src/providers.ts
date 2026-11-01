@@ -2,6 +2,9 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
 import * as Stream from "effect/Stream";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientRequest from "effect/http/HttpClientRequest";
+import { chatgptConfig, chatgptAccount } from "./chatgpt-config.ts";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as LanguageModel from "effect/ai/LanguageModel";
 import type * as Prompt from "effect/ai/Prompt";
@@ -22,8 +25,9 @@ import { publicHttps } from "./outbound.ts";
 
 export const providerBaseUrl = (provider: Pick<Provider, "kind" | "baseUrl">) =>
   publicHttps(
-    provider.baseUrl ??
+    (provider.kind === "chatgpt" ? chatgptConfig.protectedUrl : provider.baseUrl) ??
       {
+        chatgpt: chatgptConfig.protectedUrl,
         openai: "https://api.openai.com/v1",
         anthropic: "https://api.anthropic.com",
         openrouter: "https://openrouter.ai/api/v1",
@@ -41,6 +45,24 @@ export const modelLayer = (
   const options = { apiKey: Redacted.make(secret), apiUrl: providerBaseUrl(provider) };
   const config = provider.temperature === undefined ? {} : { temperature: provider.temperature };
   switch (provider.kind) {
+    case "chatgpt":
+      return OpenAiLanguageModel.layer({
+        model: provider.model,
+        config: { store: false, strictJsonSchema: false },
+      }).pipe(
+        Layer.provide(
+          OpenAiClient.layer({
+            ...options,
+            transformClient: (client) =>
+              client.pipe(
+                HttpClient.mapRequest(
+                  HttpClientRequest.setHeader("ChatGPT-Account-ID", chatgptAccount(secret)),
+                ),
+              ),
+          }),
+        ),
+        Layer.provide(FetchHttpClient.layer),
+      );
     case "openai":
       return OpenAiLanguageModel.layer({
         model: provider.model,

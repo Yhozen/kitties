@@ -392,6 +392,17 @@ const makeChat = Effect.gen(function* () {
               body,
             );
         }),
+      resolveTurn: (id: string, answer: string, status: string) =>
+        Effect.gen(function* () {
+          state.raw.storage.transactionSync(() => {
+            const row = sql.exec<Row>("SELECT * FROM messages WHERE id=?", id).toArray()[0];
+            if (!row || !["queued", "running"].includes(row.status)) return;
+            sql.exec("UPDATE messages SET answer=?,status=? WHERE id=?", answer, status, id);
+            event({ type: "round_reset", messageId: id, attempt: -1, prefix: answer });
+            event({ type: status, messageId: id });
+          });
+          yield* Effect.promise(() => state.raw.storage.setAlarm(Date.now() + 1));
+        }),
       finish: (id: string, status: string) =>
         Effect.gen(function* () {
           state.raw.storage.transactionSync(() => {
