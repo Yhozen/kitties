@@ -304,6 +304,7 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
         status: () =>
           Effect.sync(() => ({
             config: config() ? { ...config()!, tokenHash: undefined } : null,
+            channelVersion: "open-peers-v2",
             guestConnected: sockets("guest").some(
               (ws) =>
                 ws.readyState === 1 &&

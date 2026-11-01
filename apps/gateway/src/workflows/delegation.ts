@@ -99,7 +99,7 @@ export const DelegationLive = Workflows.layer(
                 return "";
               const queued = yield* chats
                 .getByName(child.chatId, { locationHint: "weur" })
-                .enqueue(child)
+                .enqueue(child, false)
                 .pipe(Effect.mapError(storage));
               if (queued.cancelled) return "";
               return yield* Turn.execute(child, { discard: true });

@@ -1,0 +1,19 @@
+{
+  "date": "2026-11-01T17:35:08.123Z",
+  "cases": [
+    {
+      "name": "discovery-pkce-bypass-callback-single-use",
+      "status": "passed"
+    },
+    {
+      "name": "20-concurrent-mcp-activities-one-refresh",
+      "refreshes": 1,
+      "status": "passed"
+    },
+    {
+      "name": "oauth-bypass-isolation-and-cimd",
+      "status": "passed"
+    }
+  ],
+  "status": "passed"
+}
