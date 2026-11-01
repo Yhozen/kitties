@@ -1,0 +1,1700 @@
+@import "tailwindcss";
+@import "./motion.css";
+
+/* ─── The Motita design system, as kitties uses it ──────────────────────────────────────────
+ * Dark ground, neon edges and glow, hard 2px corners with diagonal cuts on buttons and pills,
+ * frosted panels over a background image, Sansation for text and JetBrains Mono for code. The
+ * colour tokens live in themes.css (dark and light); everything here reads them. */
+
+@theme {
+  --color-accent: #4cc2ff;
+  --color-neon-cyan: #00f0ff;
+  --color-neon-magenta: #ff2bd6;
+  --color-neon-yellow: #fcee0a;
+  --color-danger: #ff6b6b;
+  --color-warning: #ffb020;
+  --font-sans: Sansation, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  --font-mono: JetBrainsMonoNF, ui-monospace, SF Mono, Menlo, Consolas, monospace;
+}
+
+@layer base {
+  *,
+  ::after,
+  ::before {
+    border-color: rgb(var(--ov-rgb) / 0.1);
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--t4);
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+@font-face {
+  font-family: "Sansation";
+  font-weight: 300;
+  src: url(/Sansation-Light.woff2) format("woff2");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Sansation";
+  font-weight: 400;
+  src: url(/Sansation-Regular.woff2) format("woff2");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Sansation";
+  font-weight: 400;
+  font-style: italic;
+  src: url(/Sansation-Italic.woff2) format("woff2");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Sansation";
+  font-weight: 700;
+  src: url(/Sansation-Bold.woff2) format("woff2");
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrainsMonoNF";
+  font-weight: 400;
+  src: url(/JetBrainsMonoNerdFont-Regular.woff2) format("woff2");
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrainsMonoNF";
+  font-weight: 700;
+  src: url(/JetBrainsMonoNerdFont-Bold.woff2) format("woff2");
+  font-display: swap;
+}
+
+:root {
+  --font-sans: "Sansation", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrainsMonoNF", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --neon-cyan: #00f0ff;
+  --neon-magenta: #ff2bd6;
+  --neon-yellow: #fcee0a;
+  --radius-cut: 2px;
+  --glow-cyan: 0 0 12px rgb(var(--neon-rgb) / 0.55);
+  --glow-magenta: 0 0 12px rgba(255, 43, 214, 0.55);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--t1);
+  background: var(--s0);
+}
+
+/* The background image shows through every frosted panel. */
+.app-bg {
+  background-image: url(/chat-bg.webp);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-color: var(--s0);
+}
+html[data-mode="light"] .app-bg {
+  background-image: linear-gradient(var(--veil), var(--veil)), url(/chat-bg.webp);
+}
+
+/* Hard corners everywhere the utilities ask for rounded ones; circles stay circles. */
+.rounded,
+.rounded-md,
+.rounded-lg,
+.rounded-xl,
+.rounded-2xl {
+  border-radius: var(--radius-cut);
+}
+
+/* Frosted glass: header, composer, modals. */
+.frosted {
+  background: rgb(var(--bg-rgb) / 0.78);
+  backdrop-filter: blur(20px) saturate(1.3);
+  border: 1px solid rgb(var(--neon-rgb) / 0.35);
+  box-shadow: 0 0 12px rgb(var(--neon-rgb) / 0.18);
+}
+.sidebar {
+  background: rgb(var(--bg-rgb) / 0.88);
+  backdrop-filter: blur(20px) saturate(1.3);
+  border-right: 1px solid rgb(var(--neon-rgb) / 0.3);
+  animation: motion-slide-in-left var(--motion-slow) var(--ease-out) backwards;
+}
+header.frosted {
+  animation: motion-drop-in var(--motion-slow) var(--ease-out) backwards;
+}
+form.frosted {
+  animation: motion-rise-in var(--motion-slow) var(--ease-out) backwards;
+}
+.chat-modal {
+  border-radius: var(--radius-cut);
+  border: 1px solid var(--neon-cyan);
+  box-shadow: var(--glow-cyan);
+  background: var(--s1);
+  animation: motion-pop-in var(--motion-slow) var(--ease-out) backwards;
+}
+.backdrop {
+  animation: motion-fade-in var(--motion-base) var(--ease-out) backwards;
+}
+
+/* Buttons: the design system's diagonal corners. */
+button {
+  --btn-cut: 4px;
+  position: relative;
+  border-radius: 0;
+  clip-path: polygon(
+    var(--btn-cut) 0,
+    100% 0,
+    100% calc(100% - var(--btn-cut)),
+    calc(100% - var(--btn-cut)) 100%,
+    0 100%,
+    0 var(--btn-cut)
+  );
+  transition:
+    transform var(--motion-fast) var(--ease-out),
+    opacity var(--motion-fast) var(--ease-out),
+    background-color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-base) var(--ease-out);
+}
+@media (hover: hover) {
+  button:not(:disabled):hover {
+    transform: translateY(-1px);
+  }
+}
+button:not(:disabled):active {
+  transform: translateY(0) scale(0.96);
+  transition-duration: 40ms;
+}
+/* A button that waits for something looks it, not only ignores the click. */
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+button.plain,
+button.row-hit {
+  clip-path: none;
+}
+button.plain:not(:disabled):hover,
+button.row-hit:not(:disabled):hover {
+  transform: none;
+}
+.req {
+  color: var(--color-accent);
+  margin-left: 0.25em;
+  font-weight: 700;
+}
+.req-legend {
+  font-size: 0.75rem;
+  color: var(--t4);
+}
+.req-legend .req {
+  margin-left: 0;
+}
+.missing {
+  font-size: 0.75rem;
+  color: var(--t3);
+  text-align: right;
+  margin-top: 0.5rem;
+}
+.btn-accent {
+  background: var(--color-accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+.btn-accent:hover:not(:disabled) {
+  box-shadow: 0 0 14px rgb(var(--accent-rgb) / 0.45);
+}
+.btn-outline {
+  background: rgb(var(--accent-rgb) / 0.1);
+  border: 1px solid rgb(var(--accent-rgb) / 0.3);
+  color: var(--color-accent);
+}
+.btn-outline:hover:not(:disabled) {
+  background: rgb(var(--accent-rgb) / 0.2);
+}
+.btn-ghost {
+  background: rgb(var(--ov-rgb) / 0.05);
+  border: 1px solid rgb(var(--ov-rgb) / 0.08);
+  color: var(--t2);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: rgb(var(--ov-rgb) / 0.1);
+}
+.btn-danger {
+  background: rgba(255, 107, 107, 0.12);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  color: var(--c-red);
+}
+
+/* A sunken field: the composer's box. */
+.well {
+  background: rgb(0 0 0 / calc(var(--well-k) * 0.3));
+  border: 1px solid rgb(var(--ov-rgb) / 0.08);
+  border-radius: var(--radius-cut);
+}
+
+/* Inputs. */
+input,
+textarea,
+select {
+  background: rgb(0 0 0 / calc(var(--well-k) * 0.3));
+  border: 1px solid rgb(var(--ov-rgb) / 0.08);
+  color: var(--t1);
+  border-radius: var(--radius-cut);
+  transition:
+    border-color var(--motion-base) var(--ease-out),
+    box-shadow var(--motion-base) var(--ease-out);
+}
+/* A select is drawn like the other fields (the system's own button ignores the design): no
+   native chrome, a neon chevron, room for it, and a dark list where the system draws one. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 2.25rem;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--color-accent) 50%),
+    linear-gradient(135deg, var(--color-accent) 50%, transparent 50%);
+  background-position:
+    calc(100% - 17px) 50%,
+    calc(100% - 12px) 50%;
+  background-size:
+    5px 5px,
+    5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+  text-overflow: ellipsis;
+}
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--color-accent);
+}
+select:hover:not(:disabled) {
+  border-color: rgb(var(--accent-rgb) / 0.45);
+}
+select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+select option {
+  background: rgb(var(--bg-rgb));
+  color: var(--t1);
+}
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgb(var(--accent-rgb) / 0.15);
+}
+:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 2px;
+}
+
+/* Pills and tags: uppercase mono, hard corners. */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: var(--radius-cut);
+  background: rgba(51, 51, 55, 0.36);
+  border: 1px solid rgb(var(--ov-rgb) / 0.12);
+  color: var(--t3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.5;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.tag-accent {
+  background: rgba(38, 89, 118, 0.28);
+  border-color: rgb(var(--accent-rgb) / 0.28);
+  color: var(--c-sky);
+}
+.tag-green {
+  background: rgba(31, 90, 60, 0.3);
+  border-color: rgba(126, 231, 135, 0.3);
+  color: var(--c-green);
+}
+.tag-amber {
+  background: rgba(91, 63, 32, 0.34);
+  border-color: rgba(240, 160, 64, 0.28);
+  color: var(--c-amber);
+}
+.tag-red {
+  background: rgba(91, 32, 32, 0.34);
+  border-color: rgba(255, 107, 107, 0.3);
+  color: var(--c-red);
+}
+.tag-magenta {
+  background: rgba(90, 20, 76, 0.3);
+  border-color: rgba(255, 43, 214, 0.35);
+  color: #ff8de6;
+}
+.state-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  background: rgb(0 0 0 / calc(var(--well-k) * 0.2));
+  border: 1px solid rgb(var(--ov-rgb) / 0.08);
+  color: var(--t3);
+  transition:
+    color var(--motion-base) var(--ease-out),
+    border-color var(--motion-base) var(--ease-out);
+}
+.state-pill.is-working {
+  color: var(--c-amber);
+  border-color: rgba(255, 176, 32, 0.4);
+  box-shadow: 0 0 10px rgba(255, 176, 32, 0.25);
+}
+.state-pill.is-ok {
+  color: var(--c-green);
+  border-color: rgba(126, 231, 135, 0.3);
+}
+.state-pill.is-off {
+  color: var(--c-red);
+  border-color: rgba(255, 107, 107, 0.3);
+}
+
+/* The status dot of a kitty. */
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--t4);
+  flex: none;
+}
+.dot.running {
+  background: var(--c-green);
+  box-shadow: 0 0 8px rgba(126, 231, 135, 0.7);
+}
+.dot.error {
+  background: var(--c-red);
+  box-shadow: 0 0 8px rgba(255, 107, 107, 0.7);
+}
+.dot.stopped,
+.dot.sleeping {
+  background: var(--c-amber);
+}
+.dot.starting,
+.dot.stopping {
+  background: var(--color-accent);
+  animation: dot-pulse 1.2s ease-in-out infinite;
+}
+@keyframes dot-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* Rows of the sidebar. */
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-cut);
+  border: 1px solid transparent;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+  animation: motion-enter-left var(--motion-base) var(--ease-out) backwards;
+}
+.row:hover {
+  background: rgb(var(--ov-rgb) / 0.05);
+}
+.row.on {
+  background: rgb(var(--accent-rgb) / 0.1);
+  border-color: rgb(var(--accent-rgb) / 0.3);
+}
+.row-hit {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.row > :not(.row-hit) {
+  position: relative;
+  pointer-events: none;
+}
+.row > .row-actions {
+  pointer-events: auto;
+}
+.section-title {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--t4);
+  margin: 14px 10px 6px;
+}
+
+/* ─── Messages: full width, told apart by colour ───────────────────────────────────────────
+ * The person's turn carries the accent bar and a cyan tint; a kitty's stays neutral with its
+ * name floating on the top edge of the card. The cards are nearly solid: what a kitty does has
+ * to read well over any wallpaper. */
+.msg {
+  position: relative;
+  width: auto;
+  max-width: 100%;
+  padding: 12px 16px 12px 18px;
+  border-radius: var(--radius-cut);
+  background: rgb(var(--bg-rgb) / 0.94);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgb(var(--ov-rgb) / 0.08);
+  animation: motion-rise-in var(--motion-base) var(--ease-out) backwards;
+  overflow-wrap: anywhere;
+}
+.msg.user {
+  border-left: 3px solid var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 8%, rgb(var(--bg-rgb) / 0.94));
+}
+.msg.agent {
+  border-left: 3px solid rgb(var(--ov-rgb) / 0.14);
+  margin-top: 8px;
+  padding-left: 66px;
+}
+.msg-cat {
+  position: absolute;
+  left: 14px;
+  top: 10px;
+}
+.msg.agent.working {
+  border-left-color: var(--c-amber);
+}
+.msg[data-who]::before {
+  content: attr(data-who);
+  display: block;
+  margin-bottom: 2px;
+  font-size: 0.72em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+.msg.agent[data-who]::before {
+  position: absolute;
+  top: 0;
+  left: 10px;
+  margin: 0;
+  padding: 0 6px;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  color: var(--t3);
+  background: var(--s1);
+  border: 1px solid rgb(var(--ov-rgb) / 0.08);
+  border-radius: var(--radius-cut);
+}
+.msg .text {
+  white-space: pre-wrap;
+  line-height: 1.55;
+  font-size: 15px;
+}
+.msg .text code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  padding: 1px 5px;
+  background: rgb(var(--ov-rgb) / 0.08);
+  border-radius: var(--radius-cut);
+}
+.msg .text strong {
+  color: var(--t1);
+}
+.msg .meta {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  font-size: 11px;
+  color: var(--t4);
+  font-family: var(--font-mono);
+}
+
+/* ─── The steps trail: what a kitty did on its desktop ───────────────────────────────────── */
+.trail {
+  margin: 10px 0 4px;
+  border-left: 1px dashed rgb(var(--neon-rgb) / 0.35);
+  padding-left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.step {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+  align-items: start;
+  font-size: 12.5px;
+  animation: motion-enter-left var(--motion-base) var(--ease-out) backwards;
+}
+/* A limit a kitty set on itself, in the chat, with its undo. */
+.limit-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--t2);
+  border: 1px solid rgb(var(--accent-rgb) / 0.3);
+  background: rgb(var(--accent-rgb) / 0.07);
+  border-radius: var(--radius-cut);
+}
+/* The technical details, when the person asked to see them. */
+.tech {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--t4);
+}
+.tech-detail {
+  margin-top: 6px;
+  padding: 6px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--t3);
+  white-space: pre-wrap;
+  background: rgb(var(--ov-rgb) / 0.05);
+  border-radius: var(--radius-cut);
+}
+/* Each step is a sentence after a dot: sky while it goes, green when done, red if it failed. */
+.step .what {
+  width: 7px;
+  height: 7px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--c-sky);
+}
+.step .what.failed {
+  background: var(--c-red);
+}
+.step .what.done {
+  background: var(--c-green);
+}
+.step .how {
+  color: var(--t2);
+  font-size: 13.5px;
+  overflow-wrap: anywhere;
+}
+.step .how code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--t2);
+}
+.step .shot {
+  grid-column: 2;
+  margin-top: 2px;
+}
+.shot-thumb {
+  display: block;
+  width: 220px;
+  max-width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  border: 1px solid rgb(var(--neon-rgb) / 0.4);
+  box-shadow: 0 0 10px rgb(var(--neon-rgb) / 0.2);
+  border-radius: var(--radius-cut);
+  background: #000;
+  cursor: zoom-in;
+  padding: 0;
+}
+.working-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--c-amber);
+  font-size: 12px;
+  margin-top: 8px;
+}
+.spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 176, 32, 0.25);
+  border-top-color: var(--c-amber);
+  border-radius: 50%;
+  animation: kspin 0.8s linear infinite;
+}
+@keyframes kspin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* The desktop drawer's live picture. */
+/* The live desktop: a frame around the picture, cyan while the person has the controls. */
+.live-surface {
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  background: #000;
+}
+.live-surface.is-control {
+  border-color: var(--neon-cyan);
+  box-shadow: var(--glow-cyan);
+}
+.live-surface.is-control .live-stage canvas,
+.live-surface.is-control .live-stage img {
+  cursor: crosshair;
+}
+.live-surface.is-dragging .live-stage canvas,
+.live-surface.is-dragging .live-stage img {
+  cursor: grabbing;
+}
+/* Watching: one click on the picture takes the controls, and a chip says so. */
+.live-surface.is-takeable .live-stage canvas,
+.live-surface.is-takeable .live-stage img {
+  cursor: pointer;
+}
+.live-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font: 11px/1.4 var(--font-mono);
+  letter-spacing: 0.04em;
+  color: var(--neon-cyan);
+  background: rgba(8, 10, 14, 0.82);
+  border: 1px solid rgb(0 240 255 / 0.45);
+  pointer-events: none;
+  opacity: 0.8;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+.live-surface:hover .live-hint {
+  opacity: 1;
+}
+/* The picture, as large as the room allows; the marks over it sit in its own pixels. */
+.live-stage {
+  position: relative;
+  line-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+}
+.live-stage canvas,
+.live-stage img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.live-gesture {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.live-gesture line {
+  stroke: var(--neon-cyan);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.9));
+}
+/* Where the button went down (and where a drag would end). */
+.live-press {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  background: rgb(0 240 255 / 0.35);
+  border: 2px solid var(--neon-cyan);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+.live-press.is-end {
+  background: rgb(126 231 135 / 0.35);
+  border-color: var(--c-green);
+}
+/* A ring where an input went: it grows and fades. */
+.live-ring {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  border-radius: 50%;
+  border: 3px solid var(--neon-cyan);
+  box-shadow:
+    0 0 0 2px rgba(0, 0, 0, 0.55),
+    0 0 12px rgb(0 240 255 / 0.7);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 700 16px/1 var(--font-mono);
+  color: #fff;
+  animation: live-ring 0.8s ease-out forwards;
+}
+.live-ring.is-double {
+  border-style: double;
+  border-width: 6px;
+}
+.live-ring.is-right {
+  border-color: var(--c-amber);
+}
+.live-ring.is-drag {
+  border-color: var(--c-green);
+}
+.live-ring.is-up,
+.live-ring.is-down {
+  border-color: var(--c-amber);
+  border-style: dashed;
+}
+@keyframes live-ring {
+  from {
+    transform: scale(0.35);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-ring {
+    animation: live-ring-still 0.8s linear forwards;
+  }
+  @keyframes live-ring-still {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+}
+/* One line that says what the person's input is doing: ready, being sent, or waiting. */
+.live-activity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  border: 1px solid rgb(var(--ov-rgb) / 0.12);
+  background: rgba(51, 51, 55, 0.28);
+  color: var(--t2, var(--t3));
+}
+.live-activity.is-busy {
+  border-color: rgba(255, 176, 32, 0.4);
+  color: var(--c-amber);
+}
+.live-activity.is-drag {
+  border-color: rgb(0 240 255 / 0.5);
+  color: var(--neon-cyan);
+}
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c-green);
+  box-shadow: 0 0 6px var(--c-green);
+}
+.live-shot {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: contain;
+  background: #000;
+  border: 1px solid rgb(var(--neon-rgb) / 0.4);
+  box-shadow: var(--glow-cyan);
+  border-radius: var(--radius-cut);
+}
+
+/* The empty state. */
+.empty-card {
+  color: var(--t1);
+  background: var(--s1);
+  border: 1px solid rgb(var(--neon-rgb) / 0.35);
+  box-shadow: 0 0 12px rgb(var(--neon-rgb) / 0.18);
+  border-radius: var(--radius-cut);
+  animation: motion-pop-in var(--motion-slower) var(--ease-out) backwards;
+}
+
+/* ?motion=off: a still page, for a screenshot or a test. */
+html[data-motion="off"] *,
+html[data-motion="off"] *::before,
+html[data-motion="off"] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--ov-rgb) / 0.15) transparent;
+}
+
+/* ─── The pixel cats ──────────────────────────────────────────────────────────────────────── */
+.pixelcat {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  image-rendering: pixelated;
+  vertical-align: middle;
+}
+.pixelcat svg {
+  display: block;
+}
+.pixelcat.mood-idle svg {
+  animation: cat-breathe 2.4s ease-in-out infinite;
+}
+.pixelcat.mood-sleeping svg {
+  animation: cat-breathe 3.6s ease-in-out infinite;
+  transform-origin: 50% 100%;
+}
+.pixelcat.mood-happy svg {
+  animation: cat-bounce 0.7s var(--ease-spring) infinite;
+  transform-origin: 50% 100%;
+}
+.pixelcat.mood-talking svg {
+  animation: cat-nod 0.76s ease-in-out infinite;
+  transform-origin: 50% 100%;
+}
+.pixelcat.mood-thinking svg {
+  animation: cat-tilt 1.6s ease-in-out infinite;
+  transform-origin: 50% 90%;
+}
+.pixelcat.mood-working svg {
+  animation: cat-work 0.52s steps(2, end) infinite;
+  transform-origin: 50% 100%;
+}
+.pixelcat.mood-error svg {
+  animation: cat-shake 0.5s ease-in-out infinite;
+  filter: drop-shadow(0 0 4px rgba(255, 107, 107, 0.7));
+}
+@keyframes cat-breathe {
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(1.04);
+  }
+}
+@keyframes cat-bounce {
+  0%,
+  100% {
+    transform: translateY(0) scale(1, 1);
+  }
+  40% {
+    transform: translateY(-14%) scale(0.96, 1.06);
+  }
+  70% {
+    transform: translateY(0) scale(1.04, 0.95);
+  }
+}
+@keyframes cat-nod {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  50% {
+    transform: rotate(-4deg) translateY(-2%);
+  }
+}
+@keyframes cat-tilt {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  50% {
+    transform: rotate(7deg);
+  }
+}
+@keyframes cat-work {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(-5%);
+  }
+}
+@keyframes cat-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-6%) rotate(-3deg);
+  }
+  75% {
+    transform: translateX(6%) rotate(3deg);
+  }
+}
+.cat-bubble,
+.cat-zzz,
+.cat-spark {
+  position: absolute;
+  right: -0.35em;
+  top: -0.55em;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  line-height: 1;
+  font-size: 0.42em;
+  pointer-events: none;
+}
+.cat-bubble {
+  color: var(--c-sky);
+  letter-spacing: 0.1em;
+}
+.cat-zzz {
+  color: var(--c-violet);
+  animation: cat-float 2.4s ease-in-out infinite;
+}
+.cat-spark {
+  color: var(--neon-yellow);
+  animation: cat-twinkle 0.52s steps(2, end) infinite;
+}
+@keyframes cat-float {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0.3em);
+  }
+  30%,
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(0.5em, -0.9em);
+  }
+}
+@keyframes cat-twinkle {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.2;
+  }
+}
+html[data-motion="off"] .pixelcat svg,
+html[data-motion="off"] .cat-zzz,
+html[data-motion="off"] .cat-spark {
+  animation: none;
+}
+
+/* The picker. */
+.cat-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 6px 6px;
+  border: 1px solid rgb(var(--ov-rgb) / 0.08);
+  border-radius: var(--radius-cut);
+  background: rgb(var(--ov-rgb) / 0.03);
+  color: var(--t3);
+  width: 72px;
+}
+.cat-choice.on {
+  border-color: var(--neon-cyan);
+  box-shadow: var(--glow-cyan);
+  color: var(--t1);
+  background: rgb(var(--accent-rgb) / 0.08);
+}
+.cat-swatch {
+  width: 26px;
+  height: 26px;
+  border: 2px solid;
+  border-radius: var(--radius-cut);
+}
+.cat-swatch.on {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 2px;
+  box-shadow: var(--glow-cyan);
+}
+.avatar-stage {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 18px 12px 10px;
+  background:
+    radial-gradient(ellipse at 50% 120%, rgb(var(--accent-rgb) / 0.22), transparent 60%),
+    rgb(0 0 0 / calc(var(--well-k) * 0.25));
+  border: 1px solid rgb(var(--neon-rgb) / 0.3);
+  border-radius: var(--radius-cut);
+}
+.mood-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.mood-row button {
+  font-size: 10px;
+}
+
+/* A document of the library: a reading size and its own scroll. */
+.skill-body {
+  max-height: 20rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--t2);
+  padding: 10px;
+  background: rgb(0 0 0 / calc(var(--well-k) * 0.22));
+  border-radius: var(--radius-cut);
+}
+
+/* ─── The connector catalogue: one button per service, with its logo ─────────────────────── */
+.service-btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 112px;
+  min-height: 86px;
+  padding: 10px 6px;
+  background: rgb(var(--ov-rgb) / 0.04);
+  border: 1px solid rgb(var(--ov-rgb) / 0.08);
+  color: var(--t2);
+  font-size: 0.75rem;
+  line-height: 1.15;
+  text-align: center;
+  position: relative;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+.service-btn > span {
+  overflow-wrap: anywhere;
+}
+.service-btn:hover {
+  background: rgb(var(--ov-rgb) / 0.09);
+  border-color: color-mix(in srgb, var(--brand, var(--color-accent)) 60%, transparent);
+  color: var(--t1);
+  transform: translateY(-1px);
+}
+.service-btn.on {
+  background: rgb(var(--accent-rgb) / 0.12);
+  border-color: rgb(var(--accent-rgb) / 0.5);
+  color: var(--t1);
+}
+.service-btn .logo,
+.service-btn .logo-fallback {
+  display: block;
+  color: var(--brand, var(--color-accent));
+}
+.service-oauth {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 1px 4px;
+  color: var(--t3);
+  border: 1px solid rgb(var(--ov-rgb) / 0.15);
+}
+.service-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  background: rgb(var(--ov-rgb) / 0.05);
+  border: 1px solid rgb(var(--ov-rgb) / 0.1);
+  color: var(--brand, var(--color-accent));
+}
+.logo-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--brand, var(--color-accent));
+  border: 1.5px solid currentColor;
+  border-radius: 4px;
+}
+
+/* A chip with the logo of the service a kitty used. */
+.tag-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.tag-logo .logo,
+.tag-logo .logo-fallback {
+  color: currentColor;
+}
+
+/* ─── The agenda: goals, the journal, a kitty asking for help ─────────────────────────────── */
+.goal {
+  padding: 8px 10px;
+  border: 1px solid rgb(var(--ov-rgb) / 0.08);
+  background: rgb(var(--ov-rgb) / 0.03);
+  font-size: 0.85rem;
+}
+.goal.off {
+  opacity: 0.6;
+}
+.journal {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.8rem;
+  min-width: 0;
+}
+.journal-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.msg.scheduler {
+  border-left-color: #ff8de6;
+}
+.msg.needs-help {
+  border-color: rgb(255 191 71 / 0.6);
+  box-shadow: 0 0 0 1px rgb(255 191 71 / 0.25);
+}
+.help-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--c-amber);
+  font-size: 12px;
+  margin-bottom: 6px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ─── Approvals, feedback, memory ─────────────────────────────────────────────────────────── */
+.approval {
+  padding: 10px 12px;
+  border: 1px solid rgb(255 191 71 / 0.35);
+  background: rgb(255 191 71 / 0.05);
+}
+.approval-summary {
+  margin: 8px 0 4px;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.approval-args {
+  margin: 6px 0 0;
+  padding: 8px;
+  max-height: 160px;
+  overflow: auto;
+  background: rgb(0 0 0 / 0.25);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+}
+.msg.approval-turn {
+  border-left-color: var(--c-amber);
+}
+.feedback {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.feedback .fb {
+  padding: 3px;
+  color: var(--t4);
+  opacity: 0.7;
+}
+.feedback .fb:hover {
+  color: var(--t1);
+  opacity: 1;
+}
+.feedback .fb.on.up {
+  color: var(--c-green, #5ef0a0);
+  opacity: 1;
+}
+.feedback .fb.on.down {
+  color: var(--c-red);
+  opacity: 1;
+}
+.feedback-ask {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.feedback-ask input {
+  width: 240px;
+  max-width: 50vw;
+  padding: 3px 8px;
+  font-size: 0.75rem;
+}
+
+/* The top bars are the window's handle in the desktop app (Wails reads --wails-draggable), and
+   what is on them stays clickable. */
+.titlebar {
+  --wails-draggable: drag;
+  user-select: none;
+}
+.titlebar button,
+.titlebar a,
+.titlebar input,
+.titlebar select,
+.titlebar .state-pill {
+  --wails-draggable: no-drag;
+}
+
+/* macOS hides the title bar in the app and draws the red, yellow and green buttons over the
+   page's top-left corner (about 76px wide): the first bar keeps clear of them. */
+html.mac-inset aside .titlebar {
+  padding-left: 88px;
+  padding-top: 18px;
+  padding-bottom: 14px;
+}
+@media (max-width: 767px) {
+  html.mac-inset header.titlebar {
+    padding-left: 88px;
+  }
+}
+@media (min-width: 768px) {
+  html.mac-inset header.titlebar {
+    padding-top: 18px;
+    padding-bottom: 14px;
+  }
+}
+
+/* ─── Settings for people: cards, rows, chips, "more options" and callouts ────────────────── */
+.form-card {
+  margin-top: 12px;
+  padding: 16px;
+  border: 1px solid rgb(var(--accent-rgb) / 0.3);
+  background: rgb(var(--accent-rgb) / 0.05);
+}
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgb(var(--ov-rgb) / 0.04);
+  border: 1px solid rgb(var(--ov-rgb) / 0.08);
+}
+.pick-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  text-align: left;
+  background: rgb(var(--ov-rgb) / 0.04);
+  border: 1px solid rgb(var(--ov-rgb) / 0.1);
+  color: var(--t1);
+  transition:
+    background 160ms ease,
+    border-color 160ms ease;
+}
+.pick-card:hover {
+  background: rgb(var(--accent-rgb) / 0.1);
+  border-color: rgb(var(--accent-rgb) / 0.5);
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  font-size: 0.75rem;
+  border: 1px solid rgb(var(--ov-rgb) / 0.14);
+  background: rgb(var(--ov-rgb) / 0.04);
+  color: var(--t3);
+  cursor: pointer;
+  border-radius: 999px;
+}
+.chip.on {
+  border-color: rgb(var(--accent-rgb) / 0.6);
+  background: rgb(var(--accent-rgb) / 0.14);
+  color: var(--t1);
+}
+.more > summary {
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: var(--t3);
+  list-style: none;
+  user-select: none;
+}
+.more > summary::before {
+  content: "▸ ";
+}
+.more[open] > summary::before {
+  content: "▾ ";
+}
+.more > summary:hover {
+  color: var(--t1);
+}
+/* The configuration of a kitty: closed until the person wants to change something. */
+.config {
+  border: 1px solid rgb(var(--neon-rgb) / 0.3);
+}
+.config > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--t3);
+}
+.config > summary::before {
+  content: "▸";
+}
+.config[open] > summary::before {
+  content: "▾";
+}
+.config[open] > summary {
+  border-bottom: 1px solid rgb(var(--neon-rgb) / 0.3);
+}
+.config > summary:hover {
+  color: var(--t1);
+}
+.callout {
+  padding: 10px 12px;
+  border: 1px solid rgb(var(--accent-rgb) / 0.35);
+  background: rgb(var(--accent-rgb) / 0.08);
+  font-size: 0.85rem;
+}
+.callout-warn {
+  border-color: color-mix(in srgb, var(--c-amber) 55%, transparent);
+  background: color-mix(in srgb, var(--c-amber) 10%, transparent);
+}
+.callout-ok {
+  border-color: color-mix(in srgb, var(--c-green) 55%, transparent);
+  background: color-mix(in srgb, var(--c-green) 10%, transparent);
+  color: var(--t1);
+}
+.checklist li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid rgb(var(--ov-rgb) / 0.08);
+}
+.checklist .mark {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgb(var(--ov-rgb) / 0.25);
+  font-size: 0.75rem;
+  color: var(--t3);
+}
+.checklist .done .mark {
+  background: var(--c-green);
+  border-color: var(--c-green);
+  color: #fff;
+}
+/* A provider's mark on a small tile, with its health dot in the corner. */
+.provider-badge {
+  position: relative;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(var(--ov-rgb) / 0.06);
+  border: 1px solid rgb(var(--ov-rgb) / 0.1);
+  color: var(--t1);
+}
+.provider-badge .provider-dot {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+}
+.pick-card {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Paying with a key or with a subscription: two cards, one chosen. */
+.way {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  text-align: left;
+  background: rgb(var(--ov-rgb) / 0.04);
+  border: 1px solid rgb(var(--ov-rgb) / 0.12);
+  color: var(--t2);
+}
+.way.on {
+  border-color: rgb(var(--accent-rgb) / 0.6);
+  background: rgb(var(--accent-rgb) / 0.12);
+  color: var(--t1);
+}
+/* The ways to connect sit side by side, and wrap on a phone. */
+.ways {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ways .way {
+  flex: 1 1 180px;
+}
+.steps {
+  list-style: decimal;
+  padding-left: 1.2rem;
+}
+.steps li {
+  padding: 4px 0;
+}
+.command {
+  display: block;
+  padding: 6px 8px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  background: rgb(var(--ov-rgb) / 0.06);
+  border: 1px solid rgb(var(--ov-rgb) / 0.1);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+/* ─── A chat with a task on a desktop: two columns (chat | desktop), two tabs on a phone ───── */
+.conv {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.conv-chat {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.conv-tabs,
+.conv-desk {
+  display: none;
+}
+.desk-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 3px 8px;
+  font-size: 12px;
+  color: var(--t3);
+  border: 1px solid rgb(var(--neon-rgb) / 0.3);
+  border-radius: var(--radius-cut);
+}
+.desk-link:hover {
+  color: var(--t1);
+}
+.desk-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--t4);
+}
+.desk-tasks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.desk-task {
+  padding: 2px 8px;
+  font-size: 12px;
+  color: var(--t3);
+  border: 1px solid rgb(var(--ov-rgb) / 0.12);
+  border-radius: var(--radius-cut);
+}
+.desk-task.on {
+  color: var(--t1);
+  border-color: var(--color-accent);
+}
+.desk-hero {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  flex: none;
+  padding: 0 0 6px;
+  background: rgb(var(--bg-rgb) / 0.96);
+}
+.shot-thumb.shot-latest {
+  width: 100%;
+}
+.shot-fold {
+  grid-column: 2;
+  justify-self: start;
+  padding: 2px 6px;
+  color: var(--t3);
+  border: 1px solid rgb(var(--ov-rgb) / 0.12);
+  border-radius: var(--radius-cut);
+}
+.shot-fold[aria-expanded="true"] {
+  color: var(--t1);
+  border-color: rgb(var(--neon-rgb) / 0.4);
+}
+.conv-desk .trail {
+  flex: none;
+  margin: 0;
+}
+.conv-desk .step .shot .shot-thumb {
+  width: 100%;
+  max-width: 260px;
+}
+.desk-strip {
+  display: none;
+}
+.conv-bar {
+  display: none;
+}
+.desk-hero {
+  position: sticky;
+}
+.desk-walk {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--t3);
+}
+.desk-walk button {
+  min-width: 36px;
+  min-height: 32px;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--t2);
+  border: 1px solid rgb(var(--ov-rgb) / 0.12);
+  border-radius: var(--radius-cut);
+}
+.desk-walk button:disabled {
+  opacity: 0.35;
+}
+
+/* A phone: the tabs choose one column; the strip under the chat keeps the latest picture and
+   step in view without covering the answer. */
+@media (max-width: 767px) {
+  .conv-split .conv-tabs {
+    display: flex;
+    gap: 6px;
+    padding: 8px 16px 0;
+  }
+  .conv-tab {
+    flex: 1;
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    min-height: 40px;
+    font-size: 14px;
+    color: var(--t3);
+    border-bottom: 2px solid rgb(var(--ov-rgb) / 0.12);
+  }
+  .conv-tab.on {
+    color: var(--t1);
+    border-bottom-color: var(--color-accent);
+  }
+  .conv-split.tab-chat .conv-desk {
+    display: none;
+  }
+  .conv-split.tab-desk .conv-chat {
+    display: none;
+  }
+  .conv-split.tab-desk .conv-desk {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 16px;
+    overflow-y: auto;
+    background: rgb(var(--bg-rgb) / 0.94);
+  }
+  .conv-split.tab-chat .desk-strip {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 16px;
+    border-top: 1px solid rgb(var(--ov-rgb) / 0.1);
+    background: rgb(var(--bg-rgb) / 0.94);
+  }
+  .desk-strip .shot-thumb {
+    width: 72px;
+    flex: none;
+  }
+  .desk-strip-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    text-align: left;
+    font-size: 13px;
+    color: var(--t2);
+  }
+}
+
+/* A window: the desktop is a column beside the chat. */
+@media (min-width: 768px) {
+  .conv-split {
+    flex-direction: row;
+  }
+  .conv-split .conv-chat {
+    flex: 1 1 55%;
+  }
+  .conv-split .conv-bar {
+    display: block;
+    flex: none;
+    width: 6px;
+    margin: 0 -3px;
+    z-index: 2;
+    cursor: col-resize;
+    touch-action: none;
+  }
+  .conv-bar:hover,
+  .conv-bar:focus-visible {
+    background: rgb(var(--neon-rgb) / 0.4);
+  }
+  .conv-split .conv-desk {
+    display: flex;
+    flex: none;
+    width: var(--desk-w, 45%);
+    max-width: 70%;
+    min-width: 300px;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px 16px 12px;
+    overflow-y: auto;
+    border-left: 1px solid rgb(var(--ov-rgb) / 0.1);
+    background: rgb(var(--bg-rgb) / 0.94);
+  }
+}

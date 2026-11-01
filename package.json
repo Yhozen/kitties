@@ -5,7 +5,7 @@
   "scripts": {
     "check": "vp check",
     "test": "vp test --run",
-    "build": "vp run build -r",
+    "build": "vp run -r build",
     "dev": "pnpm --filter @kitties/gateway dev"
   },
   "dependencies": {

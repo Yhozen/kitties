@@ -3,13 +3,18 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "alchemy dev --stage dev",
-    "plan": "alchemy plan --stage dev",
-    "deploy": "alchemy deploy --stage dev",
-    "build": "tsc --noEmit -p ../../tsconfig.json"
+    "dev": "alchemy dev --stage local",
+    "plan": "alchemy plan",
+    "deploy": "alchemy deploy",
+    "build": "tsc --noEmit -p ../../tsconfig.json",
+    "probe:engine": "node scripts/probe-engine.mjs"
   },
   "dependencies": {
     "@alchemy.run/cloudflare": "2.0.0-beta.84",
+    "@effect/sql-sqlite-do": "4.1.1",
+    "@kitties/api": "workspace:*",
+    "@kitties/domain": "workspace:*",
+    "@kitties/protocol": "workspace:*",
     "alchemy": "2.0.0-beta.84",
     "effect": "4.1.1"
   }

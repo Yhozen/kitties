@@ -52,3 +52,6 @@ node_modules/
 .alchemy/
 apps/*/dist/
 packages/*/dist/
+
+apps/web/test-results/
+apps/web/playwright-report/

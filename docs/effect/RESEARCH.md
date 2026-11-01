@@ -166,3 +166,28 @@ Alchemy deployed the Effect hello Worker and static assets at `https://dev.kitti
 with workers.dev/previews off, owner-only Access and 300000 ms CPU configured.
 The branch-protection API returned 403 to the GitHub integration; no branch rule was changed.
 Legacy enforcement is removed in Makefile/CI and their development/deployment documentation.
+
+## Phase 3 observations — 2026-11-01
+
+Effect-native actors on `@effect/sql-sqlite-do` and the DO workflow engine run under real workerd.
+Local acceptance passed for short durable clocks, signals, failure journaling, interruption,
+3/50/200/500-entry replay, a workerd SIGKILL, concurrent children joined in fixed order, and
+SuspendOnFailure followed by dependency repair and explicit resume. The prior side effect remains
+journaled once. See [raw evidence](evidence/README.md). Signal-to-result wall time is not CPU.
+
+The actual Alchemy callback parks after **eight attempts without progress**, with an hourly
+recovery wake. A 15-minute wall cutoff is a platform constraint, not a configurable automatic
+segmenter in DurableObjectEngine. Application workflows must keep segments below ten minutes,
+use durable clocks for every poll, and split attempts into children. Do not interrupt a side
+effect with `Effect.timeout`; reconcile its durable receipt instead.
+
+The PWA shell passes four Chrome desktop/mobile tests, including offline navigation with owner
+APIs excluded from the service worker cache. Real iOS installation remains untested.
+
+`alchemy dev --stage dev` replaced the earlier cloud dev resource with a local resource because
+both use the same stage state. Production was unaffected. Local development now uses the
+dedicated `local` stage; cloud `dev`, `e2e`, `next` and production stay separate.
+
+The isolated Boat capability VM has glibc 2.39, AVX2, Node 24.22.1, Chrome, xdotool, AT-SPI core
+and an active 1920×1080 X display. CDP is not listening by default. This VM uses `noEnv: true`,
+name `kn-spike-g1` and the deployment label `next-1793547500`; the archived Go fleet was untouched.
