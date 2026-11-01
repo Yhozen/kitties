@@ -1,0 +1,11 @@
+! The terminal in Kitties' monospace font and colours.
+XTerm*faceName: JetBrainsMono NFM
+XTerm*faceSize: 10
+XTerm*background: #1e222b
+XTerm*foreground: #e6e8ee
+XTerm*cursorColor: #00f0ff
+XTerm*internalBorder: 6
+XTerm*scrollBar: false
+XTerm*selectToClipboard: true
+XTerm*color4: #6ea8fe
+XTerm*color12: #8ab4ff

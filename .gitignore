@@ -55,3 +55,5 @@ packages/*/dist/
 
 apps/web/test-results/
 apps/web/playwright-report/
+
+guest/*/dist/

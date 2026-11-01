@@ -1,0 +1,12 @@
+{
+  "agentBrowser": {
+    "version": "0.41.1",
+    "url": "https://registry.npmjs.org/agent-browser/-/agent-browser-0.41.1.tgz",
+    "integrity": "sha512-9DhCeIhcpxu3Mj+f25Bolk6N+BT5SpOttRSZw0Ytz5MZ8zpKeVp2bv9Zxo1gajlvZE3l//rOoiRdq+qTYHBg1Q=="
+  },
+  "agentDesktop": {
+    "version": "1.0.2",
+    "url": "https://github.com/vercel-labs/agent-desktop/releases/download/v1.0.2/agent-desktop-v1.0.2-x86_64-unknown-linux-gnu.tar.gz",
+    "sha256": "ad661b7a3fd8f990a769243f4889a240ca0e2c8dab3ef5bddd6019086c71e0b4"
+  }
+}

@@ -1,0 +1,22 @@
+[Unit]
+Description=Kitties virtual machine desktop
+After=network.target
+
+[Service]
+Type=simple
+User=kitty
+Group=kitty
+WorkingDirectory=/home/kitty/work
+Environment=HOME=/home/kitty
+Environment=DISPLAY=:99
+Environment=LANG=C.UTF-8
+Environment=GTK_THEME=Adwaita:dark
+Environment=SAL_USE_VCLPLUGIN=gtk3
+ExecStart=/usr/bin/dbus-run-session -- /usr/local/bin/kitty-desktop
+Restart=on-failure
+RestartSec=2
+KillMode=control-group
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

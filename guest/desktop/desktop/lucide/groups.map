@@ -1,0 +1,14 @@
+# The groups of applications of the Lucide icon pack: the name, and the top and bottom colours of the
+# gradient of its icons' square. The glyph is white on them, so the lighter (top) colour must keep
+# a contrast of 3:1 against white; build-theme.py stops the build when it doesn't.
+# group        top      bottom
+internet       #3b82f6  #1d4ed8
+office         #ea580c  #c2410c
+multimedia     #a855f7  #7e22ce
+system         #64748b  #334155
+development    #059669  #047857
+graphics       #ec4899  #be185d
+games          #ef4444  #b91c1c
+files          #d97706  #b45309
+accessories    #0d9488  #0f766e
+other          #6366f1  #4338ca

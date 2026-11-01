@@ -1,0 +1,13 @@
+{
+  "name": "@kitties/kittyd",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build src/index.ts --compile --target=bun-linux-x64-baseline --outfile dist/kittyd",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "release": "node scripts/release.mjs"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.4"
+  }
+}

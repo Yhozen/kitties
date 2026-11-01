@@ -1,0 +1,23 @@
+
+# Kitties: the menus wear the same dark material as the shelf's islands
+menu.border.width: 1
+menu.border.color: #30353c
+
+menu.title.bg: flat solid
+menu.title.bg.color: #21252b
+menu.title.text.color: #8f969e
+menu.title.text.justify: left
+
+menu.items.bg: flat solid
+menu.items.bg.color: #21252b
+menu.items.text.color: #e7e9e8
+menu.items.disabled.text.color: #6b727a
+
+menu.items.active.bg: flat solid
+menu.items.active.bg.color: #353b43
+menu.items.active.text.color: #ffffff
+
+menu.separator.color: #353b43
+menu.separator.width: 1
+menu.separator.padding.width: 8
+menu.separator.padding.height: 5

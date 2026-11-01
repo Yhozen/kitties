@@ -26,6 +26,13 @@ export const Action = Schema.Struct({
     "clipboard_read",
     "clipboard_write",
     "quiesce",
+    "type_secret",
+    "browser_read",
+    "browser_click",
+    "browser_type",
+    "ui_read",
+    "ui_click",
+    "ui_type",
   ]),
   args: Schema.Record(Schema.String, Schema.Unknown),
 });
@@ -37,4 +44,11 @@ export const Ack = Schema.Struct({
   epoch: Schema.Number,
   status: Schema.Literals(["completed", "failed", "unknown"]),
   result: Schema.optional(Schema.String),
+  timings: Schema.optional(
+    Schema.Struct({
+      receivedAt: Schema.Number,
+      startedAt: Schema.Number,
+      completedAt: Schema.Number,
+    }),
+  ),
 });
