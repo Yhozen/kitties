@@ -7,6 +7,11 @@ import * as HttpApiGroup from "effect/http-api/HttpApiGroup";
 import * as Schema from "effect/Schema";
 import { Id } from "@kitties/domain";
 import {
+  ChatgptAccountView,
+  ChatgptLinkInput,
+  ChatgptLinkView,
+  ChatgptModelView,
+  ChatgptProbeView,
   ProviderInput,
   ProviderView,
   KittyInput,
@@ -80,22 +85,38 @@ export const Api = HttpApi.make("Kitties").add(
     HttpApiEndpoint.get("features", "/v1/features", {
       success: Schema.Struct({ chatgpt: Schema.Boolean }),
     }),
-    HttpApiEndpoint.get("status", "/v1/providers/:id/signin", {
-      params: { id: Id },
-      success: Schema.Struct({ status: Schema.String }),
+  ),
+  HttpApiGroup.make("chatgpt").add(
+    HttpApiEndpoint.get("accounts", "/v1/chatgpt/accounts", {
+      success: Schema.Array(ChatgptAccountView),
     }),
-    HttpApiEndpoint.post("start", "/v1/providers/:id/signin", {
+    HttpApiEndpoint.get("account", "/v1/chatgpt/accounts/:id", {
       params: { id: Id },
-      success: Schema.Struct({ url: Schema.String, expiresAt: Schema.Number }),
+      success: ChatgptAccountView,
     }),
-    HttpApiEndpoint.post("finish", "/v1/providers/:id/signin/finish", {
+    HttpApiEndpoint.delete("disconnect", "/v1/chatgpt/accounts/:id", {
       params: { id: Id },
-      payload: Schema.Struct({ url: Schema.String }),
-      success: Schema.Struct({ ok: Schema.Boolean }),
+      success: Schema.Struct({ revocationConfirmed: Schema.Boolean }),
     }),
-    HttpApiEndpoint.delete("disconnect", "/v1/providers/:id/signin", {
+    HttpApiEndpoint.get("models", "/v1/chatgpt/accounts/:id/models", {
       params: { id: Id },
-      success: Schema.Void,
+      success: Schema.Array(ChatgptModelView),
+    }),
+    HttpApiEndpoint.post("probe", "/v1/chatgpt/accounts/:id/probe", {
+      params: { id: Id },
+      success: ChatgptProbeView,
+    }),
+    HttpApiEndpoint.post("link", "/v1/chatgpt/link-attempts", {
+      payload: ChatgptLinkInput,
+      success: ChatgptLinkView,
+    }),
+    HttpApiEndpoint.get("attempt", "/v1/chatgpt/link-attempts/:id", {
+      params: { id: Id },
+      success: ChatgptLinkView,
+    }),
+    HttpApiEndpoint.delete("cancel", "/v1/chatgpt/link-attempts/:id", {
+      params: { id: Id },
+      success: ChatgptLinkView,
     }),
   ),
   HttpApiGroup.make("notifications").add(

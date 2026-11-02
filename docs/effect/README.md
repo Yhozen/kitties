@@ -20,6 +20,7 @@ The optimized build was published to production on 2026-11-02; these measurement
 | [PARITY.md](PARITY.md) | Every feature, screen and endpoint today, and whether it is kept, changed or dropped, and in which phase. |
 | [CURRENT-SYSTEM.md](CURRENT-SYSTEM.md) | How the Go system works, the behaviours to carry over, and the known defects not to rebuild. Code links are pinned to commit `7f408a1`. |
 | [RESEARCH.md](RESEARCH.md) | Dated, sourced facts about Alchemy Workflows, Effect 4, Vite+, Cloudflare limits, Boat, agent-desktop and agent-browser. |
+| [CHATGPT.md](CHATGPT.md) | Subscription integration contract, admission gate and acceptance plan. |
 | [RISKS.md](RISKS.md) | The risk register, with mitigations and triggers. |
 | [LATENCY-BASELINE.md](LATENCY-BASELINE.md) | Today's measured numbers, the inferred per-hop budget, targets, and results as phases land. |
 

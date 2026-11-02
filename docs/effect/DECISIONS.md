@@ -22,7 +22,7 @@ A decision changes only through a new entry that supersedes the old one. Do not 
 | D10 | 2026-10-31 | **Remove the coverage rules.** | `COVER_MIN`, `make cover` and the CI coverage gate. No coverage thresholds in the new code. |
 | D11 | 2026-10-31 | **Phase 1 commits the backing documentation and the plan.** | — |
 | D12 | 2026-11-01 | **Stack the work on top of draft PR #13** (`codex/durable-state-recovery`). | Phase PRs merge when the existing stack does. |
-| D13 | 2026-11-01 | **Keep only the ChatGPT/Codex sign-in**, behind a flag. It uses PKCE with a pasted-back URL. | Copilot device-flow sign-in. Claude Code, gcloud Gemini, Qwen and local Ollama cannot run on Workers or are shut down. |
+| D13 | 2026-11-02 | **Use the current Sign in with ChatGPT registration and public Responses API**, with a one-time Mac helper and Cloudflare-owned renewal. Keep usage disabled until live next admission. See [contract and acceptance](CHATGPT.md). | Codex client ID, localhost URL paste-back and backend-api inference. No automatic API-key spending on subscription limits. Other subscription/local providers remain dropped. |
 | D14 | 2026-11-01 | **Drop the long-tail connectors.** The generic `http` tool and the webhook presets cover simple cases. Connectors can be re-added on demand. | email (SMTP), Mastodon, Bluesky, X, LinkedIn, Facebook, Instagram, WhatsApp, Matrix, Spotify, TIDAL, Dropbox, Zendesk, Trello, Gitea, GitLab, Nextcloud, Figma, Google Sheets, Motita. |
 | D15 | 2026-11-01 | **Live desktop before brains.** The latency fix ships right after the walking skeleton. | Phase order: skeleton → live desktop → brains → lifecycle → desktop tasks → autonomy → integrations → cutover. |
 
