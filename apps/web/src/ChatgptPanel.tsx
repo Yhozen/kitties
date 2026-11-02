@@ -20,7 +20,7 @@ export default function ChatgptPanel() {
   },[attempt?.id,attempt?.status]);
   const connect=async()=>{
     if(!callback)return;
-    const attempt=await call(a=>a.chatgpt.link({payload:{redirectUri:callback,...(selected.startsWith("retry:")?{retryAttemptId:selected.slice(6)}:selected?{accountId:selected,requestConsent:true}:{})}}));
+    const attempt=await call(a=>a.chatgpt.link({payload:{redirectUri:callback,...(selected.startsWith("retry:")?{retryAttemptId:selected.slice(6)}:selected?{accountId:selected,requestConsent:accounts.find(account=>account.id===selected)?.status==="consent_required"}:{})}}));
     localStorage.setItem("chatgpt-link-attempt",attempt.id);setAttempt(attempt);location.assign(`/v1/chatgpt/link-attempts/${encodeURIComponent(attempt.id)}/authorize`);
   };
   return <section>
