@@ -2,8 +2,13 @@ import { ChatgptProviderError, chatgptError, chatgptFailure } from "./chatgpt-er
 // Bounded SSE parsing handles split UTF-8, CRLF and multiple data lines. No stream bytes
 // are written to diagnostics. A terminal completed event is the only success path.
 export async function completedResponse(response: Response): Promise<void> {
-  if (!response.body || !response.headers.get("content-type")?.includes("text/event-stream"))
+  // The subscription endpoint can omit Content-Type. Admission depends on valid
+  // SSE and its completed event; a successful HTTP status or JSON reply is insufficient.
+  const mediaType = response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
+  if (!response.body || (mediaType && mediaType !== "text/event-stream")) {
+    await response.body?.cancel().catch(() => {});
     chatgptError("CHATGPT_INVALID_STREAM", "interrupted");
+  }
   const reader = response.body.getReader(),
     decoder = new TextDecoder();
   let buffer = "",

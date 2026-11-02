@@ -29,11 +29,12 @@ The optimized build was published to production on 2026-11-02; these measurement
 The [five-slice contract](CHATGPT.md) replaces D13's Codex-client integration. Slice 1 is
 committed (`a17c55d`). Slice 2's helper, typed account resources, encrypted shared credential
 store, renewal, recovery fencing and admission probe are implemented and deployed to `next`.
-[Cloud linking checks](evidence/chatgpt-linking-next.json) pass; **subscription-backed Responses
-admission remains pending**. Usage stays disabled.
+[Cloud linking checks](evidence/chatgpt-linking-next.json) and **[live subscription-backed Responses
+admission](evidence/chatgpt-stream-admission-next.json) now pass on next**. Plan usage stays disabled
+until the agent integration is ready.
 
 The agent adapter (slice 3), model selection and resumable limit handling (slice 4), and final
-live/recovery/latency/production acceptance (slice 5) remain gated on that admission. No production
+live/recovery/latency/production acceptance (slice 5) remain to be completed. No production
 ChatGPT registration has been linked or enabled. The [linking fix](evidence/chatgpt-linking-fix-next.json) records
 Cloudflare traces confirming that the browser rejected successful HTTP 201 creation responses,
 the corrected typed contract, and manifest credentials for Cloudflare Access.
@@ -46,9 +47,13 @@ the API-status and manifest frontend fixes over its existing Worker source; four
 
 The subsequent [owner-authorized reset](evidence/owner-reset-cloud.json) cleared both stages,
 revoked the linked grant, and removed all desktops and saved snapshots. Both apps are restored.
-Run `pnpm chatgpt:connect --stage next` on the owner's Mac for fresh consent. Verify model
-discovery and a streamed Responses completion before advancing the admission gate. Fixture
-checks and the reset do not establish live subscription admission.
+After the owner relinked, the Responses endpoint returned a stream without Content-Type. The
+parser now accepts an absent header while requiring valid SSE and `response.completed`; explicit
+unsupported media types, JSON replies, failed events and truncated streams still fail admission.
+A real next request with `gpt-6.1-sol` completed, persisted admission and cleared the previous error.
+The built browser shows "Responses connection verified" after reload. Checks, build and 80
+unit/helper tests pass. This satisfies the minimal Responses admission gate; agent chat, tools,
+quota recovery and production acceptance still need their own live checks.
 
 ## Phase status
 
