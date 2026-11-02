@@ -86,6 +86,16 @@ export const TurnLive = Workflows.layer(
           return JSON.parse(saved) as RunConfig;
         });
         const warmToolResults = new Map<string, string>();
+        // Warm-turn caches: HomeDO is a far-away singleton, and each round used to pay for a
+        // context read plus per-connection OAuth status and MCP discovery. Within one live
+        // segment the config and tool lists are reused for a short time. Kitties with daily
+        // limits still read the authoritative spend every round.
+        let warmContext:
+          | { body: string; spent: { tokens: number; actions: number }; at: number }
+          | undefined;
+        const warmTools = new Map<string, { tools: unknown[]; at: number }>();
+        const warmContextMs = 15000,
+          warmToolsMs = 60000;
         let maxRounds = 100;
         for (let round = 0; round < maxRounds; round++) {
           let retryBudget = 0,
@@ -97,28 +107,40 @@ export const TurnLive = Workflows.layer(
             error: Schema.String,
             execute: Effect.gen(function* () {
               const preparationStartedAt = Date.now();
+              const reuse =
+                round > 0 &&
+                warmContext !== undefined &&
+                Date.now() - warmContext.at < warmContextMs
+                  ? warmContext
+                  : undefined;
               const [start, context] = yield* Effect.all(
                 [
                   chat.beginRound(payload.messageId, round).pipe(Effect.mapError(storageError)),
-                  home
-                    .beginTurnRound(
-                      executionId,
-                      payload.kittyId,
-                      JSON.stringify({
-                        id: executionId,
-                        chatId: payload.chatId,
-                        messageId: payload.messageId,
-                        status: "running",
-                        updatedAt: Date.now(),
-                      }),
-                      new Date().toISOString().slice(0, 10),
-                    )
-                    .pipe(Effect.mapError(storageError)),
+                  reuse
+                    ? Effect.succeed(reuse)
+                    : home
+                        .beginTurnRound(
+                          executionId,
+                          payload.kittyId,
+                          JSON.stringify({
+                            id: executionId,
+                            chatId: payload.chatId,
+                            messageId: payload.messageId,
+                            status: "running",
+                            updatedAt: Date.now(),
+                          }),
+                          new Date().toISOString().slice(0, 10),
+                        )
+                        .pipe(Effect.mapError(storageError)),
                 ],
                 { concurrency: 2 },
               );
               const contextLoadedAt = Date.now();
               const config = JSON.parse(context.body) as RunConfig;
+              const limited =
+                (config.kitty.limits?.day_tokens ?? 0) > 0 ||
+                (config.kitty.limits?.day_actions ?? 0) > 0;
+              if (!reuse) warmContext = limited ? undefined : { ...context, at: contextLoadedAt };
               const limit = config.kitty.limits?.max_rounds ?? 12;
               retryBudget = config.kitty.limits?.retries ?? 2;
               if (start.completed) return limit;
@@ -171,6 +193,9 @@ export const TurnLive = Workflows.layer(
                 connections,
                 (connection) =>
                   Effect.gen(function* () {
+                    const cached = warmTools.get(connection.id);
+                    if (cached && Date.now() - cached.at < warmToolsMs)
+                      return cached.tools as Effect.Success<ReturnType<typeof discoverTools>>;
                     const oauthStatus = yield* home
                       .oauthStatus(connection.id)
                       .pipe(Effect.mapError(storageError));
@@ -190,7 +215,9 @@ export const TurnLive = Workflows.layer(
                               catch: () => "KEY_UNAVAILABLE",
                             })
                           : undefined;
-                    return yield* discoverTools(connection, token);
+                    const discovered = yield* discoverTools(connection, token);
+                    warmTools.set(connection.id, { tools: discovered, at: Date.now() });
+                    return discovered;
                   }).pipe(Effect.catch(() => Effect.succeed([]))),
                 { concurrency: 4 },
               ).pipe(Effect.map((groups) => groups.flat().slice(0, 64)));
@@ -333,23 +360,16 @@ export const TurnLive = Workflows.layer(
                 preparationStartedAt,
                 contextLoadedAt,
               });
-              const [, saved] = yield* Effect.all(
-                [
-                  home
-                    .charge(
-                      `${executionId}/round/${round}`,
-                      new Date().toISOString().slice(0, 10),
-                      kitty.id,
-                      result.tokens,
-                      0,
-                    )
-                    .pipe(Effect.mapError(storageError)),
-                  chat
-                    .saveModelRound(payload.messageId, round, attempt, history, body)
-                    .pipe(Effect.mapError(storageError)),
-                ],
-                { concurrency: 2 },
-              );
+              // The charge commits with the round in ChatDO and reaches HomeDO off the critical path.
+              const saved = yield* chat
+                .saveModelRound(payload.messageId, round, attempt, history, body, {
+                  id: `${executionId}/round/${round}`,
+                  day: new Date().toISOString().slice(0, 10),
+                  kitty: kitty.id,
+                  tokens: result.tokens,
+                  actions: 0,
+                })
+                .pipe(Effect.mapError(storageError));
               if (saved) preparedRound = { history, body };
               return limit;
             }).pipe(
@@ -416,78 +436,80 @@ export const TurnLive = Workflows.layer(
             const call = result.calls[index]!,
               tool = result.tools.find((item) => item.name === call.name);
             const id = `${executionId}/${round}/${index}`;
-            const fastDesktop = Effect.gen(function* () {
-              if (
-                !tool ||
-                tool.connectionId !== "desktop" ||
-                ["ask_help", "type_secret"].includes(tool.remoteName)
-              )
-                return false;
-              const child = {
-                id,
-                kittyId: payload.kittyId,
-                chatId: payload.chatId,
-                messageId: payload.messageId,
-                callId: call.id,
-              };
+            const fastDesktop = (prefetchedRun?: Effect.Success<ReturnType<typeof chat.run>>) =>
+              Effect.gen(function* () {
+                if (
+                  !tool ||
+                  tool.connectionId !== "desktop" ||
+                  ["ask_help", "type_secret"].includes(tool.remoteName)
+                )
+                  return false;
+                const child = {
+                  id,
+                  kittyId: payload.kittyId,
+                  chatId: payload.chatId,
+                  messageId: payload.messageId,
+                  callId: call.id,
+                };
 
-              const authorizedAt = Date.now();
-              const run = yield* chat.run(payload.messageId).pipe(Effect.mapError(storageError));
-              if (run?.status === "cancelled") return true;
-              const cancelCheckedAt = Date.now();
-              const childId = yield* DesktopAttempt.executionId(child);
-              const instance = yield* WorkflowEngine.WorkflowInstance;
-              const key = yield* Activity.idempotencyKey("desktop-dispatch").pipe(
-                Effect.provideService(WorkflowEngine.WorkflowInstance, {
-                  ...instance,
-                  executionId: childId,
-                }),
-              );
-              const intentId = yield* Effect.promise(() => sha256(key));
-              const action = yield* Schema.decodeUnknownEffect(Action.fields.action)(
-                tool.remoteName,
-              ).pipe(Effect.mapError(() => "UNSUPPORTED_ACTION"));
-              const dispatchStartedAt = Date.now();
-              const receipt = yield* kitties
-                .getByName(payload.kittyId, { locationHint: "weur" })
-                .agentAction(intentId, action, call.params as Record<string, unknown>)
-                .pipe(Effect.mapError(storageError));
-              if (["completed", "failed"].includes(receipt.status)) {
-                let result: unknown = { status: receipt.status };
-                if (receipt.result) {
-                  try {
-                    result = JSON.parse(receipt.result);
-                  } catch {
-                    result = { text: receipt.result, status: receipt.status };
-                  }
-                }
-                const body = JSON.stringify({
-                  isFailure:
-                    receipt.status !== "completed" || (result as { ok?: boolean })?.ok === false,
-                  result,
-                  timing: {
-                    authorizedAt,
-                    cancelCheckedAt,
-                    dispatchStartedAt,
-                    resultAt: Date.now(),
-                  },
-                });
-                yield* Effect.all(
-                  [
-                    chat
-                      .saveToolResult(payload.messageId, call.id, body)
-                      .pipe(Effect.mapError(storageError)),
-                    home
-                      .charge(key, new Date().toISOString().slice(0, 10), payload.kittyId, 0, 1)
-                      .pipe(Effect.mapError(storageError)),
-                  ],
-                  { concurrency: 2 },
+                const authorizedAt = Date.now();
+                const run =
+                  prefetchedRun !== undefined
+                    ? prefetchedRun
+                    : yield* chat.run(payload.messageId).pipe(Effect.mapError(storageError));
+                if (run?.status === "cancelled") return true;
+                const cancelCheckedAt = Date.now();
+                const childId = yield* DesktopAttempt.executionId(child);
+                const instance = yield* WorkflowEngine.WorkflowInstance;
+                const key = yield* Activity.idempotencyKey("desktop-dispatch").pipe(
+                  Effect.provideService(WorkflowEngine.WorkflowInstance, {
+                    ...instance,
+                    executionId: childId,
+                  }),
                 );
-                warmToolResults.set(call.id, body);
-                return true;
-              }
-              return false;
-            });
+                const intentId = yield* Effect.promise(() => sha256(key));
+                const action = yield* Schema.decodeUnknownEffect(Action.fields.action)(
+                  tool.remoteName,
+                ).pipe(Effect.mapError(() => "UNSUPPORTED_ACTION"));
+                const dispatchStartedAt = Date.now();
+                const receipt = yield* kitties
+                  .getByName(payload.kittyId, { locationHint: "weur" })
+                  .agentAction(intentId, action, call.params as Record<string, unknown>)
+                  .pipe(Effect.mapError(storageError));
+                if (["completed", "failed"].includes(receipt.status)) {
+                  let result: unknown = { status: receipt.status };
+                  if (receipt.result) {
+                    try {
+                      result = JSON.parse(receipt.result);
+                    } catch {
+                      result = { text: receipt.result, status: receipt.status };
+                    }
+                  }
+                  const body = JSON.stringify({
+                    isFailure:
+                      receipt.status !== "completed" || (result as { ok?: boolean })?.ok === false,
+                    result,
+                    timing: {
+                      authorizedAt,
+                      cancelCheckedAt,
+                      dispatchStartedAt,
+                      resultAt: Date.now(),
+                    },
+                  });
+                  yield* chat
+                    .saveToolResult(payload.messageId, call.id, body, {
+                      id: key,
+                      day: new Date().toISOString().slice(0, 10),
+                      kitty: payload.kittyId,
+                      tokens: 0,
+                      actions: 1,
+                    })
+                    .pipe(Effect.mapError(storageError));
+                  warmToolResults.set(call.id, body);
+                  return true;
+                }
+                return false;
+              });
             const approvalId = yield* fenced(executionId)({
               name: `authorize/${round}/${index}`,
               success: Schema.String,
@@ -516,20 +538,30 @@ export const TurnLive = Workflows.layer(
                   tool.remoteName === "type_secret" ||
                   /(?:pay|charge|refund|transfer|delete|publish)/i.test(tool.remoteName) ||
                   (call.params as { method?: unknown })?.method === "DELETE";
-                const verdict = yield* home
-                  .authorizeTool(
-                    payload.kittyId,
-                    policyKey,
-                    always,
-                    tool.connectionId === "kitty"
-                      ? true
-                      : tool.connectionId === "desktop"
-                        ? tool.remoteName !== "type_secret"
-                        : !!connection && !needsApproval(connection, tool, call.params),
-                  )
-                  .pipe(Effect.mapError(storageError));
+                // The cancellation read is independent of authorization: overlap the two RPCs.
+                const [verdict, prefetchedRun] = yield* Effect.all(
+                  [
+                    home
+                      .authorizeTool(
+                        payload.kittyId,
+                        policyKey,
+                        always,
+                        tool.connectionId === "kitty"
+                          ? true
+                          : tool.connectionId === "desktop"
+                            ? tool.remoteName !== "type_secret"
+                            : !!connection && !needsApproval(connection, tool, call.params),
+                      )
+                      .pipe(Effect.mapError(storageError)),
+                    tool.connectionId === "desktop"
+                      ? chat.run(payload.messageId).pipe(Effect.mapError(storageError))
+                      : Effect.succeed(undefined),
+                  ],
+                  { concurrency: 2 },
+                );
                 if (verdict === "never") return yield* Effect.fail("ACTION_BLOCKED");
-                if (verdict === "run") return (yield* fastDesktop) ? "desktop-completed" : "";
+                if (verdict === "run")
+                  return (yield* fastDesktop(prefetchedRun)) ? "desktop-completed" : "";
                 const digest = yield* Effect.promise(() =>
                   sha256(
                     JSON.stringify({
@@ -756,7 +788,7 @@ export const TurnLive = Workflows.layer(
                     messageId: payload.messageId,
                     callId: call.id,
                   };
-                  if (yield* fastDesktop) return call.id;
+                  if (yield* fastDesktop()) return call.id;
                   yield* home
                     .insert(
                       "desktop-job",

@@ -34,6 +34,10 @@ target remains unmet; the owner explicitly accepted cutover with this limitation
 (`latency-cutover-decision.json`). A newer PITR plus historical-operation retry passed
 (`recovery-history-cloud.json`). Production cutover and the authenticated production smoke/PITR/guest-reconnect drill passed (`production-cutover-cloud.json`). A source change or an implemented feature is not a passing acceptance result.
 
+After cutover, a dispatch and orchestration optimization was measured on `next` with the same
+harness: p50 222 ms / p95 525 ms and, in a second run, 212 ms / 453 ms. The p95 < 1 s target is met
+(`step-latency-optimized-cloud.json`, `step-latency-optimized-cloud-run2.json`).
+
 Earlier local probes remain available in `engine-local.json`, `engine-progress-local.json`,
 `engine-advanced-local.json`, `application-local.json`, `chat-local.json` and `channel-local.json`.
 The interrupted stream probe is retained as `stream-soak-interrupted.json`; the later completed soak

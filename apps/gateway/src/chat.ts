@@ -3,6 +3,18 @@ import * as Cloudflare from "@alchemy.run/cloudflare";
 import { WorkflowEngine } from "effect/workflow";
 import * as Effect from "effect/Effect";
 import { Turn } from "./turn-definition.ts";
+import { HomeDO } from "./actors.ts";
+
+// Budget charges ride on the ChatDO write that already sits on the turn's critical path.
+// The outbox row commits in that transaction; delivery to HomeDO happens off the critical path
+// and is idempotent by charge id, so a retry or replay never double-counts.
+export interface Charge {
+  id: string;
+  day: string;
+  kitty: string;
+  tokens: number;
+  actions: number;
+}
 
 interface Row {
   [key: string]: string | number | null;
@@ -17,6 +29,7 @@ const makeChat = Effect.gen(function* () {
   const state = yield* Cloudflare.DurableObjectState;
   const engine = yield* WorkflowEngine.WorkflowEngine;
   const env = (yield* Cloudflare.WorkerEnvironment) as { KITTIES_KEK: string };
+  const homes = yield* HomeDO;
   return Effect.sync(() => {
     const sql = state.raw.storage.sql;
     sql.exec(
@@ -35,6 +48,49 @@ const makeChat = Effect.gen(function* () {
     sql.exec(
       "CREATE TABLE IF NOT EXISTS tool_results (id TEXT NOT NULL,call_id TEXT NOT NULL,body TEXT NOT NULL,PRIMARY KEY(id,call_id))",
     );
+    sql.exec("CREATE TABLE IF NOT EXISTS charge_outbox (id TEXT PRIMARY KEY,body TEXT NOT NULL)");
+    const queueCharge = (charge: Charge | undefined) => {
+      if (charge)
+        sql.exec(
+          "INSERT OR IGNORE INTO charge_outbox VALUES (?,?)",
+          charge.id,
+          JSON.stringify(charge),
+        );
+    };
+    let flushing = false;
+    const flushCharges: Effect.Effect<void> = Effect.gen(function* () {
+      if (flushing) return;
+      flushing = true;
+      try {
+        const home = homes.getByName("owner", { locationHint: "weur" });
+        // Loop until empty: rows queued while a delivery is in flight are picked up here.
+        for (;;) {
+          const rows = sql
+            .exec<{ id: string; body: string }>("SELECT id,body FROM charge_outbox LIMIT 64")
+            .toArray();
+          if (!rows.length) return;
+          for (const row of rows) {
+            const charge = JSON.parse(row.body) as Charge;
+            yield* home.charge(charge.id, charge.day, charge.kitty, charge.tokens, charge.actions);
+            sql.exec("DELETE FROM charge_outbox WHERE id=?", row.id);
+          }
+        }
+      } finally {
+        flushing = false;
+      }
+    }).pipe(
+      Effect.catchCause(() =>
+        Effect.promise(async () => {
+          const next = await state.raw.storage.getAlarm();
+          if (next === null || next > Date.now() + 5000)
+            await state.raw.storage.setAlarm(Date.now() + 5000);
+        }),
+      ),
+    );
+    const deliverCharges = () => {
+      // Not awaited: the caller's write is acknowledged now; the outbox row makes delivery durable.
+      state.raw.waitUntil(Effect.runPromise(flushCharges));
+    };
     const event = (body: unknown): void => {
       sql.exec("INSERT INTO events(body,at) VALUES (?,?)", JSON.stringify(body), Date.now());
     };
@@ -66,6 +122,7 @@ const makeChat = Effect.gen(function* () {
         "rounds",
         "model_rounds",
         "tool_results",
+        "charge_outbox",
       ]),
       enqueue: (payload: typeof Turn.payloadSchema.Type, start = true) =>
         Effect.gen(function* () {
@@ -289,11 +346,15 @@ const makeChat = Effect.gen(function* () {
               )
               .toArray()[0]?.body ?? null,
         ),
-      saveToolResult: (id: string, callId: string, body: string) =>
+      saveToolResult: (id: string, callId: string, body: string, charge?: Charge) =>
         Effect.sync(() => {
           if (body.length > 128000) throw Error("OUTPUT_LIMIT");
-          sql.exec("INSERT OR IGNORE INTO tool_results VALUES (?,?,?)", id, callId, body);
-          event({ type: "tool_result", messageId: id, callId, result: JSON.parse(body) });
+          state.raw.storage.transactionSync(() => {
+            sql.exec("INSERT OR IGNORE INTO tool_results VALUES (?,?,?)", id, callId, body);
+            queueCharge(charge);
+            event({ type: "tool_result", messageId: id, callId, result: JSON.parse(body) });
+          });
+          if (charge) deliverCharges();
         }),
       publish: (body: string) => Effect.sync(() => event(JSON.parse(body))),
       resetRound: (id: string, round: number) =>
@@ -372,10 +433,19 @@ const makeChat = Effect.gen(function* () {
             );
           });
         }),
-      saveModelRound: (id: string, round: number, attempt: number, history: string, body: string) =>
+      saveModelRound: (
+        id: string,
+        round: number,
+        attempt: number,
+        history: string,
+        body: string,
+        charge?: Charge,
+      ) =>
         Effect.sync(() => {
           if (history.length > 1500000 || body.length > 128000) throw Error("HISTORY_LIMIT");
-          return state.raw.storage.transactionSync(() => {
+          const saved = state.raw.storage.transactionSync(() => {
+            // Tokens were spent whether or not this attempt still owns the round.
+            queueCharge(charge);
             const row = sql
               .exec<Row>("SELECT * FROM messages WHERE id=? AND status='running'", id)
               .toArray()[0];
@@ -414,6 +484,8 @@ const makeChat = Effect.gen(function* () {
             sql.exec("UPDATE rounds SET history='complete' WHERE id=? AND round=?", id, round);
             return true;
           });
+          if (charge) deliverCharges();
+          return saved;
         }),
       commitHistory: (id: string, body: string) =>
         Effect.sync(() => {
@@ -450,7 +522,7 @@ const makeChat = Effect.gen(function* () {
           });
           yield* Effect.promise(() => state.raw.storage.setAlarm(Date.now() + 1));
         }),
-      alarm: () => safePump,
+      alarm: () => safePump.pipe(Effect.andThen(flushCharges)),
     };
   });
 });

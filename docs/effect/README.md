@@ -6,8 +6,9 @@ Durable Objects, with Alchemy Effect Workflows and Boat desktops. Production swi
 checks. The retired Go Worker, legacy R2 buckets and Boat checkpoints remain available; the source
 and native clients have been removed. There was no data migration (D16).
 
-The original non-model p95 <1 s goal remains unmet. The owner accepted deployment with the latest
-50-action result of **653 ms median / 1,421 ms p95** documented as a performance limitation.
+The non-model p95 <1 s goal is now met on `next`: two 50-action runs measured **222 ms median / 525 ms
+p95** and **212 ms / 453 ms** (previously 653 ms / 1,421 ms, accepted at cutover as a limitation).
+Production still runs the earlier build until it is republished.
 
 ## Read in this order
 
