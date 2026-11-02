@@ -1,0 +1,204 @@
+{
+  "date": "2026-11-02T02:06:42.491960+00:00",
+  "host": "https://kitties.rccpr.tech",
+  "sourceCommit": "781f2887d8ba594b3d77934381c9b919baaf6256",
+  "authentication": "Owner Cloudflare Access session on Mac",
+  "kittyId": "c1223a71-1c4a-4988-a2bf-0c1cb05b5185",
+  "health": {
+    "ok": true,
+    "version": "effect-2026.11.01",
+    "runtime": "boat",
+    "stage": "prod"
+  },
+  "session": {
+    "signed_in": true,
+    "email": "gabriel@garox.org",
+    "logout_url": "/cdn-cgi/access/logout"
+  },
+  "before": {
+    "phase": "archiving",
+    "generation": 2,
+    "remoteId": "bx_7dt7e2dp",
+    "operation": {
+      "id": "idle-2-1992847",
+      "kind": "sleep",
+      "at": 1793562742692,
+      "generation": 2
+    },
+    "checkpoint": {
+      "name": "kn-3559044328-c1223a71-1c4a-4988-a2bf-0c1cb05b5185-g1-1f6b17ee",
+      "snapshotId": "072910a3-b253-4975-a17b-659197524dc5",
+      "sourceRemoteId": "bx_tta54em4",
+      "generation": 1,
+      "quiesced": true,
+      "at": 1793561280561
+    }
+  },
+  "authenticatedHtml200": true,
+  "sameOriginAssets200": 2,
+  "repair": {
+    "operationId": "d18139f1-fa1e-4681-bdd6-cf702671b7b1",
+    "executionId": "8eb38f286120208a96a870f753d66c50",
+    "replaced": "idle-2-1992847",
+    "elapsedMs": 7936
+  },
+  "afterRepair": {
+    "phase": "sleeping",
+    "generation": 2,
+    "remoteId": "bx_7dt7e2dp",
+    "operation": null,
+    "checkpoint": {
+      "name": "kn-3559044328-c1223a71-1c4a-4988-a2bf-0c1cb05b5185-g2-d18139f1",
+      "snapshotId": "d370cf3e-30e2-48ca-a399-c5e1ce528651",
+      "sourceRemoteId": "bx_7dt7e2dp",
+      "generation": 2,
+      "quiesced": true,
+      "at": 1793585217957
+    },
+    "failureCount": 1
+  },
+  "restore": {
+    "operationId": "d5540e64-9e3c-44f3-8d6b-8911728cae7e",
+    "executionId": "2552cb3c8260e993601b34ddc6bdcf73",
+    "observedReadyAfterMs": 249830
+  },
+  "afterRestore": {
+    "phase": "ready",
+    "generation": 3,
+    "remoteId": "bx_49hugd67",
+    "checkpoint": {
+      "name": "kn-3559044328-c1223a71-1c4a-4988-a2bf-0c1cb05b5185-g2-d18139f1",
+      "snapshotId": "d370cf3e-30e2-48ca-a399-c5e1ce528651",
+      "sourceRemoteId": "bx_7dt7e2dp",
+      "generation": 2,
+      "quiesced": true,
+      "at": 1793585217957
+    },
+    "failureCount": 0,
+    "operation": null,
+    "guestConnected": true
+  },
+  "verifiedAt": "2026-11-02T02:11:27.791895+00:00",
+  "restoreStatus": {
+    "_tag": "Completed",
+    "result": "c1223a71-1c4a-4988-a2bf-0c1cb05b5185"
+  },
+  "status": "passed",
+  "scope": "Production application publish, authenticated app/asset/Health/session smoke, stuck sleep repair, and real Boat checkpoint restore with guest reconnection. No production latency benchmark.",
+  "publisher": {
+    "command": "node scripts/publish-app.mjs prod",
+    "permissions": "Restricted Worker publishing token; existing infrastructure and secret bindings preserved",
+    "workers": [
+      {
+        "script": "kittiesnext-gateway-prod-ngmlf4varln5eane",
+        "deployment": {
+          "id": "b57bff5b-2b39-4459-bceb-6e42f6094629",
+          "source": "api",
+          "strategy": "percentage",
+          "annotations": {
+            "workers/message": "Automatic deployment on upload.",
+            "workers/triggered_by": "upload"
+          },
+          "versions": [
+            {
+              "version_id": "cc3c35d8-42bc-432c-9e44-1b28d61487ce",
+              "percentage": 100
+            }
+          ],
+          "created_on": "2026-11-02T02:06:21.885961Z"
+        }
+      },
+      {
+        "script": "kittiesnext-guestingress-prod-mh5vhm4vx5agas77",
+        "deployment": {
+          "id": "97a76cbc-99df-4f3e-9444-bec1c3636ab8",
+          "source": "api",
+          "strategy": "percentage",
+          "annotations": {
+            "workers/message": "Automatic deployment on upload.",
+            "workers/triggered_by": "upload"
+          },
+          "versions": [
+            {
+              "version_id": "a64ed334-df0d-46d9-bccf-7b3283e6d9cf",
+              "percentage": 100
+            }
+          ],
+          "created_on": "2026-11-02T02:06:23.98224Z"
+        }
+      },
+      {
+        "script": "kittiesnext-hookingress-prod-56xx75mcpavm7uyb",
+        "deployment": {
+          "id": "aa593cb1-16c8-4637-9e60-552cd508c6ed",
+          "source": "api",
+          "strategy": "percentage",
+          "annotations": {
+            "workers/message": "Automatic deployment on upload.",
+            "workers/triggered_by": "upload"
+          },
+          "versions": [
+            {
+              "version_id": "a92dbf91-4090-430d-9eb2-8b49b1d28f44",
+              "percentage": 100
+            }
+          ],
+          "created_on": "2026-11-02T02:06:25.733918Z"
+        }
+      },
+      {
+        "script": "kittiesnext-oauthingress-prod-tikiak3kegkqbqoc",
+        "deployment": {
+          "id": "07164560-3f4b-4942-91be-01627ffe1ff0",
+          "source": "api",
+          "strategy": "percentage",
+          "annotations": {
+            "workers/message": "Automatic deployment on upload.",
+            "workers/triggered_by": "upload"
+          },
+          "versions": [
+            {
+              "version_id": "4184a60d-122e-4f80-a336-69a0b8aa6dac",
+              "percentage": 100
+            }
+          ],
+          "created_on": "2026-11-02T02:06:28.282256Z"
+        }
+      }
+    ]
+  },
+  "validation": {
+    "check": "passed",
+    "unitTests": {
+      "status": "passed",
+      "files": 17,
+      "tests": 42
+    },
+    "build": {
+      "status": "passed",
+      "tasks": 4
+    }
+  },
+  "latency": {
+    "measurementStage": "next",
+    "productionBenchmarkRun": false,
+    "targetP95Ms": 1000,
+    "targetMetOnNext": true,
+    "runs": [
+      {
+        "evidence": "step-latency-optimized-cloud.json",
+        "samples": 50,
+        "p50Ms": 222,
+        "p95Ms": 525,
+        "maxMs": 823
+      },
+      {
+        "evidence": "step-latency-optimized-cloud-run2.json",
+        "samples": 50,
+        "p50Ms": 212,
+        "p95Ms": 453,
+        "maxMs": 1895
+      }
+    ]
+  }
+}

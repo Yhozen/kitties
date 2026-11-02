@@ -70,5 +70,6 @@ the switch. This restores the old service; it does not migrate new records into 
 rollback rehearsal completed in 1.44 s on the candidate hostname. To return to Effect use service
 `kittiesnext-gateway-prod-ngmlf4varln5eane` and verify owner APIs again.
 
-Retain `kitties-state-prod-enfwxu7njxoaon5i`, `kitties-backups-prod-fq4h6qbjfkfhxbsp` and all legacy
-Boat checkpoints until the owner explicitly authorizes removal. Never destroy the legacy stack.
+Retain `kitties-state-prod-enfwxu7njxoaon5i` and `kitties-backups-prod-fq4h6qbjfkfhxbsp`. The owner
+authorized deletion of old Boat checkpoints on 2026-11-02; legacy desktop checkpoints are no
+longer available for rollback. Never destroy the legacy stack without owner approval.
