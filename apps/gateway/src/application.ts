@@ -95,7 +95,7 @@ export const makeApplication = Effect.gen(function* () {
       const notificationResponse = yield* notifications.route(request);
       if (notificationResponse) return notificationResponse;
       const computerRoute = path.match(
-        /^\/v1\/kitties\/([a-zA-Z0-9_-]{1,128})\/computer(?:\/(start|sleep|restore|delete|resume|upgrade))?$/,
+        /^\/v1\/kitties\/([a-zA-Z0-9_-]{1,128})\/computer(?:\/(start|sleep|restore|delete|resume|upgrade|repair))?$/,
       );
       if (computerRoute) {
         const id = computerRoute[1]!,
@@ -120,6 +120,34 @@ export const makeApplication = Effect.gen(function* () {
               Effect.provideService(WorkflowEngine.WorkflowEngine, engine),
             );
             return json({ executionId: record.executionId }, 202);
+          }
+          if (computerRoute[2] === "repair") {
+            // Only a suspended run may be replaced; a live run keeps its operation.
+            const state = yield* kitty.computer();
+            const stuck = state?.operation;
+            if (!stuck) return json({ code: "NOTHING_TO_REPAIR", params: {} }, 409);
+            const saved = yield* home().read("computer-run", stuck.id);
+            const runId = saved ? (JSON.parse(saved) as { executionId: string }).executionId : null;
+            const health = runId ? yield* home().read("run-health", runId) : null;
+            if (!health || (JSON.parse(health) as { status?: string }).status !== "suspended")
+              return json({ code: "RUN_NOT_SUSPENDED", params: {} }, 409);
+            yield* kitty
+              .abandonComputer(stuck.id)
+              .pipe(Effect.mapError(() => "COMPUTER_BUSY_OR_INVALID_STATE"));
+            yield* kitty
+              .beginComputer(id, body.operationId, stuck.kind)
+              .pipe(Effect.mapError(() => "COMPUTER_BUSY_OR_INVALID_STATE"));
+            const run = yield* computers.start({
+              kittyId: id,
+              operationId: body.operationId,
+              kind: stuck.kind,
+            });
+            yield* home().write(
+              "computer-run",
+              body.operationId,
+              JSON.stringify({ executionId: run.executionId, kittyId: id, kind: stuck.kind }),
+            );
+            return json({ executionId: run.executionId, replaced: stuck.id }, 202);
           }
           const kind = computerRoute[2] as "start" | "sleep" | "restore" | "delete" | "upgrade";
           // Claim synchronously: concurrent owner/idle requests must report busy

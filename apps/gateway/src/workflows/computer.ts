@@ -38,13 +38,18 @@ export const ComputerOpLive = Workflows.layer(
       STAGE: string;
     };
     const boat = boatClient(env.BOAT_DEV_API_KEY);
+    // Billing refusals (empty wallet, full snapshot allowance) clear once the owner pays.
+    // They must suspend for an operator retry, never journal as a terminal failure.
+    const billingCodes = ["credit_required", "subscription_required", "card_required"];
     const boatError = (error: { status: number; code: string }) =>
       error.status === 0 ||
       error.status >= 500 ||
       error.status === 429 ||
       error.code === "idempotency_in_progress"
         ? "BOAT_UNAVAILABLE"
-        : error.code;
+        : error.status === 402 || billingCodes.includes(error.code)
+          ? "BOAT_BILLING"
+          : error.code;
     return Effect.fn(
       function* (payload, executionId) {
         yield* recovery(ComputerOp._tag, executionId);
@@ -236,6 +241,8 @@ export const ComputerOpLive = Workflows.layer(
             Effect.gen(function* () {
               const state = yield* read;
               if (!state.remoteId) return yield* Effect.fail("COMPUTER_ABSENT");
+              // A repaired or replayed operation may find the machine already archived.
+              if ((yield* get(state.remoteId)).state === "archived") return;
               yield* request("POST", `/sandboxes/${state.remoteId}/stop`, { force: false });
             }),
           );
