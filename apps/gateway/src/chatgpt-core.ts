@@ -363,7 +363,24 @@ export function makeChatgptStorage(
   };
   const models = async (id: string) => {
     const { response, epoch, revision } = await api(id, "/models");
-    const body = await jsonResponse(response);
+    // Account catalogs include metadata beyond the fields we retain and can exceed
+    // the smaller OAuth token-response bound. Never persist or log that metadata.
+    const body = await jsonResponse(response, 4 * 1024 * 1024).catch((error: unknown) => {
+      throw new ChatgptProviderError({
+        ...chatgptFailure(
+          response.status,
+          {},
+          response.headers.get("openai-request-id") ??
+            response.headers.get("x-request-id") ??
+            undefined,
+        ),
+        reason: "unsupported_request",
+        code:
+          error instanceof Error && error.message === "OAUTH_RESPONSE_LIMIT"
+            ? "CHATGPT_CATALOG_TOO_LARGE"
+            : "CHATGPT_INVALID_CATALOG",
+      });
+    });
     if (!Array.isArray(body.models) || body.models.length > 1000)
       chatgptError("CHATGPT_INVALID_CATALOG", "unsupported_request");
     const result: { slug: string; displayName: string }[] = [];

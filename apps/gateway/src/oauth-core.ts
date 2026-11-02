@@ -43,7 +43,10 @@ export const randomSecret = () => encode(crypto.getRandomValues(new Uint8Array(3
 export const pkceChallenge = async (verifier: string) =>
   encode(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
 
-export async function jsonResponse(response: Response): Promise<Record<string, unknown>> {
+export async function jsonResponse(
+  response: Response,
+  maxBytes = 262144,
+): Promise<Record<string, unknown>> {
   if (!response.ok) throw Error("OAUTH_REMOTE_UNAVAILABLE");
   const reader = response.body?.getReader();
   if (!reader) throw Error("OAUTH_INVALID_RESPONSE");
@@ -54,7 +57,7 @@ export async function jsonResponse(response: Response): Promise<Record<string, u
       const { done, value } = await reader.read();
       if (done) break;
       size += value.length;
-      if (size > 262144) throw Error("OAUTH_RESPONSE_LIMIT");
+      if (size > maxBytes) throw Error("OAUTH_RESPONSE_LIMIT");
       chunks.push(value);
     }
   } finally {

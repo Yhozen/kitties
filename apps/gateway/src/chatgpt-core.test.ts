@@ -50,6 +50,13 @@ const setup = () => {
     claims: Record<string, unknown> = {};
   const counts = { exchanges: 0, refreshes: 0, inference: 0, revocations: 0 };
   let onRefresh: (() => Promise<Response>) | undefined;
+  let catalog: unknown = {
+    models: [
+      { slug: "second", display_name: "Second", visibility: "list" },
+      { slug: "hidden", visibility: "hide" },
+      { slug: "first", display_name: "First", visibility: "list" },
+    ],
+  };
   let stream = 'data: {"type":"response.completed","response":{"status":"completed"}}\n\n';
   const tokenResponse = async (refreshed = false) =>
     Response.json({
@@ -87,13 +94,7 @@ const setup = () => {
         expect(new Headers(init?.headers).get("Authorization")).toMatch(
           /^Bearer (?:fresh-)?access-private$/,
         );
-        return Response.json({
-          models: [
-            { slug: "second", display_name: "Second", visibility: "list" },
-            { slug: "hidden", visibility: "hide" },
-            { slug: "first", display_name: "First", visibility: "list" },
-          ],
-        });
+        return Response.json(catalog, { headers: { "x-request-id": "req_catalog" } });
       }
       if (endpoint === config.resource + "/responses") {
         counts.inference++;
@@ -163,9 +164,49 @@ const setup = () => {
     setStream: (v: string) => {
       stream = v;
     },
+    setCatalog: (value: unknown) => {
+      catalog = value;
+    },
     tokenResponse,
   };
 };
+test("account catalogs can exceed the OAuth response bound without retaining extra metadata", async () => {
+  const f = setup(),
+    id = await f.connect();
+  f.setCatalog({
+    models: [
+      {
+        slug: "second",
+        display_name: "Second",
+        visibility: "list",
+        description: "x".repeat(656000),
+      },
+      { slug: "hidden", visibility: "hide" },
+      { slug: "first", display_name: "First", visibility: "list" },
+    ],
+  });
+  expect(await f.core.models(id)).toEqual([
+    { slug: "second", displayName: "Second" },
+    { slug: "first", displayName: "First" },
+  ]);
+  expect(await f.core.probe(id)).toMatchObject({ ok: true, model: "second" });
+  expect([...f.rows.values()].join("")).not.toContain("x".repeat(100));
+});
+test("oversized catalogs return a sanitized bounded error with their request ID", async () => {
+  const f = setup(),
+    id = await f.connect();
+  f.setCatalog({ models: [], privateMetadata: "x".repeat(4 * 1024 * 1024) });
+  expect(await f.core.probe(id)).toEqual({
+    ok: false,
+    error: {
+      reason: "unsupported_request",
+      code: "CHATGPT_CATALOG_TOO_LARGE",
+      status: 200,
+      requestId: "req_catalog",
+      bodyShape: "other",
+    },
+  });
+});
 test("dynamic registration, verified identity, encrypted credentials, catalog ordering and real completion gate", async () => {
   const f = setup(),
     flow = await f.begin();

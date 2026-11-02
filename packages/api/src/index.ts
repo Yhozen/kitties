@@ -58,11 +58,11 @@ export const Api = HttpApi.make("Kitties").add(
     HttpApiEndpoint.get("status", "/v1/recovery", { success: RecoveryView }),
     HttpApiEndpoint.post("export", "/v1/recovery/exports", {
       payload: Schema.Struct({ operationId: Id }),
-      success: Schema.Struct({ executionId: Schema.String }),
+      success: Schema.Struct({ executionId: Schema.String }).pipe(HttpApiSchema.status(202)),
     }),
     HttpApiEndpoint.post("purge", "/v1/recovery/purge", {
       payload: Schema.Struct({ operationId: Id }),
-      success: Schema.Struct({ executionId: Schema.String }),
+      success: Schema.Struct({ executionId: Schema.String }).pipe(HttpApiSchema.status(202)),
     }),
     HttpApiEndpoint.post("bookmark", "/v1/recovery/bookmark", {
       payload: Schema.Struct({
@@ -79,7 +79,7 @@ export const Api = HttpApi.make("Kitties").add(
         name: Schema.String,
         bookmark: Schema.String,
       }),
-      success: Schema.Struct({ executionId: Schema.String }),
+      success: Schema.Struct({ executionId: Schema.String }).pipe(HttpApiSchema.status(202)),
     }),
   ),
   HttpApiGroup.make("signin").add(
@@ -131,15 +131,15 @@ export const Api = HttpApi.make("Kitties").add(
     }),
     HttpApiEndpoint.post("subscribe", "/v1/notifications/subscriptions", {
       payload: PushSubscriptionInput,
-      success: Schema.Struct({ id: Schema.String }),
+      success: Schema.Struct({ id: Schema.String }).pipe(HttpApiSchema.status(201)),
     }),
     HttpApiEndpoint.post("test", "/v1/notifications/test", {
       payload: Schema.Struct({ operationId: Id }),
-      success: Schema.Struct({ ok: Schema.Boolean }),
+      success: Schema.Struct({ ok: Schema.Boolean }).pipe(HttpApiSchema.status(202)),
     }),
     HttpApiEndpoint.post("digest", "/v1/notifications/digest", {
       payload: Schema.Struct({ operationId: Id }),
-      success: Schema.Struct({ ok: Schema.Boolean }),
+      success: Schema.Struct({ ok: Schema.Boolean }).pipe(HttpApiSchema.status(202)),
     }),
   ),
   HttpApiGroup.make("autonomy").add(
@@ -150,7 +150,7 @@ export const Api = HttpApi.make("Kitties").add(
     }),
     HttpApiEndpoint.delete("removeRule", "/v1/approval-rules/:id", {
       params: { id: Schema.String },
-      success: Schema.Void,
+      success: Schema.Void.pipe(HttpApiSchema.status(204)),
     }),
     HttpApiEndpoint.get("goals", "/v1/goals", { success: Schema.Array(GoalView) }),
     HttpApiEndpoint.put("saveGoal", "/v1/goals/:id", {
@@ -160,12 +160,12 @@ export const Api = HttpApi.make("Kitties").add(
     }),
     HttpApiEndpoint.delete("removeGoal", "/v1/goals/:id", {
       params: { id: Id },
-      success: Schema.Void,
+      success: Schema.Void.pipe(HttpApiSchema.status(204)),
     }),
     HttpApiEndpoint.post("runGoal", "/v1/goals/:id/run", {
       params: { id: Id },
       payload: Schema.Struct({ operationId: Id }),
-      success: Schema.Struct({ chatId: Id }),
+      success: Schema.Struct({ chatId: Id }).pipe(HttpApiSchema.status(202)),
     }),
     HttpApiEndpoint.get("hooks", "/v1/hooks", { success: Schema.Array(HookView) }),
     HttpApiEndpoint.put("saveHook", "/v1/hooks/:id", {
@@ -175,7 +175,7 @@ export const Api = HttpApi.make("Kitties").add(
     }),
     HttpApiEndpoint.delete("removeHook", "/v1/hooks/:id", {
       params: { id: Id },
-      success: Schema.Void,
+      success: Schema.Void.pipe(HttpApiSchema.status(204)),
     }),
   ),
   HttpApiGroup.make("workspace").add(
@@ -190,7 +190,7 @@ export const Api = HttpApi.make("Kitties").add(
     HttpApiEndpoint.post("remember", "/v1/kitties/:id/memory", {
       params: { id: Id },
       payload: MemoryNoteInput,
-      success: MemoryView,
+      success: MemoryView.pipe(HttpApiSchema.status(201)),
     }),
     HttpApiEndpoint.put("profile", "/v1/kitties/:id/memory/profile", {
       params: { id: Id },
@@ -204,7 +204,7 @@ export const Api = HttpApi.make("Kitties").add(
     HttpApiEndpoint.post("distill", "/v1/kitties/:id/distill", {
       params: { id: Id },
       payload: Schema.Struct({ operationId: Id }),
-      success: Schema.Struct({ executionId: Schema.String }),
+      success: Schema.Struct({ executionId: Schema.String }).pipe(HttpApiSchema.status(202)),
     }),
     HttpApiEndpoint.post("feedback", "/v1/chats/:id/messages/:message/feedback", {
       params: { id: Id, message: Id },
@@ -223,7 +223,7 @@ export const Api = HttpApi.make("Kitties").add(
     }),
     HttpApiEndpoint.delete("removeSkill", "/v1/skills/:id", {
       params: { id: Id },
-      success: Schema.Void,
+      success: Schema.Void.pipe(HttpApiSchema.status(204)),
     }),
     HttpApiEndpoint.get("vault", "/v1/vault", { success: Schema.Array(VaultView) }),
     HttpApiEndpoint.put("saveSecret", "/v1/vault/:id", {
@@ -233,7 +233,7 @@ export const Api = HttpApi.make("Kitties").add(
     }),
     HttpApiEndpoint.delete("removeSecret", "/v1/vault/:id", {
       params: { id: Id },
-      success: Schema.Void,
+      success: Schema.Void.pipe(HttpApiSchema.status(204)),
     }),
     HttpApiEndpoint.get("help", "/v1/help", { success: Schema.Array(HelpView) }),
     HttpApiEndpoint.post("decideHelp", "/v1/help/:id/decision", {
@@ -264,7 +264,7 @@ export const Api = HttpApi.make("Kitties").add(
     }),
     HttpApiEndpoint.delete("oauthDisconnect", "/v1/connections/:id/oauth", {
       params: { id: Id },
-      success: Schema.Void,
+      success: Schema.Void.pipe(HttpApiSchema.status(204)),
     }),
     HttpApiEndpoint.get("list", "/v1/connections", { success: Schema.Array(ConnectionView) }),
     HttpApiEndpoint.put("save", "/v1/connections/:id", {
@@ -274,7 +274,7 @@ export const Api = HttpApi.make("Kitties").add(
     }),
     HttpApiEndpoint.delete("remove", "/v1/connections/:id", {
       params: { id: Id },
-      success: Schema.Void,
+      success: Schema.Void.pipe(HttpApiSchema.status(204)),
     }),
     HttpApiEndpoint.post("test", "/v1/connections/:id/test", {
       params: { id: Id },
@@ -298,7 +298,7 @@ export const Api = HttpApi.make("Kitties").add(
     }),
     HttpApiEndpoint.delete("remove", "/v1/providers/:id", {
       params: { id: Id },
-      success: Schema.Void,
+      success: Schema.Void.pipe(HttpApiSchema.status(204)),
     }),
   ),
   HttpApiGroup.make("computers").add(
@@ -312,12 +312,15 @@ export const Api = HttpApi.make("Kitties").add(
         operation: Schema.Literals(["start", "sleep", "restore", "delete", "resume", "upgrade"]),
       },
       payload: Schema.Struct({ operationId: Id }),
-      success: Schema.Struct({ executionId: Schema.String }),
+      success: Schema.Struct({ executionId: Schema.String }).pipe(HttpApiSchema.status(202)),
     }),
   ),
   HttpApiGroup.make("kitties").add(
     HttpApiEndpoint.get("list", "/v1/kitties", { success: Schema.Array(KittyView) }),
-    HttpApiEndpoint.post("create", "/v1/kitties", { payload: KittyInput, success: KittyView }),
+    HttpApiEndpoint.post("create", "/v1/kitties", {
+      payload: KittyInput,
+      success: KittyView.pipe(HttpApiSchema.status(201)),
+    }),
     HttpApiEndpoint.put("save", "/v1/kitties/:id", {
       params: { id: Id },
       payload: KittyInput,
@@ -325,7 +328,7 @@ export const Api = HttpApi.make("Kitties").add(
     }),
     HttpApiEndpoint.delete("remove", "/v1/kitties/:id", {
       params: { id: Id },
-      success: Schema.Void,
+      success: Schema.Void.pipe(HttpApiSchema.status(204)),
     }),
   ),
   HttpApiGroup.make("chats").add(
@@ -334,7 +337,10 @@ export const Api = HttpApi.make("Kitties").add(
       payload: ChatInput,
       success: ChatView,
     }),
-    HttpApiEndpoint.delete("remove", "/v1/chats/:id", { params: { id: Id }, success: Schema.Void }),
+    HttpApiEndpoint.delete("remove", "/v1/chats/:id", {
+      params: { id: Id },
+      success: Schema.Void.pipe(HttpApiSchema.status(204)),
+    }),
     HttpApiEndpoint.get("replay", "/v1/chats/:id/replay", {
       params: { id: Id },
       success: Schema.Array(
@@ -357,11 +363,14 @@ export const Api = HttpApi.make("Kitties").add(
       success: Schema.Struct({ ok: Schema.Boolean }),
     }),
     HttpApiEndpoint.get("list", "/v1/chats", { success: Schema.Array(ChatView) }),
-    HttpApiEndpoint.post("create", "/v1/chats", { payload: ChatInput, success: ChatView }),
+    HttpApiEndpoint.post("create", "/v1/chats", {
+      payload: ChatInput,
+      success: ChatView.pipe(HttpApiSchema.status(201)),
+    }),
     HttpApiEndpoint.post("send", "/v1/chats/:id/messages", {
       params: { id: Id },
       payload: MessageInput,
-      success: Schema.Struct({ duplicate: Schema.Boolean }),
+      success: Schema.Struct({ duplicate: Schema.Boolean }).pipe(HttpApiSchema.status(202)),
     }),
   ),
 );

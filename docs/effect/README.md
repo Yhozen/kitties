@@ -29,18 +29,26 @@ The optimized build was published to production on 2026-11-02; these measurement
 The [five-slice contract](CHATGPT.md) replaces D13's Codex-client integration. Slice 1 is
 committed (`a17c55d`). Slice 2's helper, typed account resources, encrypted shared credential
 store, renewal, recovery fencing and admission probe are implemented and deployed to `next`.
-[Cloud linking checks](evidence/chatgpt-linking-next.json) pass; **real owner consent and
-subscription-backed Responses admission remain pending**. Usage stays disabled.
+[Cloud linking checks](evidence/chatgpt-linking-next.json) pass; **subscription-backed Responses
+admission remains pending**. Usage stays disabled.
 
 The agent adapter (slice 3), model selection and resumable limit handling (slice 4), and final
 live/recovery/latency/production acceptance (slice 5) remain gated on that admission. No production
-ChatGPT registration has been linked or enabled. Local checks, 74 unit/helper tests and six
-browser cases passed initially. The [linking fix](evidence/chatgpt-linking-fix-next.json) records
+ChatGPT registration has been linked or enabled. The [linking fix](evidence/chatgpt-linking-fix-next.json) records
 Cloudflare traces confirming that the browser rejected successful HTTP 201 creation responses,
-the corrected typed contract, and manifest credentials for Cloudflare Access. It is deployed to
-`next`; eight desktop/mobile browser cases and a browser check using real next API responses
-pass. Owner consent and the Responses admission gate remain pending. The cloud evidence
-distinguishes fixture checks from live acceptance.
+the corrected typed contract, and manifest credentials for Cloudflare Access.
+
+The owner's account linked on `next`, but its 655,945-byte model catalog exceeded the OAuth
+parser's 262,144-byte bound. The [catalog and API-status fixes](evidence/chatgpt-catalog-and-api-status-cloud.json)
+raise only the catalog bound to 4 MiB and declare the gateway's actual 201/202/204 success
+statuses. Checks, build, 76 unit/helper tests and ten next browser cases pass. Production received
+the API-status and manifest frontend fixes over its existing Worker source; four browser cases pass.
+
+The subsequent [owner-authorized reset](evidence/owner-reset-cloud.json) cleared both stages,
+revoked the linked grant, and removed all desktops and saved snapshots. Both apps are restored.
+Run `pnpm chatgpt:connect --stage next` on the owner's Mac for fresh consent. Verify model
+discovery and a streamed Responses completion before advancing the admission gate. Fixture
+checks and the reset do not establish live subscription admission.
 
 ## Phase status
 

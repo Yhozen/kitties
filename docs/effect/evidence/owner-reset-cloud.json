@@ -1,0 +1,153 @@
+{
+  "date": "2026-11-02T04:13:39.845Z",
+  "stages": [
+    "next",
+    "prod"
+  ],
+  "status": "completed",
+  "authorization": "Owner explicitly requested deletion of all Kitties user data and sandboxes in next and production.",
+  "linkedAccounts": {
+    "deleted": 1,
+    "remoteRevocationsConfirmed": true
+  },
+  "durableObjects": {
+    "namespaces": 42,
+    "databasesCleared": 782,
+    "reconciliation": "Two additional next conversation workflows were found between inventory and maintenance and cleared. Each cleared object returned a null alarm.",
+    "verification": [
+      {
+        "stage": "next",
+        "counts": {
+          "kitty": 0,
+          "chat": 0,
+          "provider": 0,
+          "connection": 0,
+          "chatgpt-account": 0,
+          "oauth-credentials": 0,
+          "vault": 0,
+          "goal": 0,
+          "hook": 0,
+          "turn-config": 0
+        }
+      },
+      {
+        "stage": "prod",
+        "counts": {
+          "kitty": 0,
+          "chat": 0,
+          "provider": 0,
+          "connection": 0,
+          "chatgpt-account": 0,
+          "oauth-credentials": 0,
+          "vault": 0,
+          "goal": 0,
+          "hook": 0,
+          "turn-config": 0
+        }
+      }
+    ],
+    "method": "Owner maintenance Worker, WebSocket closure, attached legacy container destruction, storage.deleteAll(), and alarm verification. Stored-data inventory flags may remain set after clearing SQLite."
+  },
+  "files": {
+    "userObjectsDeleted": 12079,
+    "buckets": [
+      {
+        "bucket": "kitties-backups-prod-fq4h6qbjfkfhxbsp",
+        "deleted": 44,
+        "preservedApplicationArchives": 0,
+        "remainingObjects": 0
+      },
+      {
+        "bucket": "kitties-state-prod-enfwxu7njxoaon5i",
+        "deleted": 1135,
+        "preservedApplicationArchives": 0,
+        "remainingObjects": 0
+      },
+      {
+        "bucket": "kittiesnext-guestassets-next-aagksafmrvrjisfr",
+        "deleted": 2,
+        "preservedApplicationArchives": 11,
+        "remainingObjects": 11
+      },
+      {
+        "bucket": "kittiesnext-guestassets-prod-3sxl34muufpbb7qq",
+        "deleted": 2,
+        "preservedApplicationArchives": 1,
+        "remainingObjects": 1
+      },
+      {
+        "bucket": "kittiesnext-retainedexports-next-oz5nyxqr2vioqkxc",
+        "deleted": 10119,
+        "preservedApplicationArchives": 0,
+        "remainingObjects": 0
+      },
+      {
+        "bucket": "kittiesnext-retainedexports-prod-xohmygxexjyadu2w",
+        "deleted": 777,
+        "preservedApplicationArchives": 0,
+        "remainingObjects": 0
+      }
+    ],
+    "retentionLocksRestored": true,
+    "applicationReleasePointersReseeded": [
+      {
+        "stage": "next",
+        "archive": "505f87ab283adb1bd2abf065f0bf65fd6d56827ebc97d282265e67c14fd62294.tgz"
+      },
+      {
+        "stage": "prod",
+        "archive": "505f87ab283adb1bd2abf065f0bf65fd6d56827ebc97d282265e67c14fd62294.tgz"
+      }
+    ]
+  },
+  "desktops": {
+    "deleted": 16,
+    "deletionOperationsCompleted": true,
+    "remainingSandboxes": 0,
+    "deletedSavedSnapshots": 7,
+    "remainingSavedSnapshots": 0,
+    "verifiedAt": "2026-11-02T04:11:34.562Z",
+    "snapshotErasure": "Saved snapshots are absent from provider listings. Provider DELETE accepted all seven; final storage erasure runs in the provider background without an operation ID."
+  },
+  "operation": {
+    "appsRestoredAt": "2026-11-02T04:10:03.010Z",
+    "temporaryOperatorDeleted": true,
+    "legacyCronDisabled": true,
+    "unrelatedProjectsExcluded": true
+  },
+  "deployments": [
+    {
+      "stage": "next",
+      "worker": "kittiesnext-gateway-next-msfgaswrqee7k2am",
+      "versions": [
+        {
+          "version_id": "ac55a955-1785-473a-9302-ba22c4b02e70",
+          "percentage": 100
+        }
+      ],
+      "chatgptEnabled": false
+    },
+    {
+      "stage": "prod",
+      "worker": "kittiesnext-gateway-prod-ngmlf4varln5eane",
+      "versions": [
+        {
+          "version_id": "a8d372c4-d962-4f36-a028-fe694f45a26a",
+          "percentage": 100
+        }
+      ],
+      "chatgptEnabled": false,
+      "originalWorkerSourcePreserved": true,
+      "frontendSourceCommit": "781f2887d8ba594b3d77934381c9b919baaf6256",
+      "frontendChanges": [
+        "API success status declarations",
+        "manifest session credentials"
+      ]
+    }
+  ],
+  "chatgpt": {
+    "enabled": false,
+    "admission": "pending fresh owner consent and real Responses admission",
+    "relinkCommand": "pnpm chatgpt:connect --stage next"
+  }
+}
