@@ -1,5 +1,5 @@
 {
-  "date": "2026-11-02T02:40:11.471Z",
+  "date": "2026-11-02T02:44:19.589Z",
   "stage": "next",
   "inferenceEnabled": false,
   "cases": [
@@ -31,5 +31,34 @@
   "admission": {
     "status": "pending",
     "prerequisite": "Owner must complete the Mac helper consent and minimal subscription-backed Responses probe."
-  }
+  },
+  "implementationCommit": "e48149bc3bff6fbbd90a200e967d167182c4aaff",
+  "localValidation": {
+    "check": "passed: format, lint and typecheck",
+    "vitest": {
+      "status": "passed",
+      "tests": 71
+    },
+    "macHelperUnit": {
+      "status": "passed",
+      "tests": 3
+    },
+    "browser": {
+      "status": "passed",
+      "cases": 6,
+      "projects": [
+        "desktop",
+        "mobile"
+      ],
+      "mode": "mocked owner API on built PWA"
+    },
+    "build": "passed"
+  },
+  "productionChanged": false,
+  "remaining": [
+    "Owner consent and real subscription-backed Responses admission on next",
+    "ChatGPT LanguageModel adapter and live agent/tool/image rounds",
+    "Resumable quota and authorization pauses",
+    "Live refresh, recovery, latency and isolated production acceptance"
+  ]
 }
