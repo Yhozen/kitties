@@ -72,6 +72,7 @@ test("helper landing starts an authenticated attempt and redirects through the s
       redirectUri: "http://127.0.0.1:45678/auth/callback",
     });
     await route.fulfill({
+      status: 201,
       json: {
         id: "attempt_one",
         accountId: "account_two",

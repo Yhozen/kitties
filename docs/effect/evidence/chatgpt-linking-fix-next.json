@@ -1,0 +1,105 @@
+{
+  "date": "2026-11-02T03:00:50.975Z",
+  "stage": "next",
+  "inferenceEnabled": false,
+  "productionChanged": false,
+  "diagnosis": {
+    "source": "Cloudflare Workers historical telemetry",
+    "window": {
+      "from": "2026-11-02T02:55:00Z",
+      "to": "2026-11-02T02:56:00Z"
+    },
+    "events": [
+      {
+        "timestamp": "2026-11-02T02:55:28.828Z",
+        "method": "POST",
+        "path": "/v1/chatgpt/link-attempts",
+        "status": 201,
+        "requestId": "582f239ab40d2dff37529db7214abe41",
+        "traceId": "3e30151bd1aad5cc8cb04f8197a0c81e",
+        "outcome": "ok"
+      },
+      {
+        "timestamp": "2026-11-02T02:55:23.851Z",
+        "method": "POST",
+        "path": "/v1/chatgpt/link-attempts",
+        "status": 201,
+        "requestId": "dd8db8ba752b4aaf25cc235a6cd174eb",
+        "traceId": "d2a53f5e9fe62a2259c9afde5c7ff21b",
+        "outcome": "ok"
+      },
+      {
+        "timestamp": "2026-11-02T02:55:10.154Z",
+        "method": "GET",
+        "path": "/v1/chatgpt/accounts",
+        "status": 200,
+        "requestId": "bb0c7935103e9a621241479dc3cc4fde",
+        "traceId": "f2f298076f8c553d576eda4938e5f35e",
+        "outcome": "ok"
+      }
+    ],
+    "authorizationRequestsObserved": 0,
+    "cause": "The gateway created each link attempt with HTTP 201, but the typed browser client declared only HTTP 200. The client rejected the successful response before storing the attempt or navigating to authorization.",
+    "manifest": "The manifest omitted credentials, causing Cloudflare Access to redirect its request to a different origin. The manifest link now requests credentials."
+  },
+  "regressions": [
+    {
+      "name": "helper landing with actual 201 status",
+      "before": "failed: stayed on Settings instead of navigating to authorization",
+      "after": "passed on desktop and mobile"
+    },
+    {
+      "name": "manifest behind session-cookie protection",
+      "before": "failed: Access cookie absent",
+      "after": "passed on desktop and mobile; browser sends HttpOnly session cookie and parses actual manifest"
+    }
+  ],
+  "validation": {
+    "check": "passed: formatting, lint and types",
+    "build": "passed",
+    "vitest": {
+      "status": "passed",
+      "tests": 71
+    },
+    "helper": {
+      "status": "passed",
+      "tests": 3
+    },
+    "browser": {
+      "status": "passed",
+      "cases": 8,
+      "projects": [
+        "desktop",
+        "mobile"
+      ],
+      "mode": "built PWA; mocked application API and cookie-protected manifest fixture"
+    },
+    "cloudBrowser": {
+      "date": "2026-11-02T03:00:27.793Z",
+      "stage": "next",
+      "inferenceEnabled": false,
+      "cases": [
+        {
+          "name": "built-browser-accepts-real-next-201-and-navigates-to-authorization",
+          "status": "passed",
+          "mode": "built browser with actual next responses through private verification RPC; navigation stopped before consent"
+        },
+        {
+          "name": "test-attempt-cancelled",
+          "status": "passed"
+        }
+      ],
+      "createdStatus": 201,
+      "gatewayDeployment": [
+        {
+          "versionId": "28934d81-28c4-45d6-a44e-f2ce987f91df",
+          "percentage": 100
+        }
+      ]
+    }
+  },
+  "admission": {
+    "status": "pending",
+    "prerequisite": "Owner consent, account model discovery and a real subscription-backed streamed Responses request remain required. The browser smoke stopped before authorization and cancelled its attempt."
+  }
+}

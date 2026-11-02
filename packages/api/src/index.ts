@@ -4,6 +4,7 @@ import * as HttpApi from "effect/http-api/HttpApi";
 import * as HttpApiClient from "effect/http-api/HttpApiClient";
 import * as HttpApiEndpoint from "effect/http-api/HttpApiEndpoint";
 import * as HttpApiGroup from "effect/http-api/HttpApiGroup";
+import * as HttpApiSchema from "effect/http-api/HttpApiSchema";
 import * as Schema from "effect/Schema";
 import { Id } from "@kitties/domain";
 import {
@@ -108,7 +109,7 @@ export const Api = HttpApi.make("Kitties").add(
     }),
     HttpApiEndpoint.post("link", "/v1/chatgpt/link-attempts", {
       payload: ChatgptLinkInput,
-      success: ChatgptLinkView,
+      success: ChatgptLinkView.pipe(HttpApiSchema.status(201)),
     }),
     HttpApiEndpoint.get("attempt", "/v1/chatgpt/link-attempts/:id", {
       params: { id: Id },

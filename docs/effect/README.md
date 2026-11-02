@@ -35,7 +35,12 @@ subscription-backed Responses admission remain pending**. Usage stays disabled.
 The agent adapter (slice 3), model selection and resumable limit handling (slice 4), and final
 live/recovery/latency/production acceptance (slice 5) remain gated on that admission. No production
 ChatGPT registration has been linked or enabled. Local checks, 74 unit/helper tests and six
-browser cases pass. The cloud evidence distinguishes fixture checks from live acceptance.
+browser cases passed initially. The [linking fix](evidence/chatgpt-linking-fix-next.json) records
+Cloudflare traces confirming that the browser rejected successful HTTP 201 creation responses,
+the corrected typed contract, and manifest credentials for Cloudflare Access. It is deployed to
+`next`; eight desktop/mobile browser cases and a browser check using real next API responses
+pass. Owner consent and the Responses admission gate remain pending. The cloud evidence
+distinguishes fixture checks from live acceptance.
 
 ## Phase status
 

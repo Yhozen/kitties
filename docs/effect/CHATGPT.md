@@ -39,6 +39,7 @@ Implement in this order:
   request explicit renewed consent only when the owner chooses to enable plan usage. A failed
   first code exchange retains its issued client ID; `retryAttemptId` reuses that registration
   with fresh state, nonce and PKCE. Only an opaque attempt handle may enter browser storage.
+  Creation returns HTTP 201; the typed browser contract and browser fixtures must accept it.
 - An authenticated owner starts a pending transaction. The server redirects to OpenAI through
   `GET /v1/chatgpt/link-attempts/:id/authorize`; the URL is never returned as JSON or logged.
 - The Mac helper listens on `http://127.0.0.1:<available-port>/auth/callback` before opening
