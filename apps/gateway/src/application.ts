@@ -278,8 +278,7 @@ export const makeApplication = Effect.gen(function* () {
         const saved = yield* home().read("provider", id);
         if (method === "PUT" && !providerRoute[2]) {
           const body = yield* readBody(request, ProviderInput);
-          if (body.kind === "chatgpt" && env.CHATGPT_ENABLED !== "true")
-            return json({ code: "FEATURE_DISABLED", params: {} }, 404);
+          if (body.kind === "chatgpt") return json({ code: "FEATURE_DISABLED", params: {} }, 404);
           yield* Effect.try({ try: () => providerBaseUrl(body), catch: () => "HOST_DENIED" });
           const { apiKey, ...config } = body;
           const old = saved ? (JSON.parse(saved) as Provider) : null;
@@ -294,7 +293,6 @@ export const makeApplication = Effect.gen(function* () {
           return json(viewProvider(provider));
         }
         if (method === "DELETE" && !providerRoute[2]) {
-          yield* home().oauthDisconnect(`chatgpt-${id}`);
           yield* home().remove("provider", id);
           return HttpServerResponse.empty({ status: 204 });
         }
@@ -302,10 +300,7 @@ export const makeApplication = Effect.gen(function* () {
           if (!saved) return json({ code: "NOT_FOUND", params: {} }, 404);
           const provider = JSON.parse(saved) as Provider;
           if (provider.kind === "chatgpt")
-            return json({
-              ok: (yield* home().oauthStatus(`chatgpt-${id}`)) === "ready",
-              models: [provider.model],
-            });
+            return json({ code: "FEATURE_DISABLED", params: {} }, 404);
           if (!provider.secret) return json({ code: "PROVIDER_KEY_REQUIRED", params: {} }, 400);
           const secret = yield* Effect.tryPromise({
             try: () => open(env.KITTIES_KEK, `providers:${id}:api-key`, provider.secret!),

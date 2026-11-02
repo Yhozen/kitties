@@ -4,9 +4,10 @@
   "type": "module",
   "scripts": {
     "check": "vp check",
-    "test": "vp test --run",
+    "test": "vp test --run && node --test scripts/chatgpt-connect.test.mjs",
     "build": "vp run -r build",
-    "dev": "pnpm --filter @kitties/gateway dev"
+    "dev": "pnpm --filter @kitties/gateway dev",
+    "chatgpt:connect": "node scripts/chatgpt-connect.mjs"
   },
   "dependencies": {
     "@alchemy.run/cloudflare": "2.0.0-beta.84",

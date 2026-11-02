@@ -1,6 +1,8 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import { Stage } from "alchemy/Stage";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
+import { readBody } from "./request.ts";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import Gateway from "./worker.ts";
 import { oauthOrigin } from "./oauth.ts";
@@ -35,6 +37,41 @@ export default class OAuthIngress extends Cloudflare.Worker<OAuthIngress>()(
       fetch: Effect.gen(function* () {
         const request = yield* Cloudflare.Request,
           url = new URL(request.url);
+        if (
+          request.method === "POST" &&
+          url.pathname === "/oauth/chatgpt/callback" &&
+          !url.search
+        ) {
+          const value = Schema.String.check(Schema.isMaxLength(8192));
+          const result = yield* readBody(
+            request,
+            Schema.Struct({
+              state: Schema.String.check(Schema.isPattern(/^[a-zA-Z0-9_-]{43}$/)),
+              code: Schema.optional(value),
+              clientId: Schema.optional(value),
+              issuer: Schema.optional(value),
+              error: Schema.optional(value),
+            }),
+          ).pipe(
+            Effect.flatMap((callback) => gateway.finishChatgpt(callback)),
+            Effect.map((attempt) => ({
+              status: 200,
+              body: { status: attempt.status, accountId: attempt.accountId },
+            })),
+            Effect.catch(() => Effect.succeed({ status: 400, body: { status: "failed" } })),
+          );
+          return HttpServerResponse.fromWeb(
+            Response.json(result.body, {
+              status: result.status,
+              headers: {
+                "Cache-Control": "no-store",
+                "Referrer-Policy": "no-referrer",
+                "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+                "X-Content-Type-Options": "nosniff",
+              },
+            }),
+          );
+        }
         if (request.method !== "GET") return HttpServerResponse.empty({ status: 404 });
         if (url.pathname === "/.well-known/oauth-client/kitties.json" && !url.search)
           return HttpServerResponse.fromWeb(

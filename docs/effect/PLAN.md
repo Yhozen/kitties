@@ -1,3 +1,7 @@
+> ChatGPT update (2026-11-02): [CHATGPT.md](CHATGPT.md) supersedes the Codex public-client,
+> paste-back and backend-api details below. Use Kitties' dynamic registration, a one-time Mac
+> helper, Cloudflare renewal and the public Responses API. Keep usage disabled through admission.
+
 <!-- Status: approved by the owner on 2026-11-01. All ten phases are deployed; production cutover and recovery passed on 2026-11-01. -->
 <!-- File:line references point at commit 7f408a1 (codex/durable-state-recovery); permalinks are in CURRENT-SYSTEM.md. -->
 

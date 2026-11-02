@@ -36,7 +36,9 @@ Implement in this order:
   `GET /v1/chatgpt/accounts/:id/models`, and `POST /v1/chatgpt/accounts/:id/probe`.
 - `POST /v1/chatgpt/link-attempts`, `GET /v1/chatgpt/link-attempts/:id`,
   `DELETE /v1/chatgpt/link-attempts/:id`. Supply `accountId` to reconnect a saved registration;
-  request explicit renewed consent only when the owner chooses to enable plan usage.
+  request explicit renewed consent only when the owner chooses to enable plan usage. A failed
+  first code exchange retains its issued client ID; `retryAttemptId` reuses that registration
+  with fresh state, nonce and PKCE. Only an opaque attempt handle may enter browser storage.
 - An authenticated owner starts a pending transaction. The server redirects to OpenAI through
   `GET /v1/chatgpt/link-attempts/:id/authorize`; the URL is never returned as JSON or logged.
 - The Mac helper listens on `http://127.0.0.1:<available-port>/auth/callback` before opening

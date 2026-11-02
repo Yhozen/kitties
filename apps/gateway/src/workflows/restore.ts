@@ -115,8 +115,7 @@ export const RestoreLive = Workflows.layer(
         execute: Effect.gen(function* () {
           for (const row of yield* home.list("connection").pipe(Effect.mapError(storage)))
             yield* home.oauthDisconnect(row.id).pipe(Effect.mapError(storage));
-          for (const row of yield* home.list("provider").pipe(Effect.mapError(storage)))
-            yield* home.oauthDisconnect(`chatgpt-${row.id}`).pipe(Effect.mapError(storage));
+          yield* home.chatgptInvalidate().pipe(Effect.mapError(storage));
           for (const o of yield* root.objects().pipe(Effect.mapError(storage)))
             if (o.kind === "kitty")
               yield* kitties

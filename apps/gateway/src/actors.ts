@@ -9,6 +9,8 @@ import { RecoveryDO } from "./recovery-store.ts";
 import { makeStorageAdmin } from "./storage-admin.ts";
 import { freshMemory, updateMemory, type Memory, type MemoryCommand } from "./memory.ts";
 import { makeOAuthStorage, type OAuthConfig } from "./oauth-core.ts";
+import { makeChatgptStorage, type ChatgptCallback } from "./chatgpt-core.ts";
+import { safeChatgptError } from "./chatgpt-errors.ts";
 import { authorization, type RuleMode } from "./approval-policy.ts";
 
 const makeActor = Effect.gen(function* () {
@@ -47,30 +49,43 @@ const makeActor = Effect.gen(function* () {
       "CREATE TABLE IF NOT EXISTS webhook_deliveries (id TEXT PRIMARY KEY,digest TEXT NOT NULL,body TEXT NOT NULL,at INTEGER NOT NULL)",
     );
     const raw = state.raw.storage.sql;
+    // Hard cutover: old provider-owned Codex grants and active-attempt pointers
+    // cannot remain usable through the generic OAuth callback after redeploy/PITR.
+    raw.exec(
+      "DELETE FROM records WHERE kind IN ('oauth-credentials','oauth-attempt') AND id GLOB 'chatgpt-*'",
+    );
     const oauthGet = (kind: string, id: string) =>
       raw
         .exec<{ body: string }>("SELECT body FROM records WHERE kind=? AND id=?", kind, id)
         .toArray()[0]?.body ?? null;
-    const oauth = makeOAuthStorage(
-      {
-        get: oauthGet,
-        put: (kind, id, body) => {
-          raw.exec(
-            "INSERT INTO records VALUES (?,?,?,?) ON CONFLICT(kind,id) DO UPDATE SET body=excluded.body,updated_at=excluded.updated_at",
-            kind,
-            id,
-            body,
-            Date.now(),
-          );
-        },
-        take: (kind, id) =>
-          state.raw.storage.transactionSync(() => {
-            const body = oauthGet(kind, id);
-            raw.exec("DELETE FROM records WHERE kind=? AND id=?", kind, id);
-            return body;
-          }),
+    const credentialStorage = {
+      get: oauthGet,
+      put: (kind: string, id: string, body: string) => {
+        raw.exec(
+          "INSERT INTO records VALUES (?,?,?,?) ON CONFLICT(kind,id) DO UPDATE SET body=excluded.body,updated_at=excluded.updated_at",
+          kind,
+          id,
+          body,
+          Date.now(),
+        );
       },
-      env.KITTIES_KEK,
+      take: (kind: string, id: string) =>
+        state.raw.storage.transactionSync(() => {
+          const body = oauthGet(kind, id);
+          raw.exec("DELETE FROM records WHERE kind=? AND id=?", kind, id);
+          return body;
+        }),
+      list: (kind: string) =>
+        raw
+          .exec<{ id: string; body: string }>(
+            "SELECT id,body FROM records WHERE kind=? ORDER BY id",
+            kind,
+          )
+          .toArray(),
+    };
+    const oauth = makeOAuthStorage(credentialStorage, env.KITTIES_KEK);
+    const chatgpt = makeChatgptStorage(credentialStorage, env.KITTIES_KEK, () =>
+      Effect.runPromise(roots.getByName("control", { locationHint: "weur" }).chatgptContext()),
     );
     const oauthError = () => "OAUTH_AUTHORIZATION_REQUIRED";
     const prepareTurn = (id: string, kittyId: string, health: string) =>
@@ -156,6 +171,30 @@ const makeActor = Effect.gen(function* () {
         "capacity_leases",
         "webhook_deliveries",
       ]),
+      chatgptAccounts: () => Effect.tryPromise({ try: chatgpt.accounts, catch: safeChatgptError }),
+      chatgptAccount: (id: string) =>
+        Effect.tryPromise({ try: () => chatgpt.account(id), catch: safeChatgptError }),
+      chatgptBegin: (input: {
+        redirectUri: string;
+        accountId?: string;
+        retryAttemptId?: string;
+        requestConsent?: boolean;
+      }) => Effect.tryPromise({ try: () => chatgpt.begin(input), catch: safeChatgptError }),
+      chatgptAttempt: (id: string) =>
+        Effect.tryPromise({ try: () => chatgpt.attempt(id), catch: safeChatgptError }),
+      chatgptAuthorize: (id: string) =>
+        Effect.tryPromise({ try: () => chatgpt.authorize(id), catch: safeChatgptError }),
+      chatgptFinish: (callback: ChatgptCallback) =>
+        Effect.tryPromise({ try: () => chatgpt.finish(callback), catch: safeChatgptError }),
+      chatgptCancel: (id: string) =>
+        Effect.tryPromise({ try: () => chatgpt.cancel(id), catch: safeChatgptError }),
+      chatgptDisconnect: (id: string) =>
+        Effect.tryPromise({ try: () => chatgpt.disconnect(id), catch: safeChatgptError }),
+      chatgptModels: (id: string) =>
+        Effect.tryPromise({ try: () => chatgpt.models(id), catch: safeChatgptError }),
+      chatgptProbe: (id: string) =>
+        Effect.tryPromise({ try: () => chatgpt.probe(id), catch: safeChatgptError }),
+      chatgptInvalidate: () => Effect.sync(chatgpt.invalidate),
       oauthBegin: (id: string, config: OAuthConfig) =>
         Effect.tryPromise({ try: () => oauth.begin(id, config), catch: oauthError }),
       oauthFinish: (state: string, code: string, issuer?: string, expectedId?: string) =>

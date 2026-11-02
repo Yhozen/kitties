@@ -12,7 +12,7 @@ Owner confirmation refers to D1–D16 in [DECISIONS.md](DECISIONS.md), not to ru
 | Chats, groups, @name routing, cancel | kept | 5 | D8 |
 | Kitty editor, soul, PixelCat avatars, Welcome | kept | 5 | D8 |
 | Settings, OpenAI/Anthropic/OpenRouter/compat/Gemini | changed | 5 | D6 |
-| ChatGPT/Codex sign-in behind flag | changed | 5 | D13 |
+| ChatGPT subscription via Mac linking helper; inference behind admission gate | changed | 5 | D13; [contract](CHATGPT.md) |
 | Copilot/Claude Code/gcloud/Qwen/local Ollama sign-in | dropped | — | D13 |
 | Feedback, demand, memory notes/profile/distill | kept | 5 | D8 |
 | Library skills/proposals and artifacts | kept | 5 | D8 |
@@ -169,5 +169,5 @@ verified PKCE, single-use callbacks, CIMD, bypass isolation and one refresh for 
 | CalDAV / CardDAV | PROPFIND from Workers | Deferred: no owner endpoint supplied or deployed PROPFIND acceptance evidence. |
 
 MCP metadata does not grant permission. Read access names must be explicitly selected; all other
-tools go through the approval ledger. ChatGPT sign-in remains disabled by default and requires
+tools go through the approval ledger. ChatGPT inference remains disabled by default and requires
 an owner login before real inference can be verified.

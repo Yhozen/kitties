@@ -1,4 +1,3 @@
-import { isChatgptConfig } from "./chatgpt-config.ts";
 import { publicHttps, allowedFetch } from "./outbound.ts";
 import { seal, open, type Envelope } from "./secrets.ts";
 
@@ -135,7 +134,7 @@ export function validateConfig(config: OAuthConfig) {
     config.issuer,
     config.authorizationEndpoint,
     config.tokenEndpoint,
-    ...(isChatgptConfig(config) ? [] : [config.redirectUri]),
+    config.redirectUri,
     config.protectedUrl,
   ])
     publicHttps(url);

@@ -27,7 +27,6 @@ import type {
   ModelRound,
   ApprovalRecord,
 } from "../entities.ts";
-import { chatgptConfig } from "../chatgpt-config.ts";
 import { open } from "../secrets.ts";
 import { providerText } from "../providers.ts";
 import { discoverTools, executeTool, needsApproval } from "../tools.ts";
@@ -177,18 +176,12 @@ export const TurnLive = Workflows.layer(
               }
               if (!provider || (provider.kind !== "chatgpt" && !provider.secret))
                 return yield* Effect.fail("PROVIDER_KEY_REQUIRED");
-              if (provider.kind === "chatgpt" && env.CHATGPT_ENABLED !== "true")
-                return yield* Effect.fail("FEATURE_DISABLED");
-              const secret =
-                provider.kind === "chatgpt"
-                  ? yield* home
-                      .oauthToken(`chatgpt-${provider.id}`, chatgptConfig.protectedUrl)
-                      .pipe(Effect.mapError(() => "OAUTH_AUTHORIZATION_REQUIRED"))
-                  : yield* Effect.tryPromise({
-                      try: () =>
-                        open(env.KITTIES_KEK, `providers:${provider.id}:api-key`, provider.secret!),
-                      catch: () => "KEY_UNAVAILABLE",
-                    });
+              if (provider.kind === "chatgpt") return yield* Effect.fail("FEATURE_DISABLED");
+              const secret = yield* Effect.tryPromise({
+                try: () =>
+                  open(env.KITTIES_KEK, `providers:${provider.id}:api-key`, provider.secret!),
+                catch: () => "KEY_UNAVAILABLE",
+              });
               const remoteTools = yield* Effect.forEach(
                 connections,
                 (connection) =>

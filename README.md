@@ -16,8 +16,9 @@ on Cloudflare Workers, SQLite Durable Objects and Alchemy Effect Workflows.
 - English, Spanish and Portuguese; at most five active Boat desktops.
 
 Production switched to the Effect application on November 1, 2026. This is fresh state: enter
-provider keys and authorize connections in Settings, then create a kitty and chat. ChatGPT sign-in
-is disabled unless explicitly enabled. Old Go state and checkpoints were not migrated.
+provider keys and authorize connections in Settings, then create a kitty and chat. The new ChatGPT
+[Mac linking helper](docs/effect/CHATGPT.md) is on `next`; subscription inference stays disabled
+until live acceptance passes. Old Go state and checkpoints were not migrated.
 
 The accepted performance limitation is **1.421 s p95 non-model overhead** (653 ms median,
 50 real actions), above the original 1 s target. Provider latency is excluded. See the

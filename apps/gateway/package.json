@@ -21,6 +21,7 @@
     "@kitties/domain": "workspace:*",
     "@kitties/protocol": "workspace:*",
     "alchemy": "2.0.0-beta.84",
-    "effect": "4.1.1"
+    "effect": "4.1.1",
+    "jose": "6.2.14"
   }
 }

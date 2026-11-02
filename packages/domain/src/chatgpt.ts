@@ -37,6 +37,7 @@ export type ChatgptAccount = typeof ChatgptAccountView.Type;
 export const ChatgptLinkInput = Schema.Struct({
   redirectUri: Schema.String.check(Schema.isMaxLength(200)),
   accountId: Schema.optional(Id),
+  retryAttemptId: Schema.optional(Id),
   requestConsent: Schema.optional(Schema.Boolean),
 });
 export const ChatgptLinkView = Schema.Struct({
@@ -53,6 +54,7 @@ export const ChatgptLinkView = Schema.Struct({
   ]),
   expiresAt: Schema.Number,
   error: Schema.optional(ChatgptError),
+  canRetryRegistration: Schema.optional(Schema.Boolean),
 });
 export type ChatgptLink = typeof ChatgptLinkView.Type;
 export const ChatgptModelView = Schema.Struct({ slug: Schema.String, displayName: Schema.String });

@@ -24,6 +24,19 @@ The optimized build was published to production on 2026-11-02; these measurement
 | [RISKS.md](RISKS.md) | The risk register, with mitigations and triggers. |
 | [LATENCY-BASELINE.md](LATENCY-BASELINE.md) | Today's measured numbers, the inferred per-hop budget, targets, and results as phases land. |
 
+## ChatGPT subscription follow-up
+
+The [five-slice contract](CHATGPT.md) replaces D13's Codex-client integration. Slice 1 is
+committed (`a17c55d`). Slice 2's helper, typed account resources, encrypted shared credential
+store, renewal, recovery fencing and admission probe are implemented and deployed to `next`.
+[Cloud linking checks](evidence/chatgpt-linking-next.json) pass; **real owner consent and
+subscription-backed Responses admission remain pending**. Usage stays disabled.
+
+The agent adapter (slice 3), model selection and resumable limit handling (slice 4), and final
+live/recovery/latency/production acceptance (slice 5) remain gated on that admission. No production
+ChatGPT registration has been linked or enabled. Local checks, 74 unit/helper tests and six
+browser cases pass. The cloud evidence distinguishes fixture checks from live acceptance.
+
 ## Phase status
 
 Each phase is a stack of draft PRs on top of `codex/durable-state-recovery` (#13). Update this

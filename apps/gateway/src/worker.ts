@@ -1,3 +1,4 @@
+import type { ChatgptCallback } from "./chatgpt-core.ts";
 import { verifiedAccessIdentity } from "./access-jwt.ts";
 import { makeSecretAudit } from "./secret-audit.ts";
 import { workflowActor } from "./workflow-admin.ts";
@@ -194,6 +195,8 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
           ? purges.start({ id, before }).pipe(Effect.map((run) => run.executionId))
           : Effect.succeed(null),
       receiveWebhook,
+      finishChatgpt: (callback: ChatgptCallback) =>
+        homes.getByName("owner", { locationHint: "weur" }).chatgptFinish(callback),
       finishOAuth: (state: string, code: string, issuer?: string) =>
         oauth.callback(state, code, issuer),
       timerStart: (id: string) => timers.start({ id }).pipe(Effect.map((run) => run.executionId)),
@@ -206,7 +209,7 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
         Effect.gen(function* () {
           if (env.STAGE !== "next" && env.STAGE !== "e2e") return { status: 404, body: "" };
           if (
-            !/^\/v1\/(recovery|features|kitties|chats|providers|connections|approvals|runs|computer-runs|releases|vault|help|artifacts|skills|goals|hooks|approval-rules|notifications)(?:\/|$)/.test(
+            !/^\/v1\/(recovery|features|chatgpt|kitties|chats|providers|connections|approvals|runs|computer-runs|releases|vault|help|artifacts|skills|goals|hooks|approval-rules|notifications)(?:\/|$)/.test(
               path,
             )
           )

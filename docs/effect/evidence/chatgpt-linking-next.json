@@ -1,0 +1,35 @@
+{
+  "date": "2026-11-02T02:40:11.471Z",
+  "stage": "next",
+  "inferenceEnabled": false,
+  "cases": [
+    {
+      "name": "subscription-usage-disabled",
+      "status": "passed"
+    },
+    {
+      "name": "repeated-account-rpcs-use-new-request-handles",
+      "status": "passed"
+    },
+    {
+      "name": "cloud-link-create-status-cancel-without-secrets",
+      "status": "passed"
+    },
+    {
+      "name": "non-loopback-callback-rejected",
+      "status": "passed"
+    },
+    {
+      "name": "legacy-signin-removed",
+      "status": "passed"
+    },
+    {
+      "name": "public-ingress-rejects-unknown-transaction",
+      "status": "passed"
+    }
+  ],
+  "admission": {
+    "status": "pending",
+    "prerequisite": "Owner must complete the Mac helper consent and minimal subscription-backed Responses probe."
+  }
+}
