@@ -21,3 +21,17 @@ fixtures, probes and their setup have been removed. Historical validation eviden
 `docs/effect/evidence/`; it does not represent a currently runnable suite.
 Keep the exact Effect/Alchemy versions and pnpm patches together; see
 [patches/README.md](../patches/README.md).
+
+## Lint rules and agent guidance
+
+`pnpm check` uses the root Vite+ configuration, including the vendored anti-slop
+generic rules and optional Effect rules at error severity. Read [AGENTS.md](../AGENTS.md)
+for the workspace conventions and links to the installed Effect and Vite+ documentation.
+The vendored revision, licenses and update notes are in
+[anti-slop provenance](../tools/oxlint/anti-slop/UPSTREAM.md).
+
+Use `pnpm exec vp lint --fix`, then `pnpm exec vp fmt` for spacing changes. Review
+semantic findings individually; a formatter cannot establish runtime type safety.
+When upgrading Vite+, keep `@oxlint/plugins` pinned to the version printed by
+`pnpm exec vp lint --version`. Existing source exclusions remain in `vite.config.ts`;
+the Effect service-import rule checks relative imports, not package or path aliases.
