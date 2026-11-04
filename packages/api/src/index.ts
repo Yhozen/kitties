@@ -351,7 +351,11 @@ export const Api = HttpApi.make("Kitties").add(
         }),
       ),
     }),
-    HttpApiEndpoint.get("get", "/v1/chats/:id", { params: { id: Id }, success: ChatDetail }),
+    HttpApiEndpoint.get("get", "/v1/chats/:id", {
+      params: { id: Id },
+      query: { before: Schema.optional(Id) },
+      success: ChatDetail,
+    }),
     HttpApiEndpoint.post("cancel", "/v1/chats/:id/cancel", {
       params: { id: Id },
       payload: Schema.Struct({ messageId: Id }),

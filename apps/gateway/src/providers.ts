@@ -36,6 +36,22 @@ export const providerBaseUrl = (provider: Pick<Provider, "kind" | "baseUrl">) =>
     .toString()
     .replace(/\/$/, "");
 
+export const providerVerificationRequest = (
+  provider: Pick<Provider, "kind" | "baseUrl">,
+  secret: string,
+) => {
+  const base = providerBaseUrl(provider);
+  const headers: Record<string, string> =
+    provider.kind === "anthropic"
+      ? { "x-api-key": secret, "anthropic-version": "2023-06-01" }
+      : { Authorization: `Bearer ${secret}` };
+  return {
+    base,
+    endpoint: base + (provider.kind === "anthropic" ? "/v1/models" : "/models"),
+    headers,
+  };
+};
+
 export const modelLayer = (
   provider: Provider,
   secret: string,

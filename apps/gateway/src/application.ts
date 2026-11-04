@@ -24,7 +24,7 @@ import { DesktopAttempt } from "./desktop-definition.ts";
 import { Approval, ApprovalDecision } from "./approval-definition.ts";
 import { WorkflowEngine } from "effect/workflow";
 import { seal, open } from "./secrets.ts";
-import { providerBaseUrl } from "./providers.ts";
+import { providerBaseUrl, providerVerificationRequest } from "./providers.ts";
 import { allowedFetch } from "./outbound.ts";
 import { publicHttps } from "./outbound.ts";
 import { discoverTools } from "./tools.ts";
@@ -316,15 +316,11 @@ export const makeApplication = Effect.gen(function* () {
             try: () => open(env.KITTIES_KEK, `providers:${id}:api-key`, provider.secret!),
             catch: () => "KEY_UNAVAILABLE",
           });
-          const base = providerBaseUrl(provider),
-            endpoint = base + "/models";
+          const { base, endpoint, headers } = providerVerificationRequest(provider, secret);
           const response = yield* Effect.tryPromise({
             try: () =>
               allowedFetch(endpoint, [new URL(base).hostname], {
-                headers:
-                  provider.kind === "anthropic"
-                    ? { "x-api-key": secret, "anthropic-version": "2023-06-01" }
-                    : { Authorization: `Bearer ${secret}` },
+                headers,
               }),
             catch: () => "PROVIDER_UNAVAILABLE",
           });
@@ -427,8 +423,12 @@ export const makeApplication = Effect.gen(function* () {
           return HttpServerResponse.empty({ status: 204 });
         }
         if (method === "GET" && chatRoute[2] === "replay") return json(yield* chat.replay());
-        if (method === "GET" && !chatRoute[2])
-          return json({ ...profile, ...(yield* chat.snapshot()) });
+        if (method === "GET" && !chatRoute[2]) {
+          const before = url.searchParams.get("before") ?? undefined;
+          if (before !== undefined && !/^[a-zA-Z0-9_-]{1,128}$/.test(before))
+            return json({ code: "INVALID_MESSAGE_ID", params: {} }, 400);
+          return json({ ...profile, ...(yield* chat.snapshot(before)) });
+        }
         if (method === "POST" && chatRoute[2] === "messages") {
           const body = yield* readBody(request, MessageInput);
           if (!profile.members.includes(body.kittyId))

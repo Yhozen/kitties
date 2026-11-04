@@ -86,11 +86,13 @@ export const MessageView = Schema.Struct({
   pauseReason: Schema.optional(ChatgptError),
   answer: Schema.String,
   at: Schema.Number,
+  revision: Schema.optional(Schema.Struct({ round: Schema.Number, attempt: Schema.Number })),
 });
 export const ChatDetail = Schema.Struct({
   ...ChatView.fields,
   messages: Schema.Array(MessageView),
   cursor: Schema.Number,
+  hasMore: Schema.optional(Schema.Boolean),
 });
 export const MemoryNoteInput = Schema.Struct({
   scope: Schema.String.check(Schema.isMaxLength(48)),

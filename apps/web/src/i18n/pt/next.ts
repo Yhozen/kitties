@@ -1,4 +1,5 @@
 export default {
+  "Load earlier messages": "Carregar mensagens anteriores",
   "Retry previous registration": "Tentar o registro anterior novamente",
   "Use your ChatGPT plan": "Use seu plano do ChatGPT",
   "Link once using the Mac helper. After linking, Kitties works from the PWA on any device.": "Vincule uma vez com o assistente do Mac. Depois, use Kitties pela PWA em qualquer dispositivo.",

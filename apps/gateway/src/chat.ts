@@ -4,6 +4,7 @@ import { WorkflowEngine } from "effect/workflow";
 import * as Effect from "effect/Effect";
 import { Turn } from "./turn-definition.ts";
 import { HomeDO } from "./actors.ts";
+import { readMessagePage } from "./chat-history.ts";
 
 // Budget charges ride on the ChatDO write that already sits on the turn's critical path.
 // The outbox row commits in that transaction; delivery to HomeDO happens off the critical path
@@ -38,6 +39,7 @@ const makeChat = Effect.gen(function* () {
     sql.exec(
       "CREATE TABLE IF NOT EXISTS events (seq INTEGER PRIMARY KEY AUTOINCREMENT,body TEXT NOT NULL,at INTEGER NOT NULL)",
     );
+    sql.exec("CREATE INDEX IF NOT EXISTS messages_at ON messages(at)");
     sql.exec("CREATE TABLE IF NOT EXISTS chat_state (key TEXT PRIMARY KEY,body TEXT NOT NULL)");
     sql.exec(
       "CREATE TABLE IF NOT EXISTS rounds (id TEXT NOT NULL,round INTEGER NOT NULL,attempt INTEGER NOT NULL,history TEXT,PRIMARY KEY(id,round))",
@@ -170,25 +172,10 @@ const makeChat = Effect.gen(function* () {
           yield* safePump;
           return { conflict: false, duplicate: !!row, cancelled: false };
         }),
-      messages: () =>
-        Effect.sync(() =>
-          sql
-            .exec<Row>("SELECT * FROM messages ORDER BY at,rowid LIMIT 200")
-            .toArray()
-            .map((row) => ({
-              ...row,
-              payload: JSON.parse(row.payload) as typeof Turn.payloadSchema.Type,
-            })),
-        ),
-      snapshot: () =>
+      messages: () => Effect.sync(() => readMessagePage(sql).messages),
+      snapshot: (before?: string) =>
         Effect.sync(() => ({
-          messages: sql
-            .exec<Row>("SELECT * FROM messages ORDER BY at,rowid LIMIT 200")
-            .toArray()
-            .map((row) => ({
-              ...row,
-              payload: JSON.parse(row.payload) as typeof Turn.payloadSchema.Type,
-            })),
+          ...readMessagePage(sql, before),
           cursor: sql
             .exec<{ seq: number }>("SELECT COALESCE(MAX(seq),0) AS seq FROM events")
             .toArray()[0]!.seq,

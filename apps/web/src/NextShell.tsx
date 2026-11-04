@@ -14,6 +14,7 @@ import { IconPlus, IconMonitor } from "./icons";
 import DesktopPanel from "./DesktopPanel";
 import { cycleMode } from "./theme";
 import ReplayPanel from "./ReplayPanel";
+import { applyChatEvent, type ChatEvent } from "./chat-events";
 import {MemoryPanel,LibraryPanel,VaultHelpPanel,RunsPanel,JournalPanel} from "./WorkspacePanel";
 import "./next.css";
 
@@ -43,7 +44,9 @@ export default function NextShell() {
   const [providerName,setProviderName]=useState(""),[kind,setKind]=useState<Provider["kind"]>("openai"),[model,setModel]=useState(""),[baseUrl,setBaseUrl]=useState(""),[apiKey,setApiKey]=useState("");
   const [newChat,setNewChat]=useState(false),[chatTitle,setChatTitle]=useState(""),[members,setMembers]=useState<string[]>([]);
   const retry=useRef<{messageId:string;text:string;kittyId:string} | undefined>(undefined);
-  const versions=useRef(new Map<string,number>());
+  const selection=useRef("");
+  const [loadingEarlier,setLoadingEarlier]=useState(false);
+  const skipScroll=useRef(false);
   const end=useRef<HTMLDivElement>(null);
   const refresh=async()=>{
     const [health,cats,threads,brains]=await Promise.all([call(api=>api.system.health()),call(api=>api.kitties.list()),call(api=>api.chats.list()),call(api=>api.providers.list())]);
@@ -52,26 +55,37 @@ export default function NextShell() {
   const attempt=(fn:()=>Promise<unknown>)=>{setError("");void fn().catch(e=>setError(errorText(e)));};
   useEffect(()=>{void refresh().catch(()=>setStatus(t("Offline. Open the app again when you are connected.")));},[]);
   useEffect(()=>{
+    selection.current=selected;setDetail(undefined);setMessages([]);setLoadingEarlier(false);
     if(!selected)return;
     let active=true,events:EventSource|undefined;
-    versions.current.clear();
-    void call(api=>api.chats.get({params:{id:selected}})).then(chat=>{
+    void call(api=>api.chats.get({params:{id:selected},query:{}})).then(chat=>{
       if(!active)return;setDetail(chat);setMessages(chat.messages);
+      let cursor=chat.cursor;
       events=new EventSource(`/v1/chats/${selected}/events?after=${chat.cursor}`);
       events.onmessage=e=>{
-        const event=JSON.parse(e.data);
-        setMessages(current=>{
-          if(event.type==="message")return current.some(m=>m.id===event.messageId)?current:[...current,{id:event.messageId,payload:{chatId:selected,messageId:event.messageId,text:event.text,kittyId:event.kittyId},status:"queued",answer:"",at:Date.now(),run_id:null}];
-          if(event.type==="round_reset"){versions.current.set(event.messageId,event.attempt);return current.map(m=>m.id===event.messageId?{...m,status:"running",answer:event.prefix??""}:m);}
-          if(event.type==="delta" && versions.current.get(event.messageId)===event.attempt)return current.map(m=>m.id===event.messageId?{...m,answer:m.answer+event.text}:m);
-          if(["completed","cancelled","failed"].includes(event.type))return current.map(m=>m.id===event.messageId?{...m,status:event.type}:m);
-          return current;
-        });
+        if(!active)return;
+        const seq=Number(e.lastEventId);
+        if(!Number.isSafeInteger(seq)||seq<=cursor)return;
+        cursor=seq;
+        const event=JSON.parse(e.data) as ChatEvent;
+        setMessages(current=>active?applyChatEvent(current,event,selected):current);
       };
-    }).catch(e=>setError(errorText(e)));
+    }).catch(e=>{if(active)setError(errorText(e));});
     return()=>{active=false;events?.close();};
   },[selected]);
-  useEffect(()=>end.current?.scrollIntoView({behavior:"smooth",block:"end"}),[messages]);
+  const loadEarlier=async()=>{
+    if(loadingEarlier||!messages.length)return;
+    const id=selected;
+    setLoadingEarlier(true);
+    try{
+      const page=await call(api=>api.chats.get({params:{id},query:{before:messages[0]!.id}}));
+      if(selection.current!==id)return;
+      skipScroll.current=true;
+      setMessages(current=>[...page.messages.filter(m=>!current.some(value=>value.id===m.id)),...current]);
+      setDetail(current=>current?.id===id?{...current,hasMore:page.hasMore}:current);
+    }finally{if(selection.current===id)setLoadingEarlier(false);}
+  };
+  useEffect(()=>{if(skipScroll.current){skipScroll.current=false;return;}end.current?.scrollIntoView({behavior:"smooth",block:"end"});},[messages]);
   // A kitty cheers for a moment when one of its answers completes while you watch.
   const seen=useRef(new Map<string,string>()),cheers=useRef<ReturnType<typeof setTimeout>[]>([]),[cheering,setCheering]=useState<ReadonlySet<string>>(new Set());
   useEffect(()=>{
@@ -93,7 +107,7 @@ export default function NextShell() {
     const payload={title:chatTitle || t("A new conversation"),members};
     const chat=editChat&&selected?await call(api=>api.chats.save({params:{id:selected},payload})):await call(api=>api.chats.create({payload}));
     setEditChat(false);
-    await refresh();setDetail(await call(api=>api.chats.get({params:{id:chat.id}})));setSelected(chat.id);setNewChat(false);setChatTitle("");setPanel("chat");
+    await refresh();setDetail(await call(api=>api.chats.get({params:{id:chat.id},query:{}})));setSelected(chat.id);setNewChat(false);setChatTitle("");setPanel("chat");
   };
   const send=async()=>{
     if(!selected||!detail||!text.trim()||sending)return;
@@ -123,7 +137,7 @@ export default function NextShell() {
       {panel==="chat" && <>
         <header class="next-header"><h2>{detail?.title || t("A space to get things done")}</h2>{detail&&<span>{detail.members.map(id=>kitties.find(cat=>cat.id===id)?.name).filter(Boolean).join(" · ")}</span>}{detail&&<><button onClick={()=>{setEditChat(true);setChatTitle(detail.title);setMembers([...detail.members]);setNewChat(true);}}>{t("Edit conversation")}</button><button onClick={()=>setReplay(!replay)}>{t("Replay")}</button><button onClick={()=>attempt(async()=>{await call(a=>a.chats.remove({params:{id:selected}}));setSelected("");setDetail(undefined);await refresh();})}>{t("Delete conversation")}</button></>}</header>{replay&&selected&&<ReplayPanel chatId={selected}/>}
         {!selected?<div class="next-welcome"><CatAvatar breed="sitting" color="mint" size={140}/><h2>{t("What shall we do today?")}</h2><p>{t("Each kitty has a personality, tools and a desktop of its own.")}</p><button class="primary" onClick={()=>editKitty()}>{t("Create a kitty")}</button></div>:<>
-          <div class="next-conversation" aria-live="polite">{messages.map((message,index)=><article key={message.id} class="next-turn"><div class="next-user"><strong>{t("You")}</strong><p>{message.payload.text}</p></div><div class="next-answer"><strong>{(()=>{const cat=kitties.find(cat=>cat.id===message.payload.kittyId);const busy=["queued","running"].includes(message.status);return <><CatAvatar breed={cat?.breed} color={cat?.color} size={28} still={!busy&&index<messages.length-1&&!cheering.has(message.id)} mood={busy?"thinking":cheering.has(message.id)?"happy":"idle"}/>{cat?.name || "Kitty"}</>;})()}</strong><p>{message.answer || (message.status==="queued"?t("Queued…"):message.status==="cancelled"?t("Cancelled."):t("Thinking…"))}</p>{["queued","running"].includes(message.status)&&<button onClick={()=>attempt(()=>call(api=>api.chats.cancel({params:{id:selected},payload:{messageId:message.id}})))}>{t("Cancel")}</button>}{message.status==="completed"&&<span>{(["up","down"] as const).map(rating=><button aria-label={rating==="up"?t("Helpful"):t("Improve response")} onClick={()=>attempt(()=>call(a=>a.workspace.feedback({params:{id:selected,message:message.id},payload:{rating,note:""}})))}>{rating==="up"?"👍":"👎"}</button>)}</span>}{message.status==="running"&&<button onClick={()=>attempt(()=>call(api=>api.chats.resume({params:{id:selected},payload:{messageId:message.id}})))}>{t("Continue")}</button>}</div></article>)}<div ref={end}/></div>
+          <div class="next-conversation" aria-live="polite">{detail?.hasMore&&<button disabled={loadingEarlier} onClick={()=>attempt(loadEarlier)}>{t("Load earlier messages")}</button>}{messages.map((message,index)=><article key={message.id} class="next-turn"><div class="next-user"><strong>{t("You")}</strong><p>{message.payload.text}</p></div><div class="next-answer"><strong>{(()=>{const cat=kitties.find(cat=>cat.id===message.payload.kittyId);const busy=["queued","running"].includes(message.status);return <><CatAvatar breed={cat?.breed} color={cat?.color} size={28} still={!busy&&index<messages.length-1&&!cheering.has(message.id)} mood={busy?"thinking":cheering.has(message.id)?"happy":"idle"}/>{cat?.name || "Kitty"}</>;})()}</strong><p>{message.answer || (message.status==="queued"?t("Queued…"):message.status==="cancelled"?t("Cancelled."):t("Thinking…"))}</p>{["queued","running"].includes(message.status)&&<button onClick={()=>attempt(()=>call(api=>api.chats.cancel({params:{id:selected},payload:{messageId:message.id}})))}>{t("Cancel")}</button>}{message.status==="completed"&&<span>{(["up","down"] as const).map(rating=><button aria-label={rating==="up"?t("Helpful"):t("Improve response")} onClick={()=>attempt(()=>call(a=>a.workspace.feedback({params:{id:selected,message:message.id},payload:{rating,note:""}})))}>{rating==="up"?"👍":"👎"}</button>)}</span>}{message.status==="running"&&<button onClick={()=>attempt(()=>call(api=>api.chats.resume({params:{id:selected},payload:{messageId:message.id}})))}>{t("Continue")}</button>}</div></article>)}<div ref={end}/></div>
           <form class="next-composer" onSubmit={e=>{e.preventDefault();attempt(send);}}><textarea aria-label={t("Message")} placeholder="Escribe una tarea. Usa @nombre en los grupos." value={text} onInput={e=>setText(e.currentTarget.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();attempt(send);}}}/><button class="primary" disabled={sending||!text.trim()}>{t("Send ↑")}</button></form>
         </>}
       </>}
@@ -136,6 +150,6 @@ export default function NextShell() {
       {panel==="health"&&<section class="next-form"><h2>{t("Workspace health")}</h2><p>{status}</p><p>{t("Version")}: {version}</p><dl><dt>Kitties</dt><dd>{kitties.length}</dd><dt>{t("Conversations")}</dt><dd>{chats.length}</dd><dt>{t("Models")}</dt><dd>{providers.length}</dd><dt>{t("Desktops")}</dt><dd>Boat</dd></dl><button onClick={()=>attempt(refresh)}>{t("Refresh")}</button><RunsPanel/><RecoveryPanel/><p><a href="/cdn-cgi/access/logout">{t("Sign out")}</a></p></section>}
     </main>
     {newChat&&<div class="next-overlay"><section class="next-dialog"><button class="next-close" aria-label={t("Close")} onClick={()=>{setNewChat(false);setEditChat(false);}}>×</button><h2>{editChat?t("Edit conversation"):t("New conversation")}</h2><form onSubmit={e=>{e.preventDefault();attempt(createChat);}}><label>{t("Title")}<input value={chatTitle} onInput={e=>setChatTitle(e.currentTarget.value)}/></label><fieldset><legend>{t("Participants")}</legend>{kitties.map(cat=><label class="next-check"><input type="checkbox" checked={members.includes(cat.id)} onChange={e=>setMembers(e.currentTarget.checked?[...members,cat.id]:members.filter(id=>id!==cat.id))}/>{cat.name}</label>)}</fieldset><button class="primary" disabled={!members.length}>{t("Start")}</button></form></section></div>}
-    {desktop&&<div class="next-overlay"><section class="next-desktop"><DesktopPanel id={desktop} onClose={()=>setDesktop("")}/></section></div>}
+    {desktop&&<div class="next-overlay"><section class="next-desktop"><DesktopPanel key={desktop} id={desktop} onClose={()=>setDesktop("")}/></section></div>}
   </div>;
 }
