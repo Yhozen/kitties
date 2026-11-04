@@ -6,6 +6,7 @@ export default defineConfig({
       "packages/**/*.test.ts",
       "apps/gateway/**/*.test.ts",
       "guest/kittyd/src/**/*.test.ts",
+      "apps/web/src/**/*.test.ts",
     ],
     passWithNoTests: true,
   },

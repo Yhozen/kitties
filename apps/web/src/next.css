@@ -13,3 +13,4 @@
 .desktop-files-list li > span { flex: 1; min-width: 10rem; overflow-wrap: anywhere; }
 .desktop-files code { overflow-wrap: anywhere; }
 .desktop-files progress { max-width: 100%; }
+.next-avatar{padding:14px 16px;border:1px solid var(--line,#d9ddd8);border-radius:12px;margin-bottom:18px}.next-avatar legend{font-size:13px;padding:0 6px}.next-answer>strong{display:flex;align-items:center;gap:8px}

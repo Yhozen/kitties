@@ -48,5 +48,7 @@ Numix/Greybird themes, [Lucide](https://lucide.dev) icons, Sansation and JetBrai
 The original wallpaper is by madkoding, generated with Qwen AI; guest assets and licences live
 under `guest/desktop/`. Perception uses [agent-browser](https://github.com/vercel-labs/agent-browser)
 and [agent-desktop](https://github.com/vercel-labs/agent-desktop).
+The cat avatars are drawn with [open-bot-avatar](https://github.com/DominikScholz/open-bot-avatar)
+(MIT, vendored in `apps/web/src/bot-avatar/`).
 
 [GPL-3.0-or-later](LICENSE) · © 2026 madkoding
