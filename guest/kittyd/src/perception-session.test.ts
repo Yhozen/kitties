@@ -49,11 +49,16 @@ describe("persistent perception process", () => {
   });
 
   it("kills a hung mutation, then starts a fresh helper for a new read", async () => {
-    const adapter = session("if (body.action === 'ui_click') return;", 250);
+    const adapter = session("if (body.action === 'ui_click') return;", 1000);
     expect((await adapter.run(read)).status).toBe("completed");
     expect((await adapter.run(click)).status).toBe("unknown");
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(await adapter.run(read)).toEqual({ status: "completed", result: "1" });
+    // Reaping a killed process can take longer than 50 ms on a loaded CI host.
+    await expect
+      .poll(async () => adapter.run(read), { timeout: 3000 })
+      .toEqual({
+        status: "completed",
+        result: "1",
+      });
   });
 
   it("knows a mutation was not sent if startup fails", async () => {
