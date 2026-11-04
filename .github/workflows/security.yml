@@ -48,6 +48,19 @@ jobs:
       - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Subtree imports add parentless commits; use the known base for the action's range.
+          BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+      # The action uses --first-parent --no-merges. Also scan every reachable commit,
+      # including the subtree's imported root and branches brought in by merges.
+      - name: Scan complete history
+        run: gitleaks git --redact --log-opts="--root HEAD" --report-format=sarif --report-path=full-history.sarif
+      - name: Complete history report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: gitleaks-full-history
+          path: full-history.sarif
+          retention-days: 14
 
   # The code's own mistakes (injection, unsafe paths, weak crypto), with GitHub's CodeQL.
   codeql:
