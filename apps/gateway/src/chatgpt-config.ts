@@ -10,8 +10,10 @@ export const chatgptConfig = {
   resource: "https://api.openai.com/v1",
   protectedUrl: "https://api.openai.com/v1",
 } as const;
+
 export function loopbackRedirect(value: string): string {
   const url = new URL(value);
+
   if (
     url.protocol !== "http:" ||
     url.hostname !== "127.0.0.1" ||
@@ -23,5 +25,6 @@ export function loopbackRedirect(value: string): string {
     url.password
   )
     throw Error("CHATGPT_INVALID_CALLBACK");
+
   return url.href;
 }

@@ -9,20 +9,26 @@ import * as Schema from "effect/Schema";
 import { HomeDO, ChatDO, KittyDO } from "../actors.ts";
 import { RecoveryDO } from "../recovery-store.ts";
 import { Restore } from "../recovery-definition.ts";
+
 const activity = guardedActivities(Effect.void);
 const storage = () => "RECOVERY_UNAVAILABLE";
+
 export const RestoreLive = Workflows.layer(
   Restore,
   Effect.gen(function* () {
     const engine = yield* WorkflowEngine.WorkflowEngine;
+
     const roots = yield* RecoveryDO,
       homes = yield* HomeDO,
       chats = yield* ChatDO,
       kitties = yield* KittyDO;
+
     const env = (yield* Cloudflare.WorkerEnvironment) as { KITTIES_KEK: string };
+
     return Effect.fn(function* (payload, executionId) {
       const root = roots.getByName("control", { locationHint: "weur" }),
         home = homes.getByName("owner", { locationHint: "weur" });
+
       const actor = () =>
         payload.kind === "workflow"
           ? workflowActor(engine, payload.name, env.KITTIES_KEK)
@@ -31,6 +37,7 @@ export const RestoreLive = Workflows.layer(
             : payload.kind === "kitty"
               ? kitties.getByName(payload.name, { locationHint: "weur" })
               : chats.getByName(payload.name, { locationHint: "weur" });
+
       const epoch = yield* activity({
         name: "fence",
         success: Schema.Number,
@@ -50,9 +57,11 @@ export const RestoreLive = Workflows.layer(
               }),
             )
             .pipe(Effect.mapError(storage));
+
           return control.epoch;
         }),
       });
+
       // Recovery guards cache a granted permit for permitCacheMs. Wait it out so no run that
       // was admitted before the fence can still start an activity once objects roll back.
       yield* DurableClock.sleep({
@@ -77,9 +86,11 @@ export const RestoreLive = Workflows.layer(
         error: Schema.String,
         execute: Effect.gen(function* () {
           if (yield* root.read("undo", payload.id).pipe(Effect.mapError(storage))) return;
+
           const undo = yield* actor()
             .adminPrepareRestore(payload.bookmark)
             .pipe(Effect.mapError(storage));
+
           yield* root
             .save("undo", payload.id, JSON.stringify({ ...payload, bookmark: undo }))
             .pipe(Effect.mapError(storage));
@@ -116,6 +127,7 @@ export const RestoreLive = Workflows.layer(
           for (const row of yield* home.list("connection").pipe(Effect.mapError(storage)))
             yield* home.oauthDisconnect(row.id).pipe(Effect.mapError(storage));
           yield* home.chatgptInvalidate().pipe(Effect.mapError(storage));
+
           for (const o of yield* root.objects().pipe(Effect.mapError(storage)))
             if (o.kind === "kitty")
               yield* kitties
@@ -149,6 +161,7 @@ export const RestoreLive = Workflows.layer(
           yield* root.complete(payload.id).pipe(Effect.mapError(storage));
         }),
       });
+
       return payload.id;
     });
   }),

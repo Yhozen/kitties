@@ -6,16 +6,20 @@ import { readBody } from "./request.ts";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import Gateway from "./worker.ts";
 import { oauthOrigin } from "./oauth.ts";
+
 const binding = Effect.gen(function* () {
   if (!globalThis.__ALCHEMY_RUNTIME__) return yield* Cloudflare.Workers.bindWorker(Gateway);
+
   return Cloudflare.Workers.makeRpcStub<Gateway>(
     ((yield* Cloudflare.WorkerEnvironment) as Record<string, unknown>).Gateway,
   );
 });
+
 export default class OAuthIngress extends Cloudflare.Worker<OAuthIngress>()(
   "OAuthIngress",
   Effect.gen(function* () {
     const stage = yield* Stage;
+
     return {
       main: import.meta.url,
       dev: { port: 1340, strictPort: true },
@@ -33,16 +37,19 @@ export default class OAuthIngress extends Cloudflare.Worker<OAuthIngress>()(
     const gateway = yield* binding;
     const stage = ((yield* Cloudflare.WorkerEnvironment) as { STAGE: string }).STAGE;
     const origin = oauthOrigin(stage);
+
     return {
       fetch: Effect.gen(function* () {
         const request = yield* Cloudflare.Request,
           url = new URL(request.url);
+
         if (
           request.method === "POST" &&
           url.pathname === "/oauth/chatgpt/callback" &&
           !url.search
         ) {
           const value = Schema.String.check(Schema.isMaxLength(8192));
+
           const result = yield* readBody(
             request,
             Schema.Struct({
@@ -60,6 +67,7 @@ export default class OAuthIngress extends Cloudflare.Worker<OAuthIngress>()(
             })),
             Effect.catch(() => Effect.succeed({ status: 400, body: { status: "failed" } })),
           );
+
           return HttpServerResponse.fromWeb(
             Response.json(result.body, {
               status: result.status,
@@ -72,7 +80,9 @@ export default class OAuthIngress extends Cloudflare.Worker<OAuthIngress>()(
             }),
           );
         }
+
         if (request.method !== "GET") return HttpServerResponse.empty({ status: 404 });
+
         if (url.pathname === "/.well-known/oauth-client/kitties.json" && !url.search)
           return HttpServerResponse.fromWeb(
             Response.json(
@@ -87,9 +97,12 @@ export default class OAuthIngress extends Cloudflare.Worker<OAuthIngress>()(
               { headers: { "Cache-Control": "public, max-age=300" } },
             ),
           );
+
         if (url.pathname !== "/oauth/callback") return HttpServerResponse.empty({ status: 404 });
+
         const state = url.searchParams.get("state"),
           code = url.searchParams.get("code");
+
         const headers = {
           "Content-Type": "text/plain; charset=utf-8",
           "Cache-Control": "no-store",
@@ -97,6 +110,7 @@ export default class OAuthIngress extends Cloudflare.Worker<OAuthIngress>()(
           "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
           "X-Content-Type-Options": "nosniff",
         };
+
         if (!state || !code || url.searchParams.has("error"))
           return HttpServerResponse.fromWeb(
             new Response("Authorization was not completed. Return to Kitties and try again.", {
@@ -104,12 +118,14 @@ export default class OAuthIngress extends Cloudflare.Worker<OAuthIngress>()(
               headers,
             }),
           );
+
         const success = yield* gateway
           .finishOAuth(state, code, url.searchParams.get("iss") ?? undefined)
           .pipe(
             Effect.as(true),
             Effect.catch(() => Effect.succeed(false)),
           );
+
         return HttpServerResponse.fromWeb(
           new Response(
             success

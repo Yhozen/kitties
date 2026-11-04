@@ -4,6 +4,7 @@ export type PerceptionAction =
   | { action: "ui_read" }
   | { action: "ui_click"; ref: string }
   | { action: "ui_type"; ref: string; text: string };
+
 export interface PerceptionResult {
   status: "completed" | "failed" | "unknown";
   result: string;
@@ -12,17 +13,23 @@ export interface PerceptionResult {
 export function perceptionAction(value: unknown): PerceptionAction {
   if (!value || typeof value !== "object") throw Error("INVALID_ARGUMENT");
   const body = value as Record<string, unknown>;
+
   if (body.action === "ui_read") return { action: body.action };
+
   if (body.action !== "ui_click" && body.action !== "ui_type") throw Error("INVALID_ARGUMENT");
+
   if (
     typeof body.ref !== "string" ||
     !/^@[a-zA-Z0-9_-]{3,64}:e[1-9][0-9]{0,9}$/.test(body.ref) ||
     Number(body.ref.split(":e")[1]) > 0xffffffff
   )
     throw Error("INVALID_ARGUMENT");
+
   if (body.action === "ui_click") return { action: body.action, ref: body.ref };
+
   if (typeof body.text !== "string" || body.text.length > 4000 || body.text.includes("\0"))
     throw Error("INVALID_ARGUMENT");
+
   return { action: body.action, ref: body.ref, text: body.text };
 }
 
@@ -47,6 +54,7 @@ export class PerceptionSession {
   run(action: PerceptionAction): Promise<PerceptionResult> {
     if (this.pending || (this.child && this.child.killed))
       return Promise.resolve({ status: "failed", result: "PERCEPTION_BUSY" });
+
     return new Promise((resolve) => {
       this.pending = {
         action,
@@ -54,7 +62,9 @@ export class PerceptionSession {
         resolve,
         timer: setTimeout(() => this.fail(), this.timeoutMs),
       };
+
       if (!this.child) this.start();
+
       if (this.ready) this.write();
     });
   }
@@ -66,6 +76,7 @@ export class PerceptionSession {
   private finish(result: PerceptionResult) {
     const pending = this.pending;
     this.pending = undefined;
+
     if (pending) {
       clearTimeout(pending.timer);
       pending.resolve(result);
@@ -83,6 +94,7 @@ export class PerceptionSession {
 
   private write() {
     const pending = this.pending;
+
     if (!pending || pending.sent) return;
     pending.sent = true;
     this.child?.stdin.write(JSON.stringify(pending.action) + "\n");
@@ -104,14 +116,19 @@ export class PerceptionSession {
       child.stdout.on("data", (chunk: Buffer) => {
         if (child.killed) return;
         buffer = Buffer.concat([buffer, chunk]);
+
         if (buffer.length > 65536) return this.fail();
         const newline = buffer.indexOf(10);
+
         if (newline < 0) return;
+
         // The helper emits exactly one line per request, including its startup handshake.
         if (newline !== buffer.length - 1) return this.fail();
+
         try {
           const body = JSON.parse(buffer.toString("utf8")) as Record<string, unknown>;
           buffer = Buffer.alloc(0);
+
           if (!this.ready) {
             if (body.ready !== 1) return this.fail();
             this.ready = true;

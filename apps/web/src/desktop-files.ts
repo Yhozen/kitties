@@ -1,5 +1,7 @@
 import { t } from "./i18n";
+
 export const FILE_LIMIT = 64 * 1024 * 1024;
+
 export interface DesktopFile {
   name: string;
   path: string;
@@ -7,15 +9,19 @@ export interface DesktopFile {
   size: number;
   modifiedAt: string;
 }
+
 export interface DesktopFiles {
   path: string;
   generation: number;
   truncated: boolean;
   files: DesktopFile[];
 }
+
 export const fileEndpoint = (id: string) => `/v1/kitties/${encodeURIComponent(id)}/files`;
+
 export const fileSize = (size: number) =>
   size < 1024 * 1024 ? `${Math.ceil(size / 1024)} KB` : `${(size / 1024 / 1024).toFixed(1)} MB`;
+
 export function fileError(code: string): Error {
   const messages: Record<string, string> = {
     FILE_TOO_LARGE: t("Choose a file no larger than 64 MB."),
@@ -34,17 +40,21 @@ export function fileError(code: string): Error {
       "Choose a file with a shorter name, without slashes or control characters.",
     ),
   };
+
   return Error(
     messages[code] ?? t("Transfer could not be confirmed. Refresh the folder before retrying."),
   );
 }
+
 export async function fileResponse(response: Response) {
   if (!response.ok) {
     const error = (await response.json().catch(() => ({}))) as { code?: string };
     throw fileError(error.code ?? "");
   }
+
   return response;
 }
+
 export function uploadFile(
   url: string,
   file: File,
@@ -52,14 +62,18 @@ export function uploadFile(
   progress: (percent: number) => void,
 ) {
   if (file.size > FILE_LIMIT) return Promise.reject(fileError("FILE_TOO_LARGE"));
+
   return new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const cancel = () => xhr.abort();
+
     const finish = (error?: Error) => {
       signal.removeEventListener("abort", cancel);
+
       if (error) reject(error);
       else resolve();
     };
+
     xhr.open("POST", url);
     xhr.setRequestHeader("X-File-Size", String(file.size));
     xhr.setRequestHeader("Content-Type", "application/octet-stream");
@@ -68,28 +82,36 @@ export function uploadFile(
       if (event.lengthComputable)
         progress(Math.min(99, Math.round((event.loaded / event.total) * 100)));
     };
+
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
         progress(100);
         finish();
       } else {
         let code = "";
+
         try {
           code = JSON.parse(xhr.responseText).code;
         } catch {}
+
         finish(fileError(code));
       }
     };
+
     xhr.onerror = xhr.ontimeout = () => finish(fileError(""));
     xhr.onabort = () => finish(new DOMException("Transfer cancelled", "AbortError"));
     signal.addEventListener("abort", cancel, { once: true });
+
     if (signal.aborted) {
       finish(new DOMException("Transfer cancelled", "AbortError"));
+
       return;
     }
+
     xhr.send(file);
   });
 }
+
 export async function downloadFile(
   url: string,
   name: string,
@@ -97,20 +119,28 @@ export async function downloadFile(
   progress: (percent: number) => void,
 ) {
   const response = await fileResponse(await fetch(url, { signal }));
+
   if (!response.body) throw fileError("");
+
   const reader = response.body.getReader(),
     chunks: Uint8Array<ArrayBuffer>[] = [];
+
   const total = Number(response.headers.get("Content-Length"));
   let size = 0;
+
   try {
     for (;;) {
       const { value, done } = await reader.read();
+
       if (done) break;
       size += value.byteLength;
+
       if (size > FILE_LIMIT) throw fileError("FILE_TOO_LARGE");
       chunks.push(new Uint8Array(value));
+
       if (total) progress(Math.min(99, Math.round((size / total) * 100)));
     }
+
     if (signal.aborted) throw new DOMException("Transfer cancelled", "AbortError");
     const blobUrl = URL.createObjectURL(new Blob(chunks, { type: "application/octet-stream" }));
     const link = document.createElement("a");

@@ -14,14 +14,18 @@ import { bootstrapPython, prepareBootstrap, executeBootstrap } from "../guest-bo
 import { releaseUrl } from "../releases.ts";
 import { seal, open, type Envelope } from "../secrets.ts";
 import { sha256 } from "../kitty.ts";
+
 const storage = () => "STORAGE_UNAVAILABLE";
+
 export const ComputerOpLive = Workflows.layer(
   ComputerOp,
   Effect.gen(function* () {
     const recovery = yield* makeRecoveryGuard;
     const fenced = (id: string) => guardedActivities(recovery(ComputerOp._tag, id));
+
     const homes = yield* HomeDO,
       kitties = yield* KittyDO;
+
     const env = (yield* Cloudflare.WorkerEnvironment) as {
       BOAT_DEV_API_KEY: string;
       KITTIES_DEPLOYMENT: string;
@@ -29,10 +33,12 @@ export const ComputerOpLive = Workflows.layer(
       KITTIES_RELEASE_KEY: string;
       GUEST_URL: string;
     };
+
     const boat = boatClient(env.BOAT_DEV_API_KEY);
     // Billing refusals (empty wallet, full snapshot allowance) clear once the owner pays.
     // They must suspend for an operator retry, never journal as a terminal failure.
     const billingCodes = ["credit_required", "subscription_required", "card_required"];
+
     const boatError = (error: { status: number; code: string }) =>
       error.status === 0 ||
       error.status >= 500 ||
@@ -42,11 +48,14 @@ export const ComputerOpLive = Workflows.layer(
         : error.status === 402 || billingCodes.includes(error.code)
           ? "BOAT_BILLING"
           : error.code;
+
     return Effect.fn(
       function* (payload, executionId) {
         yield* recovery(ComputerOp._tag, executionId);
+
         const home = homes.getByName("owner", { locationHint: "weur" }),
           kitty = kitties.getByName(payload.kittyId, { locationHint: "weur" });
+
         const request = <A>(
           method: string,
           path: string,
@@ -65,19 +74,25 @@ export const ComputerOpLive = Workflows.layer(
             }),
             Effect.mapError(boatError),
           );
+
         const get = (id: string) =>
           request<{ sandbox: BoatSandbox }>("GET", "/sandboxes/" + encodeURIComponent(id)).pipe(
             Effect.map((value) => value.sandbox),
           );
+
         const read = Effect.gen(function* () {
           const state = yield* kitty.computer().pipe(Effect.mapError(storage));
+
           if (!state) return yield* Effect.fail("COMPUTER_NOT_FOUND");
+
           return state;
         });
+
         const save = (state: ComputerState) =>
           kitty
             .updateComputer(payload.operationId, JSON.stringify(state))
             .pipe(Effect.mapError(storage), Effect.asVoid);
+
         const action = (name: string, execute: Effect.Effect<void, string>) =>
           fenced(executionId)({
             name,
@@ -103,6 +118,7 @@ export const ComputerOpLive = Workflows.layer(
               Effect.as(payload.kittyId),
             ),
           });
+
         const poll = (name: string, check: Effect.Effect<boolean, string>) =>
           Effect.gen(function* () {
             for (let index = 0; index < 360; index++) {
@@ -121,21 +137,26 @@ export const ComputerOpLive = Workflows.layer(
                 inMemoryThreshold: 0,
               });
             }
+
             return yield* Effect.fail("COMPUTER_POLL_LIMIT");
           });
+
         yield* action(
           "begin",
           kitty
             .beginComputer(payload.kittyId, payload.operationId, payload.kind)
             .pipe(Effect.mapError(storage), Effect.asVoid),
         );
+
         if (payload.kind === "sleep" || payload.kind === "delete") {
           yield* action(
             "quiesce",
             Effect.gen(function* () {
               const state = yield* read;
+
               if (!state.remoteId) return yield* Effect.fail("COMPUTER_ABSENT");
               const machine = yield* get(state.remoteId);
+
               if (
                 !ownsSandbox(
                   machine,
@@ -146,14 +167,17 @@ export const ComputerOpLive = Workflows.layer(
                 )
               )
                 return yield* Effect.fail("FOREIGN_COMPUTER");
+
               if (machine.state === "archived") {
                 if (
                   state.quiesced?.remoteId !== state.remoteId ||
                   state.quiesced.generation !== state.generation
                 )
                   return yield* Effect.fail("UNQUIESCED_ARCHIVE");
+
                 return;
               }
+
               // The fallback is idempotent quiescence, never an arbitrary desktop input.
               const result = yield* request<{ success: boolean }>(
                 "POST",
@@ -163,6 +187,7 @@ export const ComputerOpLive = Workflows.layer(
                   timeoutSeconds: 60,
                 },
               );
+
               if (!result.success) return yield* Effect.fail("QUIESCE_FAILED");
               yield* save({
                 ...state,
@@ -179,7 +204,9 @@ export const ComputerOpLive = Workflows.layer(
             "stop",
             Effect.gen(function* () {
               const state = yield* read;
+
               if (!state.remoteId) return yield* Effect.fail("COMPUTER_ABSENT");
+
               // A repaired or replayed operation may find the machine already archived.
               if ((yield* get(state.remoteId)).state === "archived") return;
               yield* request("POST", `/sandboxes/${state.remoteId}/stop`, { force: false });
@@ -190,6 +217,7 @@ export const ComputerOpLive = Workflows.layer(
             Effect.gen(function* () {
               const state = yield* read;
               const machine = yield* get(state.remoteId!);
+
               if (
                 !ownsSandbox(
                   machine,
@@ -200,8 +228,10 @@ export const ComputerOpLive = Workflows.layer(
                 )
               )
                 return yield* Effect.fail("FOREIGN_COMPUTER");
+
               if (machine.stop?.forced || machine.dataExpiredAt)
                 return yield* Effect.fail("UNQUIESCED_ARCHIVE");
+
               return (
                 machine.state === "archived" &&
                 machine.snapshotAvailable === true &&
@@ -214,12 +244,14 @@ export const ComputerOpLive = Workflows.layer(
             Effect.gen(function* () {
               const state = yield* read;
               const name = `kn-${env.KITTIES_DEPLOYMENT.slice(-10)}-${payload.kittyId}-g${state.generation}-${payload.operationId.slice(0, 8)}`;
+
               const exists = yield* boat.saved(name).pipe(
                 Effect.map(() => true),
                 Effect.catch((error) =>
                   error.status === 404 ? Effect.succeed(false) : Effect.fail(error.code),
                 ),
               );
+
               if (!exists)
                 yield* request("POST", "/saved-snapshots", { sandboxId: state.remoteId, name });
               yield* home
@@ -237,8 +269,10 @@ export const ComputerOpLive = Workflows.layer(
               const pending = yield* home
                 .read("checkpoint-pending", payload.operationId)
                 .pipe(Effect.mapError(storage));
+
               if (!pending) return yield* Effect.fail("CHECKPOINT_NOT_FOUND");
               const point = JSON.parse(pending) as { name: string; remoteId: string };
+
               const { snapshot } = yield* request<{
                 snapshot: {
                   name: string;
@@ -247,8 +281,11 @@ export const ComputerOpLive = Workflows.layer(
                   status: string;
                 };
               }>("GET", "/saved-snapshots/" + encodeURIComponent(point.name));
+
               if (snapshot.status === "failed") return yield* Effect.fail("CHECKPOINT_FAILED");
+
               if (snapshot.status !== "ready") return false;
+
               if (
                 snapshot.name !== point.name ||
                 snapshot.sourceSandboxId !== point.remoteId ||
@@ -268,9 +305,11 @@ export const ComputerOpLive = Workflows.layer(
                   at: Date.now(),
                 },
               });
+
               return true;
             }),
           );
+
           if (payload.kind === "delete") {
             yield* action(
               "delete",
@@ -285,6 +324,7 @@ export const ComputerOpLive = Workflows.layer(
               "deleted",
               Effect.gen(function* () {
                 const state = yield* read;
+
                 return yield* get(state.remoteId!).pipe(
                   Effect.map((machine) => machine.state === "blocked"),
                   Effect.catch((code) =>
@@ -294,6 +334,7 @@ export const ComputerOpLive = Workflows.layer(
               }),
             );
           }
+
           yield* action(
             "finish-stop",
             Effect.gen(function* () {
@@ -308,16 +349,20 @@ export const ComputerOpLive = Workflows.layer(
               });
             }),
           );
+
           return payload.kittyId;
         }
+
         const mode = yield* fenced(executionId)({
           name: "plan",
           success: Schema.Literals(["ready", "create", "resume"]),
           error: Schema.String,
           execute: Effect.gen(function* () {
             const state = yield* read;
+
             if (state.phase === "ready" && !state.operation) return "ready" as const;
             const inventory = yield* boat.inventory.pipe(Effect.mapError(boatError));
+
             const matches = inventory.filter((machine) =>
               ownsSandbox(
                 machine,
@@ -327,24 +372,31 @@ export const ComputerOpLive = Workflows.layer(
                 state.receipt,
               ),
             );
+
             if (matches.length > 1) return yield* Effect.fail("GENERATION_CONFLICT");
             const activeIds = inventory.filter(activeSandbox).map((machine) => machine.id);
+
             if (state.remoteId && payload.kind === "restore" && activeIds.includes(state.remoteId))
               return yield* Effect.fail("STOP_BEFORE_RESTORE");
+
             if (
               !(yield* home
                 .reserveCapacity(payload.kittyId, state.generation, payload.operationId, activeIds)
                 .pipe(Effect.mapError(storage)))
             )
               return yield* Effect.fail("CAPACITY_LIMIT");
+
             if ((payload.kind === "start" || payload.kind === "upgrade") && state.remoteId)
               return "resume" as const;
             const checkpoint = state.checkpoint;
+
             if (payload.kind === "restore") {
               if (!checkpoint?.quiesced) return yield* Effect.fail("CHECKPOINT_REQUIRED");
+
               const { snapshot } = yield* request<{
                 snapshot: { snapshotId: string; sourceSandboxId: string; status: string };
               }>("GET", "/saved-snapshots/" + encodeURIComponent(checkpoint.name));
+
               if (
                 snapshot.status !== "ready" ||
                 snapshot.snapshotId !== checkpoint.snapshotId ||
@@ -352,7 +404,9 @@ export const ComputerOpLive = Workflows.layer(
               )
                 return yield* Effect.fail("CHECKPOINT_CONFLICT");
             }
+
             if (!state.operation) return yield* Effect.fail("OPERATION_FENCED");
+
             if (!state.operation.body) {
               const body = JSON.stringify({
                 name: `kn-${payload.kittyId}-g${state.generation}`,
@@ -367,9 +421,11 @@ export const ComputerOpLive = Workflows.layer(
                 },
                 ...(payload.kind === "restore" ? { from: checkpoint!.name } : {}),
               });
+
               const key = yield* Effect.promise(() =>
                 sha256(`${env.KITTIES_DEPLOYMENT}:${payload.kittyId}:${payload.operationId}`),
               );
+
               yield* save({
                 ...state,
                 operation: {
@@ -380,16 +436,20 @@ export const ComputerOpLive = Workflows.layer(
                 },
               });
             }
+
             return "create" as const;
           }),
         });
+
         if (mode === "ready") return payload.kittyId;
         yield* action(
           "ensure-remote",
           Effect.gen(function* () {
             const state = yield* read;
+
             if (mode === "resume") {
               const machine = yield* get(state.remoteId!);
+
               if (
                 !ownsSandbox(
                   machine,
@@ -400,6 +460,7 @@ export const ComputerOpLive = Workflows.layer(
                 )
               )
                 return yield* Effect.fail("FOREIGN_COMPUTER");
+
               if (!activeSandbox(machine))
                 yield* request("POST", `/sandboxes/${state.remoteId}/resume`, {
                   ttlSeconds: 3600,
@@ -408,12 +469,16 @@ export const ComputerOpLive = Workflows.layer(
               yield* home
                 .bindCapacity(payload.kittyId, payload.operationId, state.remoteId!)
                 .pipe(Effect.mapError(storage));
+
               return;
             }
+
             const operation = state.operation;
+
             if (!operation?.key || !operation.body)
               return yield* Effect.fail("CREATE_PLAN_MISSING");
             const inventory = yield* boat.inventory.pipe(Effect.mapError(boatError));
+
             const matches = inventory.filter((machine) =>
               ownsSandbox(
                 machine,
@@ -423,8 +488,10 @@ export const ComputerOpLive = Workflows.layer(
                 state.receipt,
               ),
             );
+
             if (matches.length > 1) return yield* Effect.fail("GENERATION_CONFLICT");
             let remote = matches[0];
+
             if (!remote) {
               if (Date.now() - operation.at >= 24 * 3600000)
                 return yield* Effect.fail("CREATE_KEY_EXPIRED");
@@ -435,6 +502,7 @@ export const ComputerOpLive = Workflows.layer(
                 { "Idempotency-Key": operation.key },
               )).sandbox;
             }
+
             if (!/^bx_[a-z0-9]{8}$/.test(remote.id)) return yield* Effect.fail("INVALID_REMOTE");
             yield* save({
               ...state,
@@ -461,6 +529,7 @@ export const ComputerOpLive = Workflows.layer(
           Effect.gen(function* () {
             const state = yield* read;
             const machine = yield* get(state.remoteId!);
+
             if (
               !ownsSandbox(
                 machine,
@@ -471,6 +540,7 @@ export const ComputerOpLive = Workflows.layer(
               )
             )
               return yield* Effect.fail("FOREIGN_COMPUTER");
+
             return readySandbox(machine);
           }),
         );
@@ -478,31 +548,40 @@ export const ComputerOpLive = Workflows.layer(
           "bootstrap",
           Effect.gen(function* () {
             const state = yield* read;
+
             const releaseBody = yield* home
               .read("release", "kittyd")
               .pipe(Effect.mapError(storage));
+
             if (!releaseBody) return yield* Effect.fail("GUEST_RELEASE_REQUIRED");
             const release = JSON.parse(releaseBody) as { key: string; sha256: string };
+
             const tokenId = `${payload.kittyId}:${state.generation}:${state.tokenVersion}`,
               aad = `guest-token:${tokenId}`;
+
             let encrypted = yield* home.read("guest-token", tokenId).pipe(Effect.mapError(storage));
+
             if (!encrypted) {
               const token = Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) =>
                 byte.toString(16).padStart(2, "0"),
               ).join("");
+
               const envelope = yield* Effect.tryPromise({
                 try: () => seal(env.KITTIES_KEK, aad, token),
                 catch: () => "KEY_UNAVAILABLE",
               });
+
               yield* home
                 .insert("guest-token", tokenId, JSON.stringify(envelope))
                 .pipe(Effect.mapError(storage));
               encrypted = yield* home.read("guest-token", tokenId).pipe(Effect.mapError(storage));
             }
+
             const token = yield* Effect.tryPromise({
               try: () => open(env.KITTIES_KEK, aad, JSON.parse(encrypted!) as Envelope),
               catch: () => "KEY_UNAVAILABLE",
             });
+
             const tokenHash = yield* Effect.promise(() => sha256(token));
             yield* kitty
               .configure({
@@ -513,6 +592,7 @@ export const ComputerOpLive = Workflows.layer(
                 tokenHash,
               })
               .pipe(Effect.mapError(storage));
+
             const config = {
               url: env.GUEST_URL.replace(/^http/, "ws") + `/guest/${payload.kittyId}/control`,
               token,
@@ -523,18 +603,22 @@ export const ComputerOpLive = Workflows.layer(
               database: "/var/lib/kittyd/intents.sqlite",
               display: ":99",
             };
+
             const manifest = {
               url: yield* Effect.promise(() =>
                 releaseUrl(env.GUEST_URL, env.KITTIES_RELEASE_KEY, release.key),
               ),
               sha256: release.sha256,
             };
+
             const prepared = yield* request<{ success: boolean }>(
               "POST",
               `/sandboxes/${state.remoteId}/commands`,
               { command: prepareBootstrap, timeoutSeconds: 30 },
             );
+
             if (!prepared.success) return yield* Effect.fail("BOOTSTRAP_FAILED");
+
             for (const [name, content] of [
               ["config.json", JSON.stringify(config)],
               ["artifact.json", JSON.stringify(manifest)],
@@ -544,11 +628,13 @@ export const ComputerOpLive = Workflows.layer(
                 path: "/home/user/.config/kittyd-bootstrap/" + name,
                 content,
               });
+
             const result = yield* request<{ success: boolean }>(
               "POST",
               `/sandboxes/${state.remoteId}/commands`,
               { command: executeBootstrap, timeoutSeconds: 30 },
             );
+
             if (!result.success) return yield* Effect.fail("BOOTSTRAP_FAILED");
           }),
         );
@@ -576,6 +662,7 @@ export const ComputerOpLive = Workflows.layer(
             });
           }),
         );
+
         return payload.kittyId;
       },
       (effect, payload, executionId) =>
@@ -583,10 +670,12 @@ export const ComputerOpLive = Workflows.layer(
           Effect.tapCause((cause) => {
             if (Cause.hasInterruptsOnly(cause)) return Effect.void;
             const failure = cause.reasons.find((reason) => reason._tag === "Fail");
+
             const code =
               failure?._tag === "Fail" && typeof failure.error === "string"
                 ? failure.error
                 : "COMPUTER_UNAVAILABLE";
+
             return homes
               .getByName("owner", { locationHint: "weur" })
               .write(

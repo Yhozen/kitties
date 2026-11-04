@@ -9,6 +9,7 @@ export type ComputerPhase =
   | "deleting"
   | "deleted"
   | "attention";
+
 export interface ComputerOperation {
   id: string;
   kind: "start" | "sleep" | "restore" | "delete" | "upgrade";
@@ -18,6 +19,7 @@ export interface ComputerOperation {
   body?: string;
   sourceCheckpointId?: string;
 }
+
 export interface ComputerState {
   kittyId: string;
   generation: number;
@@ -40,6 +42,7 @@ export interface ComputerState {
   lastActiveAt: number;
   failureCount: number;
 }
+
 export const freshComputer = (kittyId: string, now: number): ComputerState => ({
   kittyId,
   generation: 1,
@@ -50,6 +53,7 @@ export const freshComputer = (kittyId: string, now: number): ComputerState => ({
   lastActiveAt: now,
   failureCount: 0,
 });
+
 export function beginOperation(
   previous: ComputerState,
   id: string,
@@ -60,13 +64,18 @@ export function beginOperation(
     if (previous.operation.id === id && previous.operation.kind === kind) return previous;
     throw Error("COMPUTER_BUSY");
   }
+
   if (kind === "restore" && !previous.checkpoint) throw Error("CHECKPOINT_REQUIRED");
+
   if ((kind === "start" || kind === "upgrade") && previous.phase === "sleeping")
     throw Error("USE_RESTORE");
+
   if ((kind === "sleep" || kind === "delete") && !previous.remoteId) throw Error("COMPUTER_ABSENT");
+
   if (kind === "start" && previous.phase === "ready") return previous;
   const recreate = previous.phase === "deleted" && (kind === "start" || kind === "upgrade");
   const generation = previous.generation + (kind === "restore" || recreate ? 1 : 0);
+
   return {
     ...previous,
     ...(recreate
@@ -93,4 +102,5 @@ export function beginOperation(
     operation: { id, kind, at, generation },
   };
 }
+
 export const canMutate = (state: ComputerState, id: string) => state.operation?.id === id;

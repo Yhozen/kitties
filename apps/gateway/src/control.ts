@@ -4,6 +4,7 @@ export interface Fence {
   remoteId: string;
   epoch: number;
 }
+
 export interface Grant extends Fence {
   nonce: string;
   clientId: string;
@@ -11,6 +12,7 @@ export interface Grant extends Fence {
   lastInputAt: number;
   draining: boolean;
 }
+
 export function validGrant(
   grant: Grant | null,
   fence: Fence,
@@ -30,6 +32,7 @@ export function validGrant(
     grant.epoch === fence.epoch
   );
 }
+
 export function canGrant(agentInFlight: number, existing: Grant | null, now: number): boolean {
   return agentInFlight === 0 && (!existing || existing.expiresAt <= now);
 }

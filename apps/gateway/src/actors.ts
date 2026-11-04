@@ -17,16 +17,20 @@ import { makeHelpStore, type HelpDecision } from "./help-store.ts";
 const makeActor = Effect.gen(function* () {
   const state = yield* Cloudflare.DurableObjectState;
   const roots = yield* RecoveryDO;
+
   const register = (kind: string, id: string) =>
     kind === "kitty" || kind === "chat"
       ? roots.getByName("control", { locationHint: "weur" }).register(kind, id)
       : Effect.void;
+
   const env = (yield* Cloudflare.WorkerEnvironment) as { KITTIES_KEK: string };
+
   return Effect.gen(function* () {
     const database = yield* Layer.buildWithScope(
       SqliteClient.layer({ storage: state.raw.storage }),
       yield* Effect.scope,
     );
+
     const sql = Context.get(database, SqlClient.SqlClient);
     yield* Migrator.run({
       loader: Migrator.fromRecord({
@@ -55,10 +59,12 @@ const makeActor = Effect.gen(function* () {
     raw.exec(
       "DELETE FROM records WHERE kind IN ('oauth-credentials','oauth-attempt') AND id GLOB 'chatgpt-*'",
     );
+
     const oauthGet = (kind: string, id: string) =>
       raw
         .exec<{ body: string }>("SELECT body FROM records WHERE kind=? AND id=?", kind, id)
         .toArray()[0]?.body ?? null;
+
     const credentialStorage = {
       get: oauthGet,
       put: (kind: string, id: string, body: string) => {
@@ -74,6 +80,7 @@ const makeActor = Effect.gen(function* () {
         state.raw.storage.transactionSync(() => {
           const body = oauthGet(kind, id);
           raw.exec("DELETE FROM records WHERE kind=? AND id=?", kind, id);
+
           return body;
         }),
       list: (kind: string) =>
@@ -84,22 +91,30 @@ const makeActor = Effect.gen(function* () {
           )
           .toArray(),
     };
+
     const oauth = makeOAuthStorage(credentialStorage, env.KITTIES_KEK);
+
     const chatgpt = makeChatgptStorage(credentialStorage, env.KITTIES_KEK, () =>
       Effect.runPromise(roots.getByName("control", { locationHint: "weur" }).chatgptContext()),
     );
+
     const oauthError = () => "OAUTH_AUTHORIZATION_REQUIRED";
+
     const prepareTurn = (id: string, kittyId: string, health: string) =>
       Effect.sync(() =>
         state.raw.storage.transactionSync(() => {
           const raw = state.raw.storage.sql;
+
           const get = (kind: string, key: string) =>
             raw
               .exec<{ body: string }>("SELECT body FROM records WHERE kind=? AND id=?", kind, key)
               .toArray()[0]?.body;
+
           let body = get("turn-config", id);
+
           if (!body) {
             const kittyBody = get("kitty", kittyId);
+
             if (!kittyBody) throw Error("KITTY_NOT_FOUND");
             const kitty = JSON.parse(kittyBody) as import("./entities.ts").KittyProfile;
             const provider = kitty.providerId ? get("provider", kitty.providerId) : undefined;
@@ -132,18 +147,21 @@ const makeActor = Effect.gen(function* () {
             });
             raw.exec("INSERT INTO records VALUES ('turn-config',?,?,?)", id, body, Date.now());
           }
+
           raw.exec(
             "INSERT INTO records VALUES ('run-health',?,?,?) ON CONFLICT(kind,id) DO UPDATE SET body=excluded.body,updated_at=excluded.updated_at",
             id,
             health,
             Date.now(),
           );
+
           return (
             (JSON.parse(body) as { kitty: { limits?: { max_rounds: number } } }).kitty.limits
               ?.max_rounds ?? 12
           );
         }),
       );
+
     const turnContext = (id: string, day: string) =>
       Effect.sync(() => {
         const raw = state.raw.storage.sql,
@@ -153,8 +171,10 @@ const makeActor = Effect.gen(function* () {
               id,
             )
             .toArray()[0]?.body;
+
         if (!body) throw Error("CONFIG_NOT_FOUND");
         const kitty = (JSON.parse(body) as { kitty: { id: string } }).kitty.id;
+
         const spent = raw
           .exec<{ tokens: number; actions: number }>(
             "SELECT COALESCE(SUM(tokens),0) AS tokens,COALESCE(SUM(actions),0) AS actions FROM charges WHERE day=? AND kitty=?",
@@ -162,8 +182,10 @@ const makeActor = Effect.gen(function* () {
             kitty,
           )
           .toArray()[0]!;
+
         return { body, spent };
       });
+
     return {
       ...makeStorageAdmin(state, env.KITTIES_KEK, [
         "records",
@@ -225,16 +247,23 @@ const makeActor = Effect.gen(function* () {
                     id,
                   )
                   .toArray()[0]?.body;
+
             const prefs = get("settings", "notifications");
+
             if (!prefs) return;
             const settings = JSON.parse(prefs) as { enabled: boolean; events: string[] };
+
             if (!settings.enabled || !settings.events.includes(kind)) return;
+
             if (get("notification-event", eventId)) return;
+
             const at = Date.now(),
               fold = get("notification-fold", kind),
               previous = fold ? (JSON.parse(fold) as { id: string; dueAt: number }) : null;
+
             const batchId = !immediate && previous && previous.dueAt > at ? previous.id : eventId;
             const saved = get("notification-batch", batchId);
+
             const batch = saved
               ? (JSON.parse(saved) as {
                   title: string;
@@ -250,6 +279,7 @@ const makeActor = Effect.gen(function* () {
                   count: 0,
                   status: "pending",
                 };
+
             batch.count++;
             raw.exec(
               "INSERT INTO records VALUES ('notification-event',?,?,?)",
@@ -263,6 +293,7 @@ const makeActor = Effect.gen(function* () {
               JSON.stringify(batch),
               at,
             );
+
             if (!immediate)
               raw.exec(
                 "INSERT INTO records VALUES ('notification-fold',?,?,?) ON CONFLICT(kind,id) DO UPDATE SET body=excluded.body,updated_at=excluded.updated_at",
@@ -279,11 +310,14 @@ const makeActor = Effect.gen(function* () {
               raw
                 .exec<{ body: string }>("SELECT body FROM records WHERE kind=? AND id=?", kind, id)
                 .toArray()[0]?.body;
+
           const parts = JSON.parse(policyKey) as string[];
           const wildcard = JSON.stringify([parts[0], parts[1], "*"]);
+
           const rule = get("approval-rule", policyKey) ?? get("approval-rule", wildcard),
             trust = get("approval-trust", policyKey),
             memory = get("memory", kittyId);
+
           return authorization({
             always,
             free,
@@ -303,12 +337,14 @@ const makeActor = Effect.gen(function* () {
               body,
               Date.now(),
             );
+
             const row = raw
               .exec<{ digest: string; body: string }>(
                 "SELECT digest,body FROM webhook_deliveries WHERE id=?",
                 id,
               )
               .toArray()[0]!;
+
             return { conflict: row.digest !== digest, body: row.body };
           }),
         ),
@@ -316,10 +352,13 @@ const makeActor = Effect.gen(function* () {
         Effect.sync(() =>
           state.raw.storage.transactionSync(() => {
             const raw = state.raw.storage.sql;
+
             const old = raw
               .exec<{ body: string }>("SELECT body FROM records WHERE kind='goal' AND id=?", id)
               .toArray()[0];
+
             const previous = old ? (JSON.parse(old.body) as import("./entities.ts").Goal) : null;
+
             const goal = {
               ...JSON.parse(body),
               id,
@@ -327,12 +366,14 @@ const makeActor = Effect.gen(function* () {
               chatId: previous?.chatId ?? `goal-${id}`,
               updatedAt: Date.now(),
             } as import("./entities.ts").Goal;
+
             raw.exec(
               "INSERT INTO records VALUES ('goal',?,?,?) ON CONFLICT(kind,id) DO UPDATE SET body=excluded.body,updated_at=excluded.updated_at",
               id,
               JSON.stringify(goal),
               Date.now(),
             );
+
             return goal;
           }),
         ),
@@ -343,8 +384,10 @@ const makeActor = Effect.gen(function* () {
               row = raw
                 .exec<{ body: string }>("SELECT body FROM records WHERE kind='goal' AND id=?", id)
                 .toArray()[0];
+
             if (!row) return;
             const goal = JSON.parse(row.body) as import("./entities.ts").Goal;
+
             if (goal.revision !== revision || !goal.enabled || goal.nextSlot > slot) return;
             raw.exec(
               "UPDATE records SET body=?,updated_at=? WHERE kind='goal' AND id=?",
@@ -367,13 +410,16 @@ const makeActor = Effect.gen(function* () {
         Effect.sync(() =>
           state.raw.storage.transactionSync(() => {
             const raw = state.raw.storage.sql;
+
             const existing = raw
               .exec<{ operation_id: string; remote_id: string | null; generation: number }>(
                 "SELECT operation_id,remote_id,generation FROM capacity_leases WHERE kitty=?",
                 kitty,
               )
               .toArray()[0];
+
             if (existing?.operation_id === operationId) return true;
+
             if (
               existing?.remote_id &&
               existing.generation === generation &&
@@ -385,15 +431,20 @@ const makeActor = Effect.gen(function* () {
                 Date.now(),
                 kitty,
               );
+
               return true;
             }
+
             if (existing) throw Error("CAPACITY_LEASE_CONFLICT");
+
             const reservations = raw
               .exec<{ remote_id: string | null }>("SELECT remote_id FROM capacity_leases")
               .toArray();
+
             const unobserved = reservations.filter(
               (row) => !row.remote_id || !activeIds.includes(row.remote_id),
             ).length;
+
             if (new Set(activeIds).size + unobserved >= 5) return false;
             raw.exec(
               "INSERT INTO capacity_leases VALUES (?,?,?,NULL,?)",
@@ -402,6 +453,7 @@ const makeActor = Effect.gen(function* () {
               operationId,
               Date.now(),
             );
+
             return true;
           }),
         ),
@@ -440,27 +492,32 @@ const makeActor = Effect.gen(function* () {
           const row = state.raw.storage.sql
             .exec<{ body: string }>("SELECT body FROM records WHERE kind='memory' AND id=?", id)
             .toArray()[0];
+
           return row ? (JSON.parse(row.body) as Memory) : freshMemory();
         }),
       applyDistillation: (runId: string, kittyId: string, command: string) =>
         Effect.sync(() =>
           state.raw.storage.transactionSync(() => {
             const raw = state.raw.storage.sql;
+
             if (
               raw.exec("SELECT id FROM records WHERE kind='distilled' AND id=?", runId).toArray()
                 .length
             )
               return;
+
             const row = raw
               .exec<{ body: string }>(
                 "SELECT body FROM records WHERE kind='memory' AND id=?",
                 kittyId,
               )
               .toArray()[0];
+
             const next = updateMemory(
               row ? (JSON.parse(row.body) as Memory) : freshMemory(),
               JSON.parse(command) as MemoryCommand,
             );
+
             raw.exec(
               "INSERT INTO records VALUES ('memory',?,?,?) ON CONFLICT(kind,id) DO UPDATE SET body=excluded.body,updated_at=excluded.updated_at",
               kittyId,
@@ -474,19 +531,23 @@ const makeActor = Effect.gen(function* () {
         Effect.sync(() =>
           state.raw.storage.transactionSync(() => {
             const raw = state.raw.storage.sql;
+
             const row = raw
               .exec<{ body: string }>("SELECT body FROM records WHERE kind='memory' AND id=?", id)
               .toArray()[0];
+
             const next = updateMemory(
               row ? (JSON.parse(row.body) as Memory) : freshMemory(),
               JSON.parse(body) as MemoryCommand,
             );
+
             raw.exec(
               "INSERT INTO records VALUES ('memory',?,?,?) ON CONFLICT(kind,id) DO UPDATE SET body=excluded.body,updated_at=excluded.updated_at",
               id,
               JSON.stringify(next),
               Date.now(),
             );
+
             return next;
           }),
         ),
@@ -499,19 +560,23 @@ const makeActor = Effect.gen(function* () {
             digest,
             Date.now(),
           );
+
           const row = raw
             .exec<{ digest: string; status: string; result: string | null }>(
               "SELECT digest,status,result FROM connector_effects WHERE id=?",
               id,
             )
             .toArray()[0]!;
+
           if (row.digest !== digest) throw Error("INTENT_CONFLICT");
+
           // created is returned only by the transaction that inserted the intent.
           return row;
         }),
       claimEffect: (id: string, digest: string) =>
         Effect.sync(() => {
           const raw = state.raw.storage.sql;
+
           return state.raw.storage.transactionSync(() => {
             const row = raw
               .exec<{ digest: string; status: string; result: string | null }>(
@@ -519,16 +584,20 @@ const makeActor = Effect.gen(function* () {
                 id,
               )
               .toArray()[0];
+
             if (row) {
               if (row.digest !== digest) throw Error("INTENT_CONFLICT");
+
               return { ...row, claimed: false };
             }
+
             raw.exec(
               "INSERT INTO connector_effects VALUES (?,?,'started',NULL,?)",
               id,
               digest,
               Date.now(),
             );
+
             return { digest, status: "started", result: null, claimed: true };
           });
         }),
@@ -548,18 +617,25 @@ const makeActor = Effect.gen(function* () {
         Effect.sync(() =>
           state.raw.storage.transactionSync(() => {
             const raw = state.raw.storage.sql;
+
             const row = raw
               .exec<{ body: string }>("SELECT body FROM records WHERE kind='approval' AND id=?", id)
               .toArray()[0];
+
             if (!row) return null;
             const value = JSON.parse(row.body) as import("./entities.ts").ApprovalRecord;
+
             if (value.digest !== digest) return null;
             const desired = decision ? "approved" : "denied";
+
             if (value.status === desired) return value;
+
             if (value.status !== "pending") return null;
             value.status = value.expiresAt <= Date.now() ? "expired" : desired;
+
             if (value.status !== "expired" && value.policyKey) {
               const key = value.policyKey;
+
               // This transition runs once, in the same transaction as the decision.
               const previous = raw
                 .exec<{ body: string }>(
@@ -567,9 +643,11 @@ const makeActor = Effect.gen(function* () {
                   key,
                 )
                 .toArray()[0];
+
               const streak = decision
                 ? (previous ? (JSON.parse(previous.body) as { streak: number }).streak : 0) + 1
                 : 0;
+
               raw.exec(
                 "INSERT INTO records VALUES ('approval-trust',?,?,?) ON CONFLICT(kind,id) DO UPDATE SET body=excluded.body,updated_at=excluded.updated_at",
                 key,
@@ -577,23 +655,28 @@ const makeActor = Effect.gen(function* () {
                 Date.now(),
               );
             }
+
             raw.exec(
               "UPDATE records SET body=?,updated_at=? WHERE kind='approval' AND id=?",
               JSON.stringify(value),
               Date.now(),
               id,
             );
+
             return value.status === "expired" ? null : value;
           }),
         ),
       expireApproval: (id: string) =>
         Effect.sync(() => {
           const raw = state.raw.storage.sql;
+
           const row = raw
             .exec<{ body: string }>("SELECT body FROM records WHERE kind='approval' AND id=?", id)
             .toArray()[0];
+
           if (!row) return;
           const value = JSON.parse(row.body) as import("./entities.ts").ApprovalRecord;
+
           if (value.status === "pending" && value.expiresAt <= Date.now()) {
             value.status = "expired";
             raw.exec(
@@ -618,6 +701,7 @@ const makeActor = Effect.gen(function* () {
             tokens,
             actions,
           );
+
           return state.raw.storage.sql
             .exec<{ tokens: number; actions: number }>(
               "SELECT COALESCE(SUM(tokens),0) AS tokens,COALESCE(SUM(actions),0) AS actions FROM charges WHERE day=? AND kitty=?",
@@ -657,5 +741,7 @@ const makeActor = Effect.gen(function* () {
 });
 
 export class HomeDO extends Cloudflare.DurableObject<HomeDO>()("HomeDO", makeActor) {}
+
 export { KittyDO } from "./kitty.ts";
+
 export { ChatDO } from "./chat.ts";

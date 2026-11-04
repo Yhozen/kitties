@@ -20,9 +20,13 @@ import {MemoryPanel,LibraryPanel,VaultHelpPanel,RunsPanel,JournalPanel} from "./
 import "./next.css";
 
 type Kitty=typeof KittyView.Type;
+
 type Chat=typeof ChatView.Type;
+
 type Provider=typeof ProviderView.Type;
+
 type Message=typeof MessageView.Type;
+
 const errorText=(error:unknown)=>error instanceof Error ? error.message : t("Could not complete the operation.");
 
 export default function NextShell() {
@@ -32,7 +36,11 @@ export default function NextShell() {
   const [detail,setDetail]=useState<Schema.Schema.Type<typeof ChatDetail>>();
   const [messages,setMessages]=useState<readonly Message[]>([]);
   const [text,setText]=useState(""),[error,setError]=useState(""),[sending,setSending]=useState(false);
-  const [panel,setPanel]=useState<"chat"|"settings"|"kitty"|"health"|"approvals"|"library"|"vault"|"goals">(()=>{const value=new URLSearchParams(location.search).get("panel");return value==="approvals"||value==="vault"||value==="settings"?value:"chat";});
+
+  const [panel,setPanel]=useState<"chat"|"settings"|"kitty"|"health"|"approvals"|"library"|"vault"|"goals">(()=>{const value=new URLSearchParams(location.search).get("panel");
+
+return value==="approvals"||value==="vault"||value==="settings"?value:"chat";});
+
   const [desktop,setDesktop]=useState("");
   const [chatgptEnabled,setChatgptEnabled]=useState(false);
   useEffect(()=>{void call(api=>api.signin.features()).then(value=>setChatgptEnabled(value.chatgpt)).catch(()=>{});},[]);
@@ -49,14 +57,18 @@ export default function NextShell() {
   const [loadingEarlier,setLoadingEarlier]=useState(false);
   const skipScroll=useRef(false);
   const end=useRef<HTMLDivElement>(null);
+
   const refresh=async()=>{
     const [health,cats,threads,brains]=await Promise.all([call(api=>api.system.health()),call(api=>api.kitties.list()),call(api=>api.chats.list()),call(api=>api.providers.list())]);
     setVersion(health.version);setStatus(health.ok?t("Your space is ready."):t("Reconnecting…"));setKitties(cats);setChats(threads);setProviders(brains);
   };
+
   const attempt=(fn:()=>Promise<unknown>)=>{setError("");void fn().catch(e=>setError(errorText(e)));};
+
   useEffect(()=>{void refresh().catch(()=>setStatus(t("Offline. Open the app again when you are connected.")));},[]);
   useEffect(()=>{
     selection.current=selected;setDetail(undefined);setMessages([]);setLoadingEarlier(false);
+
     if(!selected)return;
     let active=true,events:EventSource|undefined;
     void call(api=>api.chats.get({params:{id:selected},query:{}})).then(chat=>{
@@ -66,62 +78,88 @@ export default function NextShell() {
       events.onmessage=e=>{
         if(!active)return;
         const seq=Number(e.lastEventId);
+
         if(!Number.isSafeInteger(seq)||seq<=cursor)return;
         cursor=seq;
         const event=JSON.parse(e.data) as ChatEvent;
         setMessages(current=>active?applyChatEvent(current,event,selected):current);
       };
     }).catch(e=>{if(active)setError(errorText(e));});
+
     return()=>{active=false;events?.close();};
   },[selected]);
+
   const loadEarlier=async()=>{
     if(loadingEarlier||!messages.length)return;
     const id=selected;
     setLoadingEarlier(true);
+
     try{
       const page=await call(api=>api.chats.get({params:{id},query:{before:messages[0]!.id}}));
+
       if(selection.current!==id)return;
       skipScroll.current=true;
       setMessages(current=>[...page.messages.filter(m=>!current.some(value=>value.id===m.id)),...current]);
       setDetail(current=>current?.id===id?{...current,hasMore:page.hasMore}:current);
     }finally{if(selection.current===id)setLoadingEarlier(false);}
   };
-  useEffect(()=>{if(skipScroll.current){skipScroll.current=false;return;}end.current?.scrollIntoView({behavior:"smooth",block:"end"});},[messages]);
+
+  useEffect(()=>{if(skipScroll.current){skipScroll.current=false;
+
+return;}
+
+end.current?.scrollIntoView({behavior:"smooth",block:"end"});},[messages]);
   // A kitty cheers for a moment when one of its answers completes while you watch.
   const seen=useRef(new Map<string,string>()),cheers=useRef<ReturnType<typeof setTimeout>[]>([]),[cheering,setCheering]=useState<ReadonlySet<string>>(new Set());
   useEffect(()=>{
     const done=messages.filter(m=>m.status==="completed"&&["queued","running"].includes(seen.current.get(m.id)??"")).map(m=>m.id);
+
     for(const m of messages)seen.current.set(m.id,m.status);
+
     if(!done.length)return;
     setCheering(current=>new Set([...current,...done]));
     cheers.current.push(setTimeout(()=>setCheering(current=>new Set([...current].filter(id=>!done.includes(id)))),3000));
   },[messages]);
   useEffect(()=>()=>cheers.current.forEach(clearTimeout),[]);
   const moodOf=(kittyId:string)=>messages.some(m=>m.payload.kittyId===kittyId&&["queued","running"].includes(m.status))?"thinking":messages.some(m=>m.payload.kittyId===kittyId&&cheering.has(m.id))?"happy":"idle";
+
   const createKitty=async()=>{
     const payload={name,soul,...(backupId?{backupId}:{}),...(providerId?{providerId}:{}),breed,color,limits};
-    if(editing){await call(api=>api.kitties.save({params:{id:editing},payload}));await refresh();return;}
+
+    if(editing){await call(api=>api.kitties.save({params:{id:editing},payload}));await refresh();
+
+return;}
+
     const cat=await call(api=>api.kitties.create({payload}));
     setName("");await refresh();setPanel("chat");setMembers([cat.id]);setNewChat(true);
   };
+
   const createChat=async()=>{
     const payload={title:chatTitle || t("A new conversation"),members};
     const chat=editChat&&selected?await call(api=>api.chats.save({params:{id:selected},payload})):await call(api=>api.chats.create({payload}));
     setEditChat(false);
     await refresh();setDetail(await call(api=>api.chats.get({params:{id:chat.id},query:{}})));setSelected(chat.id);setNewChat(false);setChatTitle("");setPanel("chat");
   };
+
   const send=async()=>{
     if(!selected||!detail||!text.trim()||sending)return;
     const named=text.match(/^@([^\s]+)\s/),target=named?kitties.find(cat=>cat.name.toLowerCase()===named[1]!.toLowerCase() && detail.members.includes(cat.id))?.id:detail.members[0];
-    if(!target){setError(t("Choose a puppy in this conversation with @name."));return;}
+
+    if(!target){setError(t("Choose a puppy in this conversation with @name."));
+
+return;}
+
     const body=retry.current?.text===text && retry.current.kittyId===target?retry.current:{messageId:crypto.randomUUID(),text,kittyId:target};retry.current=body;
     setSending(true);
+
     try{await call(api=>api.chats.send({params:{id:selected},payload:body}));setText("");retry.current=undefined;}finally{setSending(false);}
   };
+
   const saveProvider=async()=>{
     await call(api=>api.providers.save({params:{id:crypto.randomUUID()},payload:{name:providerName,kind,model,...(baseUrl?{baseUrl}:{}),apiKey}}));
     setApiKey("");setProviderName("");setModel("");await refresh();
   };
+
   return <div class="next-app">
     <aside class="next-sidebar">
       <button class="next-brand" onClick={()=>setPanel("chat")}><PuppyAvatar size={40}/><h1>Puppies</h1></button>
@@ -138,7 +176,9 @@ export default function NextShell() {
       {panel==="chat" && <>
         <header class="next-header"><h2>{detail?.title || t("A space to get things done")}</h2>{detail&&<span>{detail.members.map(id=>kitties.find(cat=>cat.id===id)?.name).filter(Boolean).join(" · ")}</span>}{detail&&<><button onClick={()=>{setEditChat(true);setChatTitle(detail.title);setMembers([...detail.members]);setNewChat(true);}}>{t("Edit conversation")}</button><button onClick={()=>setReplay(!replay)}>{t("Replay")}</button><button onClick={()=>attempt(async()=>{await call(a=>a.chats.remove({params:{id:selected}}));setSelected("");setDetail(undefined);await refresh();})}>{t("Delete conversation")}</button></>}</header>{replay&&selected&&<ReplayPanel chatId={selected}/>}
         {!selected?<div class="next-welcome"><PuppyAvatar size={140}/><h2>{t("What shall we do today?")}</h2><p>{t("Each puppy has a personality, tools and a desktop of its own.")}</p><button class="primary" onClick={()=>editKitty()}>{t("Create a puppy")}</button></div>:<>
-          <div class="next-conversation" aria-live="polite">{detail?.hasMore&&<button disabled={loadingEarlier} onClick={()=>attempt(loadEarlier)}>{t("Load earlier messages")}</button>}{messages.map((message,index)=><article key={message.id} class="next-turn"><div class="next-user"><strong>{t("You")}</strong><p>{message.payload.text}</p></div><div class="next-answer"><strong>{(()=>{const cat=kitties.find(cat=>cat.id===message.payload.kittyId);const busy=["queued","running"].includes(message.status);return <><PuppyAvatar breed={cat?.breed} color={cat?.color} size={28} still={!busy&&index<messages.length-1&&!cheering.has(message.id)} mood={busy?"thinking":cheering.has(message.id)?"happy":"idle"}/>{cat?.name || "Puppy"}</>;})()}</strong><p>{message.answer || (message.status==="queued"?t("Queued…"):message.status==="cancelled"?t("Cancelled."):t("Thinking…"))}</p>{["queued","running"].includes(message.status)&&<button onClick={()=>attempt(()=>call(api=>api.chats.cancel({params:{id:selected},payload:{messageId:message.id}})))}>{t("Cancel")}</button>}{message.status==="completed"&&<span>{(["up","down"] as const).map(rating=><button aria-label={rating==="up"?t("Helpful"):t("Improve response")} onClick={()=>attempt(()=>call(a=>a.workspace.feedback({params:{id:selected,message:message.id},payload:{rating,note:""}})))}>{rating==="up"?"👍":"👎"}</button>)}</span>}{message.status==="running"&&<button onClick={()=>attempt(()=>call(api=>api.chats.resume({params:{id:selected},payload:{messageId:message.id}})))}>{t("Continue")}</button>}</div></article>)}<div ref={end}/></div>
+          <div class="next-conversation" aria-live="polite">{detail?.hasMore&&<button disabled={loadingEarlier} onClick={()=>attempt(loadEarlier)}>{t("Load earlier messages")}</button>}{messages.map((message,index)=><article key={message.id} class="next-turn"><div class="next-user"><strong>{t("You")}</strong><p>{message.payload.text}</p></div><div class="next-answer"><strong>{(()=>{const cat=kitties.find(cat=>cat.id===message.payload.kittyId);const busy=["queued","running"].includes(message.status);
+
+return <><PuppyAvatar breed={cat?.breed} color={cat?.color} size={28} still={!busy&&index<messages.length-1&&!cheering.has(message.id)} mood={busy?"thinking":cheering.has(message.id)?"happy":"idle"}/>{cat?.name || "Puppy"}</>;})()}</strong><p>{message.answer || (message.status==="queued"?t("Queued…"):message.status==="cancelled"?t("Cancelled."):t("Thinking…"))}</p>{["queued","running"].includes(message.status)&&<button onClick={()=>attempt(()=>call(api=>api.chats.cancel({params:{id:selected},payload:{messageId:message.id}})))}>{t("Cancel")}</button>}{message.status==="completed"&&<span>{(["up","down"] as const).map(rating=><button aria-label={rating==="up"?t("Helpful"):t("Improve response")} onClick={()=>attempt(()=>call(a=>a.workspace.feedback({params:{id:selected,message:message.id},payload:{rating,note:""}})))}>{rating==="up"?"👍":"👎"}</button>)}</span>}{message.status==="running"&&<button onClick={()=>attempt(()=>call(api=>api.chats.resume({params:{id:selected},payload:{messageId:message.id}})))}>{t("Continue")}</button>}</div></article>)}<div ref={end}/></div>
           <form class="next-composer" onSubmit={e=>{e.preventDefault();attempt(send);}}><textarea aria-label={t("Message")} placeholder="Escribe una tarea. Usa @nombre en los grupos." value={text} onInput={e=>setText(e.currentTarget.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();attempt(send);}}}/><button class="primary" disabled={sending||!text.trim()}>{t("Send ↑")}</button></form>
         </>}
       </>}

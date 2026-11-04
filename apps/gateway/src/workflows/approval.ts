@@ -13,9 +13,11 @@ export const ApprovalLive = Workflows.layer(
     const recovery = yield* makeRecoveryGuard;
     const fenced = (id: string) => guardedActivities(recovery(Approval._tag, id));
     const homes = yield* HomeDO;
+
     return Effect.fn(function* ({ id }, executionId) {
       yield* recovery(Approval._tag, executionId);
       const home = homes.getByName("owner", { locationHint: "weur" });
+
       const expiresAt = yield* fenced(executionId)({
         name: "deadline",
         success: Schema.Number,
@@ -24,10 +26,13 @@ export const ApprovalLive = Workflows.layer(
           const saved = yield* home
             .read("approval", id)
             .pipe(Effect.mapError(() => "STORAGE_UNAVAILABLE"));
+
           if (!saved) return yield* Effect.fail("APPROVAL_NOT_FOUND");
+
           return (JSON.parse(saved) as ApprovalRecord).expiresAt;
         }),
       });
+
       const first = yield* DurableDeferred.raceAll({
         name: "decision-or-reminder",
         success: Schema.String,
@@ -41,6 +46,7 @@ export const ApprovalLive = Workflows.layer(
           }).pipe(Effect.as("reminder")),
         ],
       });
+
       if (first === "reminder") {
         yield* fenced(executionId)({
           name: "remind",
@@ -49,6 +55,7 @@ export const ApprovalLive = Workflows.layer(
             const saved = yield* home
               .read("approval", id)
               .pipe(Effect.mapError(() => "STORAGE_UNAVAILABLE"));
+
             if (saved && (JSON.parse(saved) as ApprovalRecord).status === "pending")
               yield* home
                 .queueNotice(
@@ -75,15 +82,18 @@ export const ApprovalLive = Workflows.layer(
           ],
         });
       }
+
       return yield* fenced(executionId)({
         name: "decision",
         success: Schema.Boolean,
         error: Schema.String,
         execute: Effect.gen(function* () {
           yield* home.expireApproval(id).pipe(Effect.mapError(() => "STORAGE_UNAVAILABLE"));
+
           const saved = yield* home
             .read("approval", id)
             .pipe(Effect.mapError(() => "STORAGE_UNAVAILABLE"));
+
           return !!saved && (JSON.parse(saved) as ApprovalRecord).status === "approved";
         }),
       });

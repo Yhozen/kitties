@@ -12,16 +12,19 @@ export const withMcp = <A, E>(
   Effect.scoped(
     Effect.gen(function* () {
       publicHttps(url);
+
       const transport = yield* McpClient.http({
         url,
         protocol: McpProtocol.v2025_11_25,
         ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
       });
+
       const client = yield* McpClient.make({
         name: "kitties",
         version: "1",
         timeout: "10 seconds",
       }).pipe(Effect.provideService(McpClient.Transport, transport));
+
       return yield* use(client);
     }),
   ).pipe(

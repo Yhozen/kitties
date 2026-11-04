@@ -1,7 +1,9 @@
 import * as Schema from "effect/Schema";
 import { Id } from "./index.ts";
 import { ChatgptError } from "./chatgpt.ts";
+
 export * from "./chatgpt.ts";
+
 interface Envelope {
   kid: string;
   iv: string;
@@ -17,10 +19,12 @@ export const ProviderInput = Schema.Struct({
   apiKey: Schema.optional(Schema.String.check(Schema.isMaxLength(8192))),
   temperature: Schema.optional(Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 2 }))),
 });
+
 export type Provider = Omit<typeof ProviderInput.Type, "apiKey"> & {
   id: string;
   secret?: Envelope;
 };
+
 export const KittyInput = Schema.Struct({
   name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80)),
   soul: Schema.String.check(Schema.isMaxLength(32000)),
@@ -40,22 +44,27 @@ export const KittyInput = Schema.Struct({
     }),
   ),
 });
+
 export type KittyProfile = typeof KittyInput.Type & { id: string; createdAt: number };
+
 export const MessageInput = Schema.Struct({
   messageId: Id,
   text: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(32000)),
   kittyId: Id,
 });
+
 export const ChatInput = Schema.Struct({
   title: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
   members: Schema.Array(Id).check(Schema.isMinLength(1), Schema.isMaxLength(5)),
 });
+
 export interface ChatProfile {
   id: string;
   title: string;
   members: readonly string[];
   createdAt: number;
 }
+
 export const ProviderView = Schema.Struct({
   id: Id,
   name: Schema.String,
@@ -66,18 +75,21 @@ export const ProviderView = Schema.Struct({
   temperature: Schema.optional(Schema.Number),
   hasKey: Schema.Boolean,
 });
+
 export const KittyView = Schema.Struct({
   ...KittyInput.fields,
   id: Id,
   createdAt: Schema.Number,
   status: Schema.String,
 });
+
 export const ChatView = Schema.Struct({
   id: Id,
   title: Schema.String,
   members: Schema.Array(Id),
   createdAt: Schema.Number,
 });
+
 export const MessageView = Schema.Struct({
   id: Id,
   payload: Schema.Struct({ ...MessageInput.fields, chatId: Id }),
@@ -88,30 +100,37 @@ export const MessageView = Schema.Struct({
   at: Schema.Number,
   revision: Schema.optional(Schema.Struct({ round: Schema.Number, attempt: Schema.Number })),
 });
+
 export const ChatDetail = Schema.Struct({
   ...ChatView.fields,
   messages: Schema.Array(MessageView),
   cursor: Schema.Number,
   hasMore: Schema.optional(Schema.Boolean),
 });
+
 export const MemoryNoteInput = Schema.Struct({
   scope: Schema.String.check(Schema.isMaxLength(48)),
   text: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(240)),
 });
+
 export const MemoryProfileInput = Schema.Struct({
   demand: Schema.Number.check(Schema.isInt(), Schema.isBetween({ minimum: 1, maximum: 5 })),
   auto: Schema.Boolean,
 });
+
 export const SkillInput = Schema.Struct({
   name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80)),
   body: Schema.String.check(Schema.isMaxLength(64000)),
   status: Schema.Literals(["proposed", "accepted"]),
 });
+
 export const SkillView = Schema.Struct({ ...SkillInput.fields, id: Id, updatedAt: Schema.Number });
+
 export const FeedbackInput = Schema.Struct({
   rating: Schema.Literals(["up", "down"]),
   note: Schema.String.check(Schema.isMaxLength(300)),
 });
+
 export const MemoryView = Schema.Struct({
   notes: Schema.Array(
     Schema.Struct({
@@ -130,7 +149,9 @@ export const MemoryView = Schema.Struct({
     pending: Schema.Number,
   }),
 });
+
 export const VaultView = Schema.Struct({ id: Id, name: Schema.String, updatedAt: Schema.Number });
+
 export const HelpView = Schema.Struct({
   id: Schema.String,
   kittyId: Id,
@@ -138,12 +159,14 @@ export const HelpView = Schema.Struct({
   expiresAt: Schema.Number,
   status: Schema.String,
 });
+
 export const ArtifactView = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   size: Schema.Number,
   updatedAt: Schema.Number,
 });
+
 export const RunView = Schema.Struct({
   id: Schema.String,
   status: Schema.String,
@@ -153,6 +176,7 @@ export const RunView = Schema.Struct({
   chatId: Schema.optional(Id),
   messageId: Schema.optional(Id),
 });
+
 export const GoalInput = Schema.Struct({
   kittyId: Id,
   title: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
@@ -161,6 +185,7 @@ export const GoalInput = Schema.Struct({
   timezone: Schema.String.check(Schema.isMaxLength(100)),
   enabled: Schema.Boolean,
 });
+
 export const GoalView = Schema.Struct({
   ...GoalInput.fields,
   id: Id,
@@ -169,12 +194,15 @@ export const GoalView = Schema.Struct({
   nextSlot: Schema.Number,
   updatedAt: Schema.Number,
 });
+
 export type Goal = typeof GoalView.Type;
+
 export const HookInput = Schema.Struct({
   goalId: Id,
   kind: Schema.Literals(["github", "stripe", "generic"]),
   secret: Schema.optional(Schema.String.check(Schema.isMinLength(16), Schema.isMaxLength(8192))),
 });
+
 export const HookView = Schema.Struct({
   id: Id,
   goalId: Id,
@@ -187,6 +215,7 @@ export const OAuthStartInput = Schema.Struct({
   clientSecret: Schema.optional(Schema.String.check(Schema.isMaxLength(8192))),
   scope: Schema.optional(Schema.String.check(Schema.isMaxLength(4096))),
 });
+
 export const ConnectionInput = Schema.Struct({
   name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80)),
   kind: Schema.Literals(["mcp", "http", "ntfy", "google", "m365"]),
@@ -197,10 +226,12 @@ export const ConnectionInput = Schema.Struct({
     Schema.Array(Schema.String.check(Schema.isMaxLength(200))).check(Schema.isMaxLength(64)),
   ),
 });
+
 export type Connection = Omit<typeof ConnectionInput.Type, "token"> & {
   id: string;
   secret?: Envelope;
 };
+
 export const ConnectionView = Schema.Struct({
   id: Id,
   name: Schema.String,
@@ -212,6 +243,7 @@ export const ConnectionView = Schema.Struct({
   ),
   hasToken: Schema.Boolean,
 });
+
 export const ApprovalView = Schema.Struct({
   id: Schema.String,
   executionId: Schema.String,
@@ -224,6 +256,7 @@ export const ApprovalView = Schema.Struct({
   expiresAt: Schema.Number,
   status: Schema.Literals(["pending", "approved", "denied", "expired", "cancelled"]),
 });
+
 export interface ToolDefinition {
   name: string;
   description: string;
@@ -233,16 +266,19 @@ export interface ToolDefinition {
   readOnly: boolean;
   destructive: boolean;
 }
+
 export interface ToolCall {
   id: string;
   name: string;
   params: unknown;
 }
+
 export interface ModelRound {
   calls: ToolCall[];
   tools: ToolDefinition[];
   tokens: number;
 }
+
 export interface ApprovalRecord {
   id: string;
   executionId: string;
@@ -256,17 +292,21 @@ export interface ApprovalRecord {
   status: "pending" | "approved" | "denied" | "expired" | "cancelled";
   policyKey?: string;
 }
+
 export const RuleInput = Schema.Struct({
   kittyId: Id,
   connectionId: Schema.String.check(Schema.isMaxLength(128)),
   action: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
   mode: Schema.Literals(["auto", "ask", "never"]),
 });
+
 export const RuleView = Schema.Struct({ ...RuleInput.fields, id: Schema.String });
+
 export const NotificationPrefs = Schema.Struct({
   enabled: Schema.Boolean,
   events: Schema.Array(Schema.Literals(["approval", "completed", "help", "health"])),
 });
+
 export const NotificationView = Schema.Struct({
   settings: NotificationPrefs,
   subscriptions: Schema.Number,
@@ -281,6 +321,7 @@ export const NotificationView = Schema.Struct({
     }),
   ),
 });
+
 export const PushSubscriptionInput = Schema.Struct({
   endpoint: Schema.String,
   expirationTime: Schema.NullOr(Schema.Number),

@@ -35,6 +35,7 @@ import * as HttpServerRequest from "effect/http/HttpServerRequest";
 
 const props = Effect.gen(function* () {
   const stage = yield* Stage;
+
   const domain = yield* Config.String("KITTIES_NEXT_DOMAIN").pipe(
     Config.withDefault(
       stage === "prod"
@@ -42,14 +43,17 @@ const props = Effect.gen(function* () {
         : `${stage === "next" ? "next" : "dev"}.kitties.rccpr.tech`,
     ),
   );
+
   const email = yield* Config.String("KITTIES_ACCESS_EMAIL").pipe(
     Config.withDefault("gabriel@garox.org"),
   );
+
   const kek = yield* Config.Redacted("KITTIES_KEK");
   const releaseKey = yield* Config.Redacted("KITTIES_RELEASE_KEY");
   const deployment = yield* Config.String("KITTIES_DEPLOYMENT");
   const boatKey = yield* Config.Redacted("BOAT_DEV_API_KEY");
   const blobs = yield* GuestAssets;
+
   return {
     main: import.meta.url,
     domain,
@@ -128,6 +132,7 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
         Effect.andThen(recovery.tick()),
       ),
     );
+
     const env = (yield* Cloudflare.WorkerEnvironment) as {
       PUBLIC_URL: string;
       ACCESS_EMAIL: string;
@@ -137,10 +142,12 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
       KITTIES_KEK: string;
       ASSETS: { fetch(request: Request): Promise<Response> };
     };
+
     const json = (body: unknown, status = 200) =>
       HttpServerResponse.fromWeb(
         Response.json(body, { status, headers: { "Cache-Control": "no-store" } }),
       );
+
     return {
       receiveWebhook,
       finishChatgpt: (callback: ChatgptCallback) =>
@@ -150,31 +157,42 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
       fetch: Effect.gen(function* () {
         const request = yield* Cloudflare.Request;
         const access = yield* Cloudflare.Access.Context;
+
         const nativeIdentity = access
           ? yield* access.getIdentity().pipe(Effect.catch(() => Effect.succeed(undefined)))
           : undefined;
+
         const identity =
           nativeIdentity ??
           (yield* Effect.promise(() =>
             verifiedAccessIdentity(request, env.ACCESS_ISSUER, env.ACCESS_AUDIENCE),
           ));
+
         const error = ownerError(request, env.PUBLIC_URL, env.ACCESS_EMAIL, identity);
+
         if (error) return json(error.body, error.status);
         const url = new URL(request.url);
         const handled = yield* application(request);
+
         if (handled) return handled;
+
         const desktopRoute = url.pathname.match(
           /^\/v1\/kitties\/([a-zA-Z0-9_-]{1,128})\/desktop(?:\/(control|frames|video))?$/,
         );
+
         if (desktopRoute && request.method === "GET") {
           const kitty = kitties.getByName(desktopRoute[1]!, { locationHint: "weur" });
+
           if (desktopRoute[2]) {
             if (request.headers.get("Origin") !== env.PUBLIC_URL)
               return json({ code: "ORIGIN_DENIED", params: {} }, 403);
+
             return yield* kitty.fetch(yield* HttpServerRequest.HttpServerRequest);
           }
+
           return json(yield* kitty.status());
         }
+
         if (request.method === "GET" && url.pathname === "/v1/health")
           return json(
             Schema.decodeUnknownSync(Health)({
@@ -184,6 +202,7 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
               stage: env.STAGE,
             }),
           );
+
         if (request.method === "GET" && url.pathname === "/v1/session")
           return json(
             Schema.decodeUnknownSync(Session)({
@@ -192,6 +211,7 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
               logout_url: "/cdn-cgi/access/logout",
             }),
           );
+
         if (
           url.pathname.startsWith("/v1/") ||
           url.pathname.startsWith("/guest/") ||
@@ -199,8 +219,10 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
           url.pathname.startsWith("/.well-known/")
         )
           return json({ code: "NOT_FOUND", params: {} }, 404);
+
         if (request.method !== "GET" && request.method !== "HEAD")
           return json({ code: "NOT_FOUND", params: {} }, 404);
+
         return HttpServerResponse.fromWeb(yield* Effect.promise(() => env.ASSETS.fetch(request)));
       }).pipe(Effect.catch(() => Effect.succeed(json({ code: "UNAVAILABLE", params: {} }, 503)))),
     };

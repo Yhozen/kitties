@@ -31,6 +31,7 @@ export function readMessagePage(
       before ?? null,
     )
     .toArray();
+
   return {
     hasMore: rows.length > 200,
     messages: rows

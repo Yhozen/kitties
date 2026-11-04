@@ -12,6 +12,7 @@ export const discoverTools = (
   if (connection.kind === "google" || connection.kind === "m365")
     return Effect.succeed(nativeTools(connection));
   const prefix = `c_${connection.id.replace(/[^a-zA-Z0-9]/g, "")}_`;
+
   if (connection.kind === "mcp")
     return withMcp(connection.url, token, (client) =>
       Effect.gen(function* () {
@@ -19,6 +20,7 @@ export const discoverTools = (
         // Validate remote schemas through the pinned MCP bridge. Execution is deliberately
         // resolved by the workflow, after the durable approval and effect ledger.
         yield* McpClient.toolkit(client, { prefix, trustAnnotations: false });
+
         return tools.map((tool, index) => ({
           name: `${prefix}${index}`,
           description: `${connection.name}: ${tool.name}. ${tool.description ?? ""}`.slice(0, 2000),
@@ -32,6 +34,7 @@ export const discoverTools = (
         }));
       }),
     );
+
   return Effect.succeed([
     {
       name: prefix + "request",
@@ -64,40 +67,54 @@ export const discoverTools = (
     },
   ]);
 };
+
 export const needsApproval = (connection: Connection, tool: ToolDefinition, params: unknown) => {
   if (!connection.allowReads) return true;
+
   if (connection.kind === "mcp")
     return !connection.readTools?.includes(tool.remoteName) || !tool.readOnly || tool.destructive;
+
   if (connection.kind === "google" || connection.kind === "m365")
     return !tool.readOnly || tool.destructive;
+
   if (connection.kind === "ntfy") return true;
   const method = (params as { method?: unknown })?.method;
+
   return method !== "GET" && method !== "HEAD";
 };
+
 const boundedResponse = async (response: Response) => {
   const reader = response.body?.getReader();
+
   if (!reader) return "";
   let total = 0;
   const chunks: Uint8Array[] = [];
+
   try {
     for (;;) {
       const { done, value } = await reader.read();
+
       if (done) break;
       total += value.length;
+
       if (total > 64000) throw Error("OUTPUT_LIMIT");
       chunks.push(value);
     }
   } finally {
     await reader.cancel();
   }
+
   const bytes = new Uint8Array(total);
   let offset = 0;
+
   for (const chunk of chunks) {
     bytes.set(chunk, offset);
     offset += chunk.length;
   }
+
   return new TextDecoder().decode(bytes);
 };
+
 export const executeTool = (
   connection: Connection,
   token: string | undefined,
@@ -109,12 +126,15 @@ export const executeTool = (
       try: () => executeNative(connection, token, tool, call),
       catch: () => "TOOL_UNAVAILABLE",
     });
+
   if (connection.kind === "mcp")
     return withMcp(connection.url, token, (client) =>
       Effect.gen(function* () {
         const descriptors = yield* client.listTools({ limits: { maxItems: 64, maxPages: 4 } });
         const descriptor = descriptors.find((item) => item.name === tool.remoteName);
+
         if (!descriptor) return yield* Effect.fail("TOOL_NOT_FOUND");
+
         // Re-discovery cannot lower the risk of the descriptor approved by the owner.
         if (
           (connection.readTools?.includes(descriptor.name) === true &&
@@ -122,23 +142,30 @@ export const executeTool = (
           (descriptor.annotations?.destructiveHint === true && !tool.destructive)
         )
           return yield* Effect.fail("TOOL_CHANGED");
+
         const result = yield* client.callTool({
           tool: descriptor,
           arguments: call.params as Record<string, unknown>,
         });
+
         const body = JSON.stringify(result);
+
         if (body.length > 64000) return yield* Effect.fail("OUTPUT_LIMIT");
+
         return { untrusted: true, source: connection.name, result };
       }),
     );
+
   return Effect.tryPromise({
     try: async () => {
       if (!call.params || typeof call.params !== "object") throw Error();
       const params = call.params as Record<string, unknown>;
       const base = publicHttps(connection.url);
+
       let url = base,
         method = "POST",
         body: string | undefined;
+
       if (connection.kind === "ntfy") {
         if (typeof params.message !== "string" || params.message.length > 4000) throw Error();
         body = params.message;
@@ -150,8 +177,10 @@ export const executeTool = (
         )
           throw Error();
         url = publicHttps(new URL(params.path, base).href);
+
         if (url.origin !== base.origin) throw Error();
         method = params.method;
+
         if (params.body !== undefined) {
           if (
             typeof params.body !== "string" ||
@@ -163,12 +192,14 @@ export const executeTool = (
           body = params.body;
         }
       }
+
       const response = await allowedFetch(url.href, [base.hostname], {
         method,
         body,
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         signal: AbortSignal.timeout(30000),
       });
+
       return { untrusted: true, status: response.status, text: await boundedResponse(response) };
     },
     catch: () => "TOOL_UNAVAILABLE",

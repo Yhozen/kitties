@@ -41,10 +41,12 @@ export const providerVerificationRequest = (
   secret: string,
 ) => {
   const base = providerBaseUrl(provider);
+
   const headers: Record<string, string> =
     provider.kind === "anthropic"
       ? { "x-api-key": secret, "anthropic-version": "2023-06-01" }
       : { Authorization: `Bearer ${secret}` };
+
   return {
     base,
     endpoint: base + (provider.kind === "anthropic" ? "/v1/models" : "/models"),
@@ -58,6 +60,7 @@ export const modelLayer = (
 ): Layer.Layer<LanguageModel.LanguageModel> => {
   const options = { apiKey: Redacted.make(secret), apiUrl: providerBaseUrl(provider) };
   const config = provider.temperature === undefined ? {} : { temperature: provider.temperature };
+
   switch (provider.kind) {
     case "chatgpt":
       // The subscription adapter is admitted only after a real next Responses probe.
@@ -84,6 +87,7 @@ export const modelLayer = (
       );
   }
 };
+
 // Never put a provider error (it may contain an HTTP body, URL or credentials)
 // into a workflow journal. The owner gets a stable code and can test the key.
 export const providerText = (
@@ -97,24 +101,31 @@ export const providerText = (
   Effect.gen(function* () {
     const calls: ToolCall[] = [];
     let tokens = 0;
+
     const toolkit = Toolkit.make(
       ...definitions.map((tool) =>
         Tool.dynamic(tool.name, { description: tool.description, parameters: tool.parameters }),
       ),
     );
+
     yield* session.streamText({ prompt, toolkit, disableToolCallResolution: true }).pipe(
       Stream.mapError(() => "PROVIDER_UNAVAILABLE"),
       Stream.runForEach((part) => {
         if (part.type === "text-delta") return onDelta(part.delta);
+
         if (part.type === "tool-call")
           calls.push({ id: part.id, name: part.name, params: part.params });
+
         if (part.type === "finish")
           tokens = (part.usage.inputTokens.total ?? 0) + (part.usage.outputTokens.total ?? 0);
+
         return Effect.void;
       }),
       Effect.provide(modelLayer(provider, secret)),
       Effect.provideService(FetchHttpClient.RequestInit, { redirect: "manual" }),
     );
+
     if (calls.length > 32) return yield* Effect.fail("TOOL_LIMIT");
+
     return { calls, tokens };
   });

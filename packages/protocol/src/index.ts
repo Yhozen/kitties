@@ -2,6 +2,7 @@ import * as Schema from "effect/Schema";
 import { Id } from "@kitties/domain";
 
 export const PROTOCOL_VERSION = 1;
+
 export const Hello = Schema.Struct({
   type: Schema.Literal("hello"),
   protocolVersion: Schema.Number,
@@ -10,6 +11,7 @@ export const Hello = Schema.Struct({
   remoteId: Schema.String,
   generation: Schema.Number,
 });
+
 export const Action = Schema.Struct({
   type: Schema.Literal("action"),
   intentId: Id,
@@ -36,7 +38,9 @@ export const Action = Schema.Struct({
   ]),
   args: Schema.Record(Schema.String, Schema.Unknown),
 });
+
 export type Action = typeof Action.Type;
+
 export const Ack = Schema.Struct({
   type: Schema.Literal("ack"),
   intentId: Id,
