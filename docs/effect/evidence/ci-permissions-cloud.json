@@ -1,0 +1,34 @@
+{
+  "date": "2026-11-01T18:06:18.150Z",
+  "status": "passed",
+  "permissionGroups": [
+    "Workers Scripts Write",
+    "Account Settings Read"
+  ],
+  "workerSettingsRead": 200,
+  "bucketLockMutation": 403,
+  "bucketConfigurationPermissions": false,
+  "ciSecret": "configured and presence verified using owner Mac GitHub login",
+  "applicationPublish": {
+    "status": "passed",
+    "workers": 4,
+    "frontendAssets": "published",
+    "infrastructureReconciliation": false,
+    "publisher": "scripts/publish-app.mjs"
+  },
+  "githubConfiguration": {
+    "status": "passed",
+    "verifiedAt": "2026-11-01T19:01:05.864699+00:00",
+    "secret": "CLOUDFLARE_WORKER_DEPLOY_TOKEN",
+    "variable": "CLOUDFLARE_ACCOUNT_ID",
+    "transport": "Only GitHub public-key-encrypted deployment token passed to the Mac; gh used the existing owner login",
+    "workflowExecution": {
+      "validation": "passed",
+      "runs": [
+        "https://github.com/Yhozen/kitties/actions/runs/41340003770",
+        "https://github.com/Yhozen/kitties/actions/runs/41340000244"
+      ],
+      "deploymentWorkflow": "Available after its file reaches the default branch; direct restricted-token publishing already passed"
+    }
+  }
+}

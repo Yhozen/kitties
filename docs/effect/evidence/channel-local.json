@@ -1,0 +1,13 @@
+{
+  "date": "2026-11-01T15:47:06.059Z",
+  "runtime": "local workerd + fake guest",
+  "inputs": 200,
+  "ackP50Ms": 44.010691999999835,
+  "ackP95Ms": 48.077110000000175,
+  "effectCount": 200,
+  "cases": [
+    "owner grant and fenced input",
+    "release rejects queued input",
+    "guest ingress excludes owner APIs"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "date": "2026-11-01T18:47:50.610Z",
+  "status": "passed",
+  "kittyId": "891c42dc-e68f-4283-b1b7-61dc78ff7e45",
+  "operationId": "e418ddec-b713-4b7b-b9d6-3414b126b971",
+  "executionId": "8411c3951d4fd908ed41c1f6d90a6dc6",
+  "synthetic503Responses": 2,
+  "realCreateResponseDiscarded": true,
+  "idempotentRetryReturnedSameRemote": true,
+  "matchingProviderMachines": 1,
+  "remoteId": "bx_9pxnyawf",
+  "generation": 2,
+  "guestConnected": true,
+  "scope": "Controlled API transport faults in the deployed next workflow; VM creation, idempotency, checkpoint restore and bootstrap use real Boat."
+}

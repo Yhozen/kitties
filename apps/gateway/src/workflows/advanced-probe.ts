@@ -1,0 +1,183 @@
+import type * as cf from "@cloudflare/workers-types";
+import { seal } from "../secrets.ts";
+import { guardedActivities } from "../recovery-guard.ts";
+import * as Cloudflare from "@alchemy.run/cloudflare";
+import { makeCallback } from "alchemy/Callback";
+import * as Workflows from "alchemy/Workflows";
+import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
+import { Activity, Workflow } from "effect/workflow";
+import { HomeDO } from "../actors.ts";
+import { Probe } from "./probe.ts";
+
+export const AdvancedProbe = Workflow.make("AdvancedProbeV1", {
+  payload: {
+    id: Schema.String,
+    mode: Schema.Literals([
+      "children",
+      "suspend",
+      "activity-failure",
+      "activity-suspension",
+      "r2-error",
+    ]),
+  },
+  success: Schema.Number,
+  error: Schema.String,
+  idempotencyKey: ({ id }) => id,
+}).annotate(Workflow.SuspendOnFailure, true);
+
+export const AdvancedProbeLive = Workflows.layer(
+  AdvancedProbe,
+  Effect.gen(function* () {
+    const homes = yield* HomeDO;
+    const env = (yield* Cloudflare.WorkerEnvironment) as {
+      STAGE: string;
+      EXPORTS: cf.R2Bucket;
+      KITTIES_KEK: string;
+    };
+    return Effect.fn(function* ({ id, mode }) {
+      const home = homes.getByName("owner", { locationHint: "weur" });
+      if (mode === "r2-error") {
+        if (!["next", "e2e"].includes(env.STAGE)) return yield* Effect.fail("PROBE_DISABLED");
+        const key = `exports/r2-error-${id}/canary.jsonl`;
+        yield* guardedActivities(Effect.void)({
+          name: "seed-locked-object",
+          error: Schema.String,
+          execute: Effect.tryPromise({
+            try: async () => {
+              if (await env.EXPORTS.head(key)) return;
+              await env.EXPORTS.put(
+                key,
+                JSON.stringify(
+                  await seal(
+                    env.KITTIES_KEK,
+                    `kitties-export-v1:${key}`,
+                    "R2 error acceptance fixture",
+                  ),
+                ),
+              );
+            },
+            catch: () => "EXPORT_UNAVAILABLE",
+          }),
+        });
+        return yield* guardedActivities(Effect.void)({
+          name: "retryable-r2",
+          success: Schema.Number,
+          error: Schema.String,
+          execute: Effect.gen(function* () {
+            if (
+              !(yield* home
+                .read("probe-repair", id)
+                .pipe(Effect.mapError(() => "STORAGE_UNAVAILABLE")))
+            ) {
+              yield* Effect.tryPromise({
+                try: async () => {
+                  await env.EXPORTS.put(key, "overwrite must be refused");
+                },
+                catch: () => "EXPORT_UNAVAILABLE",
+              }).pipe(
+                Effect.tapError(() =>
+                  home
+                    .write("probe-r2-error", id, "locked overwrite refused")
+                    .pipe(Effect.mapError(() => "STORAGE_UNAVAILABLE")),
+                ),
+              );
+              return yield* Effect.fail("LOCK_NOT_ENFORCED");
+            }
+            const existing = yield* Effect.tryPromise({
+              try: () => env.EXPORTS.head(key),
+              catch: () => "EXPORT_UNAVAILABLE",
+            });
+            if (!existing) return yield* Effect.fail("EXPORT_UNAVAILABLE");
+            yield* home.recordProbeCall(id, 0).pipe(Effect.mapError(() => "STORAGE_UNAVAILABLE"));
+            return 1;
+          }),
+        });
+      }
+      if (mode === "activity-suspension")
+        return yield* guardedActivities(Effect.void)({
+          name: "retryable-storage",
+          success: Schema.Number,
+          error: Schema.String,
+          execute: Effect.gen(function* () {
+            if (
+              !(yield* home
+                .read("probe-repair", id)
+                .pipe(Effect.mapError(() => "STORAGE_UNAVAILABLE")))
+            )
+              return yield* Effect.fail("STORAGE_UNAVAILABLE");
+            yield* home.recordProbeCall(id, 0).pipe(Effect.mapError(() => "STORAGE_UNAVAILABLE"));
+            return 1;
+          }),
+        });
+      if (mode === "activity-failure") {
+        return yield* Activity.make({
+          name: "handled-failure",
+          success: Schema.Number,
+          error: Schema.String,
+          execute: home.recordProbeCall(id, 0).pipe(
+            Effect.mapError(() => "STORAGE_FAILED"),
+            Effect.andThen(Effect.fail("TERMINAL_ACTIVITY")),
+          ),
+        }).pipe(Effect.catch((error) => Effect.succeed(error === "TERMINAL_ACTIVITY" ? 1 : 0)));
+      }
+      if (mode === "suspend") {
+        yield* Activity.make({
+          name: "before-failure",
+          execute: home.recordProbeCall(id, 0).pipe(Effect.orDie),
+        });
+        // This dependency is deliberately outside an activity: the completed side effect
+        // stays journaled, while an operator can repair the dependency before resuming.
+        const repaired = yield* home.read("probe-repair", id).pipe(Effect.orDie);
+        if (!repaired) return yield* Effect.fail("REPAIR_REQUIRED");
+        return 1;
+      }
+      const children = [0, 1, 2].map((index) => ({
+        id: `${id}/child/${index}`,
+        steps: index + 1,
+        delayMs: 20,
+        wait: false,
+        fail: false,
+      }));
+      yield* Effect.all(
+        children.map((payload, index) =>
+          Activity.make({
+            name: `start-child/${index}`,
+            success: Schema.String,
+            execute: Probe.execute(payload, { discard: true }),
+          }),
+        ),
+        { concurrency: "unbounded" },
+      );
+      let total = 0;
+      for (const payload of children) total += yield* Probe.execute(payload);
+      return total;
+    });
+  }),
+);
+
+export class CallbackProbeDO extends Cloudflare.DurableObject<CallbackProbeDO>()(
+  "CallbackProbeDO",
+  Effect.gen(function* () {
+    const state = yield* Cloudflare.DurableObjectState;
+    return Effect.gen(function* () {
+      const callback = yield* makeCallback(
+        "parking-probe",
+        () => Effect.fail("EXPECTED_CALLBACK_FAILURE"),
+        { retry: { delay: "1 second" } },
+      );
+      return {
+        start: () => callback.schedule("probe", { after: 0, payload: {} }),
+        status: () => callback.getStatus("probe"),
+        cancel: () => callback.cancel("probe"),
+        alarm: () => Effect.void,
+        rawStatus: () =>
+          state.storage.sql
+            .exec(
+              "SELECT attempts,parked,retry_at FROM alchemy_alarm_callbacks WHERE callback='parking-probe'",
+            )
+            .pipe(Effect.flatMap((c) => c.toArray())),
+      };
+    });
+  }),
+) {}

@@ -1,0 +1,15 @@
+{
+  "date": "2026-11-01T19:18:19.676Z",
+  "status": "passed",
+  "oldOperationId": "db9c52f7-8989-4186-904f-c89968c728cc",
+  "newOperationId": "77f0ed0b-76fe-40d9-8dcc-d65398021e86",
+  "preEpoch": 1793560606383,
+  "newEpoch": 1793560682099,
+  "historicalCompletedRetryReturnedOldExecution": true,
+  "historicalRetryDidNotAdvanceEpoch": true,
+  "historicalRetryDidNotReplaceCurrentOperation": true,
+  "mismatchedHistoricalPayloadRejected": true,
+  "postEpochRequestCompleted": true,
+  "freshBookmarkRestored": true,
+  "scope": "Actual ChatDO PITR after the read-only recovery-fence optimization; old workflows remain fenced by a fresh read before new activities."
+}

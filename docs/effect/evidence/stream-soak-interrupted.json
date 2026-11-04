@@ -1,0 +1,13 @@
+{
+  "date": "2026-11-01T16:15:29.724Z",
+  "durationTargetMs": 1800000,
+  "viewers": 3,
+  "frames": [
+    323,
+    323,
+    1
+  ],
+  "disconnects": 1,
+  "status": "failed",
+  "elapsedMs": 560210
+}

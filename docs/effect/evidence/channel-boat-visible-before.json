@@ -1,0 +1,16 @@
+{
+  "date": "2026-11-01T16:24:49.805Z",
+  "runtime": "European Boat Node client \u2192 public Cloudflare WS \u2192 real Boat kittyd; sharp decoded visible pixel",
+  "inputs": 200,
+  "ackP50Ms": 272.1729000000014,
+  "ackP95Ms": 437.4595399999962,
+  "visibleP50Ms": 331.05960799999593,
+  "visibleP95Ms": 1178.0715490000002,
+  "frames": 258,
+  "clock": "client monotonic clock for all round-trip measurements",
+  "status": "failed",
+  "gates": {
+    "ackP95Ms": 250,
+    "visibleP95Ms": 500
+  }
+}

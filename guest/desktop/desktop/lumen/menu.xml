@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<openbox_menu xmlns="http://openbox.org/3.4/menu">
+<menu id="root-menu" label="Kitties">
+  <item label="Chromium" icon="/usr/share/icons/Lucide/scalable/apps/web-browser.svg"><action name="Execute"><command>kitty-open</command></action></item>
+  <item label="Files" icon="/usr/share/icons/Lucide/scalable/apps/system-file-manager.svg"><action name="Execute"><command>pcmanfm /home/kitty/work</command></action></item>
+  <item label="Terminal" icon="/usr/share/icons/Lucide/scalable/apps/utilities-terminal.svg"><action name="Execute"><command>xterm</command></action></item>
+  <separator />
+  <item label="Writer" icon="/usr/share/icons/Lucide/scalable/apps/libreoffice-writer.svg"><action name="Execute"><command>soffice --writer</command></action></item>
+  <item label="Calc" icon="/usr/share/icons/Lucide/scalable/apps/libreoffice-calc.svg"><action name="Execute"><command>soffice --calc</command></action></item>
+  <item label="Impress" icon="/usr/share/icons/Lucide/scalable/apps/libreoffice-impress.svg"><action name="Execute"><command>soffice --impress</command></action></item>
+  <item label="Inkscape" icon="/usr/share/icons/Lucide/scalable/apps/inkscape.svg"><action name="Execute"><command>inkscape</command></action></item>
+  <item label="mtPaint" icon="/usr/share/icons/Lucide/scalable/apps/mtpaint.svg"><action name="Execute"><command>mtpaint</command></action></item>
+</menu>
+</openbox_menu>

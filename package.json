@@ -1,0 +1,31 @@
+{
+  "name": "kitties",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "vp check",
+    "test": "vp test --run",
+    "build": "vp run -r build",
+    "dev": "pnpm --filter @kitties/gateway dev"
+  },
+  "dependencies": {
+    "@alchemy.run/cloudflare": "2.0.0-beta.84",
+    "@effect/platform-bun": "4.1.1",
+    "@effect/platform-node": "4.1.1",
+    "alchemy": "2.0.0-beta.84",
+    "effect": "4.1.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261027.1",
+    "@effect/vitest": "4.1.1",
+    "@types/node": "26.6.5",
+    "typescript": "7.0.2",
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.4.0",
+    "vite-plus": "1.4.0",
+    "vitest": "5.0.5"
+  },
+  "engines": {
+    "node": ">=26.0.0"
+  },
+  "packageManager": "pnpm@12.16.1"
+}

@@ -1,0 +1,13 @@
+{
+  "name": "@kitties/domain",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./entities": "./src/entities.ts",
+    "./recovery": "./src/recovery.ts"
+  },
+  "dependencies": {
+    "effect": "4.1.1"
+  }
+}

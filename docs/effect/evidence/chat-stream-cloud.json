@@ -1,0 +1,11 @@
+{
+  "date": "2026-11-01T16:59:42.690Z",
+  "runtime": "Deployed DO workflows, Effect compat fixture, persistent SSE through authenticated verification binding",
+  "status": "passed",
+  "turns": 50,
+  "firstTokenP50Ms": 1329.4463260000011,
+  "firstTokenP95Ms": 1872.02506,
+  "firstTokenMaxMs": 3349.989859,
+  "events": 199,
+  "measurement": "POST starts to first SSE text delta on an already-open stream, one client monotonic clock. Fixture provider; does not characterize paid model latency."
+}

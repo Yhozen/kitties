@@ -2,7 +2,6 @@
 
 ```sh
 make check    # gofmt, go vet, go test -race
-make cover    # coverage per package (gate: 90 %)
 make dist     # linux, macOS, windows and android binaries
 make image    # the kitty-desktop container image
 make desktop-check   # the Wails module and its page

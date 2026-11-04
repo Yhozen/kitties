@@ -1,0 +1,36 @@
+{
+  "date": "2026-11-01T15:56:36.339Z",
+  "runtime": "Cloudflare KittyDO + Boat kittyd, browser-equivalent client in US workspace",
+  "inputs": 200,
+  "ackP50Ms": 240.83022200000414,
+  "ackP95Ms": 1081.602927,
+  "ackMaxMs": 2186.4713739999997,
+  "includes": "US workspace to European DO, persistent guest channel and real xdotool mousemove",
+  "hops": {
+    "guestQueue": {
+      "p50": 49,
+      "p95": 504,
+      "max": 1282
+    },
+    "guestExecution": {
+      "p50": 51,
+      "p95": 352,
+      "max": 1790
+    },
+    "doToGuest": {
+      "p50": 38,
+      "p95": 134,
+      "max": 655
+    },
+    "guestToDo": {
+      "p50": -8,
+      "p95": -2,
+      "max": 188
+    },
+    "withinDo": {
+      "p50": 140,
+      "p95": 878,
+      "max": 2090
+    }
+  }
+}

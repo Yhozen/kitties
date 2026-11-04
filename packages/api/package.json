@@ -1,0 +1,12 @@
+{
+  "name": "@kitties/api",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@kitties/domain": "workspace:*",
+    "effect": "4.1.1"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "date": "2026-11-01T17:35:03.630Z",
+  "runtime": "deployed TurnV4, ApprovalV2, real Effect McpClient, streaming compat model fixture",
+  "status": "passed",
+  "retriedMessage": true,
+  "retriedApproval": true,
+  "rounds": 2,
+  "externalCalls": 1,
+  "answer": "Tool completed: {\"untrusted\":true,\"source\":\"MCP acceptance\",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"sample data, calls=1\"}]}}"
+}

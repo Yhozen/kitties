@@ -1,0 +1,13 @@
+{
+  "date": "2026-11-01T17:42:12.129Z",
+  "status": "passed",
+  "workflow": "TurnV5 / DelegationV1",
+  "children": 2,
+  "duplicateChildMessages": 0,
+  "cases": [
+    "deterministic fan-out and fixed joins",
+    "parent resumes with child results",
+    "configured backup kitty receives give-up handoff",
+    "parent cancellation fences queued and running fan-out children"
+  ]
+}

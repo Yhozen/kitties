@@ -1,0 +1,10 @@
+{
+  "date": "2026-11-01T18:33:51.744808+00:00",
+  "status": "passed",
+  "typedExactValue": true,
+  "ownerViewRedacted": true,
+  "plaintextCanaryFound": false,
+  "workflowRows": 15,
+  "homeAndChatRowsScanned": true,
+  "method": "Fresh random canary typed on the real desktop by vault reference after approval; scanned HomeDO and ChatDO rows plus parent and child workflow journal snapshots"
+}

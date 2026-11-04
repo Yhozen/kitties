@@ -1,0 +1,32 @@
+{
+  "date": "2026-11-01T15:31:55.222Z",
+  "executionId": "71d9f14d4d5c0e2343a627530fcb8efe",
+  "case": "kill-workerd-after-first-activity-during-durable-clock",
+  "status": {
+    "_tag": "Completed",
+    "result": 5
+  },
+  "calls": [
+    {
+      "step": 0,
+      "calls": 1
+    },
+    {
+      "step": 1,
+      "calls": 1
+    },
+    {
+      "step": 2,
+      "calls": 1
+    },
+    {
+      "step": 3,
+      "calls": 1
+    },
+    {
+      "step": 4,
+      "calls": 1
+    }
+  ],
+  "owner_intervention": false
+}

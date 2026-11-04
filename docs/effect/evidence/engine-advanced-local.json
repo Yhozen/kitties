@@ -1,0 +1,15 @@
+{
+  "date": "2026-11-01T15:36:35.387Z",
+  "cases": [
+    {
+      "mode": "children",
+      "status": "pass",
+      "executionId": "d3181398fb30c37b9b58d67762d4b9ad"
+    },
+    {
+      "mode": "suspend",
+      "status": "pass",
+      "executionId": "60ce020976bf54dfa06b4ce9ea649b93"
+    }
+  ]
+}

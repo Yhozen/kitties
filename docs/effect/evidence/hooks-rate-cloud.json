@@ -1,0 +1,24 @@
+{
+  "date": "2026-11-01T18:00:25.815Z",
+  "status": "configured",
+  "ruleset": "e2d0028cb38c4f0ab24b0dce375dbb7e",
+  "rule": {
+    "action": "block",
+    "description": "Kitties signed-hook ingress: 300 requests per 10 seconds per IP",
+    "enabled": true,
+    "expression": "(http.host in {\"hooks-next.kitties.rccpr.tech\" \"hooks-prod.kitties.rccpr.tech\" \"hooks.kitties.rccpr.tech\"} and starts_with(http.request.uri.path, \"/hooks/\"))",
+    "id": "3c8d80bd06464e809be45fccd8c08fd5",
+    "last_updated": "2026-11-01T18:00:25.290741Z",
+    "ratelimit": {
+      "characteristics": [
+        "cf.colo.id",
+        "ip.src"
+      ],
+      "mitigation_timeout": 10,
+      "period": 10,
+      "requests_per_period": 300
+    },
+    "ref": "kitties_hook_rate",
+    "version": "1"
+  }
+}

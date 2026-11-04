@@ -1,0 +1,15 @@
+{
+  "date": "2026-11-01T19:22:14.641Z",
+  "status": "passed",
+  "host": "https://candidate.kitties.rccpr.tech",
+  "authentication": "Owner Cloudflare Access session on Mac",
+  "kittyId": "c1223a71-1c4a-4988-a2bf-0c1cb05b5185",
+  "chatId": "f49d4334-a908-49eb-aa12-75789a38a40f",
+  "remoteId": "bx_tta54em4",
+  "messageId": "8e249981-fd72-44ea-b8d8-b70875e04314",
+  "guestConnected": true,
+  "screenshotTurnCompleted": true,
+  "duplicateMessageReturnedDuplicate": true,
+  "replayFrames": 1,
+  "scope": "Actual Boat desktop screenshot through owner-authenticated production candidate APIs; fixture model emits the tool call."
+}

@@ -1,0 +1,66 @@
+{
+  "date": "2026-11-01T18:20:29.779Z",
+  "status": "passed",
+  "readyNewManagedDesktops": 4,
+  "existingRewriteProbeDesktop": 1,
+  "providerActiveDesktops": 5,
+  "sixthRefused": "CAPACITY_LIMIT",
+  "active": [
+    {
+      "id": "bx_jggrdbhg",
+      "name": "kn-0e256fef-d43f-477a-9042-80fffe6627a5-g1",
+      "state": "idle"
+    },
+    {
+      "id": "bx_hwqqk2xw",
+      "name": "kn-52f6acae-946d-48c8-8299-e70677d5296d-g1",
+      "state": "idle"
+    },
+    {
+      "id": "bx_mwxc8c2k",
+      "name": "kn-891c42dc-e68f-4283-b1b7-61dc78ff7e45-g1",
+      "state": "idle"
+    },
+    {
+      "id": "bx_rbctzezv",
+      "name": "kn-41fe4b43-cfe1-4566-b076-933804801b80-g1",
+      "state": "idle"
+    },
+    {
+      "id": "bx_ncb5supp",
+      "name": "kn-spike-g1",
+      "state": "idle"
+    }
+  ],
+  "states": [
+    {
+      "id": "41fe4b43-cfe1-4566-b076-933804801b80",
+      "phase": "ready",
+      "guestConnected": true,
+      "remoteId": "bx_rbctzezv"
+    },
+    {
+      "id": "891c42dc-e68f-4283-b1b7-61dc78ff7e45",
+      "phase": "ready",
+      "guestConnected": true,
+      "remoteId": "bx_mwxc8c2k"
+    },
+    {
+      "id": "52f6acae-946d-48c8-8299-e70677d5296d",
+      "phase": "ready",
+      "guestConnected": true,
+      "remoteId": "bx_hwqqk2xw"
+    },
+    {
+      "id": "0e256fef-d43f-477a-9042-80fffe6627a5",
+      "phase": "ready",
+      "guestConnected": true,
+      "remoteId": "bx_jggrdbhg"
+    },
+    {
+      "id": "fc352c69-3831-4e80-a688-121357142a2b",
+      "phase": "starting",
+      "guestConnected": false
+    }
+  ]
+}

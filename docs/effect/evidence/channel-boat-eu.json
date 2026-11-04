@@ -1,0 +1,10 @@
+{
+  "date": "2026-11-01T16:12:25.081Z",
+  "runtime": "European verifier DO → KittyDO → real Boat kittyd",
+  "inputs": 200,
+  "ackP50Ms": 90,
+  "ackP95Ms": 155,
+  "ackMaxMs": 819,
+  "guestExecutionP95Ms": 59,
+  "includes": "Regional channel measurement; excludes browser-to-European-edge network time."
+}

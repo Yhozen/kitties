@@ -1,0 +1,49 @@
+{
+  "date": "2026-11-01",
+  "source": "Cloudflare live tail",
+  "scope": "Gateway workflow alarms observed during cloud acceptance; the tail does not identify the individual execution, so these are not per-case CPU measurements.",
+  "alarms": [
+    {
+      "eventTimestamp": 1793547649417,
+      "cpuTime": 17,
+      "wallTime": 726,
+      "outcome": "ok"
+    },
+    {
+      "eventTimestamp": 1793547665128,
+      "cpuTime": 28,
+      "wallTime": 166,
+      "outcome": "ok"
+    },
+    {
+      "eventTimestamp": 1793547667178,
+      "cpuTime": 21,
+      "wallTime": 373,
+      "outcome": "ok"
+    },
+    {
+      "eventTimestamp": 1793547687877,
+      "cpuTime": 30,
+      "wallTime": 81,
+      "outcome": "ok"
+    },
+    {
+      "eventTimestamp": 1793547721362,
+      "cpuTime": 17,
+      "wallTime": 125,
+      "outcome": "ok"
+    },
+    {
+      "eventTimestamp": 1793547773348,
+      "cpuTime": 8,
+      "wallTime": 676,
+      "outcome": "ok"
+    },
+    {
+      "eventTimestamp": 1793547775507,
+      "cpuTime": 0,
+      "wallTime": 2,
+      "outcome": "canceled"
+    }
+  ]
+}

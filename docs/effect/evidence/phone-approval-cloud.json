@@ -1,0 +1,10 @@
+{
+  "date": "2026-11-01T18:07:14.070Z",
+  "status": "passed",
+  "device": "owner physical iPhone, Chrome",
+  "reauthentication": "owner encountered ACCESS_REQUIRED, verified JWT fallback deployed, owner subsequently approved",
+  "ownerConfirmation": "Approved",
+  "approvalStatus": "approved",
+  "messageStatus": "completed",
+  "answer": "Tool completed: {\"untrusted\":true,\"source\":\"MCP acceptance\",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"sample data, calls=1\"}]}}"
+}

@@ -1,0 +1,59 @@
+{
+  "date": "2026-11-01T15:40:59.893Z",
+  "runtime": "Node in workspace; not deployed Worker evidence",
+  "results": [
+    {
+      "name": "GitHub",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "httpStatus": 401,
+      "authDiscovery": "Bearer error=\"invalid_request\", error_description=\"No access token was provided in this request\", resource_metadata=\"https://api.githubcopilot.com/.well-known/oauth-protected-resource/mcp/\"",
+      "status": "requires-owner-authorization",
+      "disposition": "Configure owner OAuth or a scoped static token before initialize/listTools can pass."
+    },
+    {
+      "name": "Stripe",
+      "url": "https://mcp.stripe.com",
+      "httpStatus": 401,
+      "authDiscovery": "Bearer resource_metadata=\"https://mcp.stripe.com/.well-known/oauth-protected-resource\"",
+      "status": "requires-owner-authorization",
+      "disposition": "Configure owner OAuth or a scoped static token before initialize/listTools can pass."
+    },
+    {
+      "name": "Notion",
+      "url": "https://mcp.notion.com/mcp",
+      "httpStatus": 401,
+      "authDiscovery": "Bearer realm=\"OAuth\", resource_metadata=\"https://mcp.notion.com/.well-known/oauth-protected-resource/mcp\", scope=\"default\"",
+      "status": "requires-owner-authorization",
+      "disposition": "Configure owner OAuth or a scoped static token before initialize/listTools can pass."
+    },
+    {
+      "name": "Linear",
+      "url": "https://mcp.linear.app/mcp",
+      "httpStatus": 401,
+      "authDiscovery": "Bearer realm=\"OAuth\", resource_metadata=\"https://mcp.linear.app/.well-known/oauth-protected-resource/mcp\", scope=\"read write\"",
+      "status": "requires-owner-authorization",
+      "disposition": "Configure owner OAuth or a scoped static token before initialize/listTools can pass."
+    },
+    {
+      "name": "Atlassian",
+      "url": "https://mcp.atlassian.com/v1/mcp",
+      "httpStatus": 401,
+      "authDiscovery": "Bearer realm=\"OAuth\", error=\"invalid_token\", error_description=\"Missing or invalid access token\"",
+      "status": "requires-owner-authorization",
+      "disposition": "Configure owner OAuth or a scoped static token before initialize/listTools can pass."
+    },
+    {
+      "name": "Slack",
+      "url": "https://mcp.slack.com/mcp",
+      "httpStatus": 401,
+      "authDiscovery": "Bearer resource_metadata=\"https://mcp.slack.com/.well-known/oauth-protected-resource\"",
+      "status": "requires-owner-authorization",
+      "disposition": "Configure owner OAuth or a scoped static token before initialize/listTools can pass."
+    },
+    {
+      "name": "HomeAssistant",
+      "status": "requires-owner-instance",
+      "disposition": "Home Assistant is self-hosted; no owner instance URL or token is configured."
+    }
+  ]
+}

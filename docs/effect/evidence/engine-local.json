@@ -1,0 +1,33 @@
+{
+  "date": "2026-11-01T15:29:11Z",
+  "runtime": "alchemy dev / workerd 1.20261012.1",
+  "cases": [
+    {
+      "steps": 3,
+      "signal_to_result_ms": 211.2,
+      "total_ms": 15338.9
+    },
+    {
+      "steps": 50,
+      "signal_to_result_ms": 209.6,
+      "total_ms": 15319.6
+    },
+    {
+      "steps": 200,
+      "signal_to_result_ms": 210.8,
+      "total_ms": 15532.3
+    },
+    {
+      "steps": 500,
+      "signal_to_result_ms": 219.3,
+      "total_ms": 15841.4
+    }
+  ],
+  "all_activities_executed_once": true,
+  "duplicate_start_same_execution": true,
+  "completed_failure_journaled": true,
+  "interrupt_durable_wait": true,
+  "cross_origin_and_route_isolation": true,
+  "cpu_time_measured": false,
+  "cloud_deployment_measured": false
+}

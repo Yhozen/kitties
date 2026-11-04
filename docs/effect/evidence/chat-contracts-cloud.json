@@ -1,0 +1,13 @@
+{
+  "date": "2026-11-01T16:44:21.185Z",
+  "runtime": "Deployed DO workflows + Effect compat streaming fixture; US external client",
+  "status": "failed",
+  "cancelMidStream": true,
+  "inboxDrained": true,
+  "noLateDeltasAfterCancel": true,
+  "turns": 50,
+  "firstTokenP50Ms": 1446.4517730000007,
+  "firstTokenP95Ms": 2181.298588999998,
+  "firstTokenMaxMs": 2383.4153249999945,
+  "measurement": "POST begins to first persisted text observed by owner HTTP read; fixture provider, includes network and polling; does not characterize paid model latency."
+}

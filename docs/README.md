@@ -1,7 +1,12 @@
 # Kitties documentation
 
+> **Rewrite in progress.** Kitties is moving to TypeScript and Effect on Cloudflare. The plan, the
+> decisions and the backing research are in [effect/](effect/README.md). The documents below
+> describe the current Go system, which stays live and frozen until cutover.
+
 | Read this | To |
 | --- | --- |
+| [effect/](effect/README.md) | The Effect rewrite: plan, decisions, parity, research, risks, latency baseline |
 | [INSTALL.md](INSTALL.md) | Try the demo, download a release, run the real thing, keep it updated |
 | [APPS.md](APPS.md) | The desktop app (Wails) and the Android app |
 | [DEPLOY.md](DEPLOY.md) | Run the gateway on a server: Compose with Caddy, systemd, nginx, backups |

@@ -1,0 +1,41 @@
+{
+  "date": "2026-11-01T18:14:32.804Z",
+  "status": "passed",
+  "controlDeletion": 200,
+  "lockedDeletion": {
+    "key": "exports/retention-probe/retention-check-28d17ed4-69fc-479a-ab05-90f5e4e0d5e1.jsonl",
+    "status": 200,
+    "body": "{\"success\":false,\"errors\":[{\"code\":10069,\"message\":\"The object is locked by the bucket policy.\"}],\"messages\":[],\"result\":null}",
+    "readAfterRefusal": 200
+  },
+  "lock": {
+    "rules": [
+      {
+        "id": "retain-30-days",
+        "enabled": true,
+        "prefix": "exports/",
+        "condition": {
+          "type": "Age",
+          "maxAgeSeconds": 2592000
+        }
+      }
+    ]
+  },
+  "lifecycle": {
+    "rules": [
+      {
+        "id": "expire-after-90-days",
+        "enabled": true,
+        "conditions": {
+          "prefix": "exports/"
+        },
+        "deleteObjectsTransition": {
+          "condition": {
+            "type": "Age",
+            "maxAge": 7776000
+          }
+        }
+      }
+    ]
+  }
+}

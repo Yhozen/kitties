@@ -1,0 +1,27 @@
+{
+  "date": "2026-11-01T19:09:20.445Z",
+  "status": "passed",
+  "workflow": "AdvancedProbeV1",
+  "executionId": "d04e19cbc233c6b27676fba87a3ee821",
+  "storage": "Real locked R2 export bucket",
+  "failure": "Actual overwrite of retained object was refused by R2 and mapped to EXPORT_UNAVAILABLE",
+  "beforeRepair": {
+    "status": "Running",
+    "calls": 0,
+    "failedActivityJournaled": false
+  },
+  "afterRepair": {
+    "status": {
+      "_tag": "Completed",
+      "result": 1
+    },
+    "calls": [
+      {
+        "step": 0,
+        "calls": 1
+      }
+    ]
+  },
+  "duplicateStartDidNotRepeatEffect": true,
+  "scope": "Tests the shared guarded-activity suspension path against a real R2 error. Existing encrypted seed is retained under the bucket lock."
+}
