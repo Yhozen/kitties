@@ -12,3 +12,7 @@ default = true
 [scripts.run.check]
 command = "pnpm check"
 icon = "check"
+
+[scripts.run.test]
+command = "pnpm test:watch"
+icon = "test-tube"

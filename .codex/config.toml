@@ -1,0 +1,3 @@
+[mcp_servers.foldkit-devtools]
+command = "pnpm"
+args = ["--filter", "@kitties/web", "exec", "foldkit-devtools-mcp"]

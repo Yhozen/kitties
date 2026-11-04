@@ -1,11 +1,14 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-export class BoatError extends Schema.TaggedError<BoatError>()("BoatError", {
-  code: Schema.String,
-  status: Schema.Number,
-  retryAfter: Schema.Number,
-}) {}
+export class BoatError extends Schema.TaggedError<BoatError, { readonly brand: unique symbol }>()(
+  "BoatError",
+  {
+    code: Schema.String,
+    status: Schema.Number,
+    retryAfter: Schema.Number,
+  },
+) {}
 
 export interface BoatSandbox {
   id: string;

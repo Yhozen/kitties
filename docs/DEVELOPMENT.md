@@ -5,6 +5,7 @@ Install Node 26+, pnpm 12.16.1 and Bun 1.4.4. From the repository root:
 ```sh
 pnpm install --frozen-lockfile
 pnpm check
+pnpm test
 pnpm build
 ```
 
@@ -16,9 +17,10 @@ The workspace contains `apps/gateway`, `apps/web`, `packages/{api,domain,protoco
 `guest/{desktop,kittyd}`. The guest build requires Bun and produces the Linux baseline binary.
 `pnpm --filter @kitties/kittyd release` creates the content-addressed archive and release manifest.
 
-The root Vite+ commands cover formatting, lint/type checks and task builds. Automated tests,
-fixtures, probes and their setup have been removed. Historical validation evidence remains in
-`docs/effect/evidence/`; it does not represent a currently runnable suite.
+The root Vite+ commands cover formatting, lint/type checks, Vitest and task builds.
+The fresh behavior suite is described in [testing](TESTING.md). Run
+`pnpm test:watch` while developing and `pnpm test:coverage` for coverage reports.
+Historical validation evidence in `docs/effect/evidence/` is separate from this suite.
 Keep the exact Effect/Alchemy versions and pnpm patches together; see
 [patches/README.md](../patches/README.md).
 
@@ -35,3 +37,43 @@ semantic findings individually; a formatter cannot establish runtime type safety
 When upgrading Vite+, keep `@oxlint/plugins` pinned to the version printed by
 `pnpm exec vp lint --version`. Existing source exclusions remain in `vite.config.ts`;
 the Effect service-import rule checks relative imports, not package or path aliases.
+
+The pinned `@effect/tsgo` postinstall step adds Effect's typed correctness rules
+to the Oxlint bundled with Vite+. API stability notices retain upstream warning
+severity for deliberately pinned HTTP/workflow/AI/testing integrations; other
+correctness diagnostics are errors. Vite+ upgrades must be supported by the
+installed Effect integration; do not skip its postinstall when running checks.
+
+## CAFE frontend
+
+[CAFE](https://ratstack.sh/lore/cafe-stack) names Cloudflare, Alchemy, Foldkit and
+Effect. Kitties already has the Cloudflare/Alchemy/Effect backend; the frontend
+uses the published Foldkit packages within the same Vite+ workspace.
+
+| Part | Kitties location and responsibility |
+| --- | --- |
+| Cloudflare | `apps/gateway/src/worker.ts`, Durable Objects and storage run the backend and serve the built web assets. |
+| Alchemy | `apps/gateway/alchemy.run.ts` declares the existing resources and bindings. |
+| Foldkit | `apps/web` owns browser Models, Messages, views, Commands and Subscriptions. |
+| Effect | Shared schemas in `packages/{api,domain,protocol}` define browser/server boundaries; services and Layers provide dependencies. |
+
+Foldkit 0.170.0, its UI package and Vite plugin are installed. The application
+continues to boot Preact until its UI migration. Put native Foldkit modules
+under `apps/web/src/foldkit/` during migration; the full upstream Foldkit lint
+preset applies there. Shared tooling remains in the root Vite+ configuration.
+
+Read [FOLDKIT.md](../FOLDKIT.md), the installed package declarations and the
+release-pinned online references linked from the skills. Framework source,
+example apps and upstream test suites are not vendored into this repository.
+The eight skills in `.agents/skills/` include Foldkit architecture,
+generation and auditing guidance plus Ratstack architecture, durability,
+investigation, Alchemy and testing guides. See their
+[provenance](../.agents/skills/UPSTREAM.md).
+
+DevTools MCP is configured for Claude in `.mcp.json` and Codex in
+`.codex/config.toml`, using the installed binary through pnpm. New agent sessions
+load the project configuration. Start `pnpm --filter @kitties/web dev` and open
+the app in a browser. A Foldkit runtime becomes inspectable when a migrated
+page boots it; the current Preact runtime will not appear in Foldkit DevTools.
+The plugin's default authenticated loopback discovery handles multiple dev
+servers. Keep credentials out of Models and Message history.

@@ -6,7 +6,11 @@
     "check": "vp check",
     "build": "vp run -r build",
     "dev": "pnpm --filter @kitties/gateway dev",
-    "chatgpt:connect": "node scripts/chatgpt-connect.mjs"
+    "chatgpt:connect": "node scripts/chatgpt-connect.mjs",
+    "postinstall": "effect-tsgo patch --no-typescript --oxlint",
+    "test": "vp test run",
+    "test:watch": "vp test watch",
+    "test:coverage": "vp test run --coverage"
   },
   "dependencies": {
     "@alchemy.run/cloudflare": "2.0.0-beta.84",
@@ -17,8 +21,12 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261027.1",
+    "@effect/tsgo": "0.67.1",
+    "@effect/vitest": "4.1.1",
+    "@foldkit/oxlint-plugin": "0.15.4",
     "@oxlint/plugins": "1.89.0",
     "@types/node": "26.6.5",
+    "@vitest/coverage-v8": "5.0.5",
     "typescript": "7.0.2",
     "vite": "npm:@voidzero-dev/vite-plus-core@1.4.0",
     "vite-plus": "1.4.0"
