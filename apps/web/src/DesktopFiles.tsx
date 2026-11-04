@@ -22,6 +22,10 @@ export function DesktopFiles({ id }: { id: string }) {
   const operation = useRef<AbortController | undefined>(undefined),
     fileInput = useRef<HTMLInputElement>(null);
   const base = fileEndpoint(id);
+  const reload = () => {
+    setListing(undefined);
+    setRefresh((value) => value + 1);
+  };
   useEffect(() => () => operation.current?.abort(), [id]);
   useEffect(() => {
     const abort = new AbortController();
@@ -66,13 +70,21 @@ export function DesktopFiles({ id }: { id: string }) {
       if (operation.current === abort) {
         operation.current = undefined;
         setBusy(false);
-        setRefresh((value) => value + 1);
+        reload();
       }
     }
   };
   const query = () => new URLSearchParams({ path, generation: String(listing!.generation) });
   const upload = (file?: File) => {
-    if (!file || !listing || busy) return;
+    if (!file) return;
+    if (!listing || busy) {
+      setError(
+        busy
+          ? t("A transfer is already running. Try this file again when it finishes.")
+          : t("Files are not ready yet. Refresh the folder before uploading."),
+      );
+      return;
+    }
     const params = query();
     params.set("name", file.name);
     void run(`${t("Uploading")} ${file.name}`, (signal) =>
@@ -102,7 +114,7 @@ export function DesktopFiles({ id }: { id: string }) {
           disabled={busy}
           onClick={() => {
             setError("");
-            setRefresh((value) => value + 1);
+            reload();
           }}
         >
           {t("Refresh")}

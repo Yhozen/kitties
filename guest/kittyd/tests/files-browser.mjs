@@ -81,6 +81,7 @@ try {
   });
   await page.goto("http://localhost:17777/fixture?lang=en");
   await page.getByText("No shared files yet.").waitFor();
+  await page.getByRole("button", { name: "Upload file", exact: true, disabled: false }).waitFor();
   await page.locator("input[type=file]").setInputFiles({
     name: "Binary sample.bin",
     mimeType: "application/octet-stream",
@@ -99,6 +100,7 @@ try {
   await page.getByRole("button", { name: "Send to desktop", exact: true }).click();
   await page.getByText("Transfer complete.", { exact: true }).waitFor();
   passed.push("Library-to-desktop action carries generation");
+  await page.getByRole("button", { name: "Upload file", exact: true, disabled: false }).waitFor();
   await page.locator(".desktop-files").evaluate((el) => {
     const dt = new DataTransfer();
     dt.items.add(new File(["drop"], "Dropped.txt"));
@@ -107,6 +109,7 @@ try {
   await page.getByText("Dropped.txt", { exact: true }).waitFor();
   assert.equal(uploads, 2);
   passed.push("drag and drop upload");
+  await page.getByRole("button", { name: "Upload file", exact: true, disabled: false }).waitFor();
   mode = "error";
   await page
     .locator("input[type=file]")
@@ -115,10 +118,18 @@ try {
   await page.waitForTimeout(200);
   assert.equal(uploads, 3);
   passed.push("stale generation error persists through refresh; no replay");
+  await page.getByRole("button", { name: "Upload file", exact: true, disabled: false }).waitFor();
   mode = "slow";
   await page
     .locator("input[type=file]")
     .setInputFiles({ name: "cancel.txt", mimeType: "text/plain", buffer: Buffer.from("x") });
+  await page.locator(".desktop-files").evaluate((el) => {
+    const dt = new DataTransfer();
+    dt.items.add(new File(["busy"], "busy.txt"));
+    el.dispatchEvent(new DragEvent("drop", { bubbles: true, dataTransfer: dt }));
+  });
+  await page.getByRole("alert").filter({ hasText: "A transfer is already running." }).waitFor();
+  passed.push("busy file drop reports that it was not uploaded");
   await page.getByRole("button", { name: "Cancel transfer" }).click();
   await page.getByRole("alert").filter({ hasText: "Transfer stopped." }).waitFor();
   finishSlow?.();
@@ -127,6 +138,7 @@ try {
   passed.push("cancel stops client and explains uncertain delivery");
   mode = "ok";
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await page.getByRole("button", { name: "Upload file", exact: true, disabled: false }).waitFor();
   await page.getByText("Binary sample.bin", { exact: true }).waitFor();
   mkdirSync(".context/desktop-files", { recursive: true });
   await page.screenshot({ path: ".context/desktop-files/shared-files.png", fullPage: true });
