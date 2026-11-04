@@ -73,7 +73,19 @@ def main():
                 reply = json.loads(helper_process.stdout.readline())
                 return reply, json.loads(reply["result"])
             helper_process = start()
-            reply, snapshot = call("ui_read")
+            # AT-SPI and the window manager register asynchronously on loaded CI hosts.
+            # Retry only the initial read, before any mutation or measurement.
+            for _ in range(100):
+                found = sp.run(["xdotool", "search", "--onlyvisible", "--name",
+                                "^Kitties perception fixture$"], env=env, capture_output=True)
+                if found.returncode == 0:
+                    sp.run(["xdotool", "windowactivate", "--sync",
+                            found.stdout.decode().splitlines()[0]], env=env,
+                           stdout=sp.DEVNULL, stderr=sp.DEVNULL, timeout=5)
+                reply, snapshot = call("ui_read")
+                if reply["status"] == "completed" and "Increment" in json.dumps(snapshot):
+                    break
+                time.sleep(.1)
             assert reply["status"] == "completed", snapshot
             assert snapshot["data"]["complete"]
             def nodes(node):
