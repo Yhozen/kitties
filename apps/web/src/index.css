@@ -842,185 +842,90 @@ html[data-motion="off"] *::after {
   scrollbar-color: rgb(var(--ov-rgb) / 0.15) transparent;
 }
 
-/* ─── The pixel cats ──────────────────────────────────────────────────────────────────────── */
-.pixelcat {
-  position: relative;
+/* ─── The cat avatars ──────────────────────────────────────────────────────────────────────── */
+.cat-avatar {
   display: inline-block;
   flex: none;
-  image-rendering: pixelated;
   vertical-align: middle;
 }
-.pixelcat svg {
-  display: block;
+.cat-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px;
 }
-.pixelcat.mood-idle svg {
-  animation: cat-breathe 2.4s ease-in-out infinite;
+.cat-picker-choices {
+  flex: 1 1 260px;
+  display: grid;
+  gap: 12px;
 }
-.pixelcat.mood-sleeping svg {
-  animation: cat-breathe 3.6s ease-in-out infinite;
-  transform-origin: 50% 100%;
+.cat-picker-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
-.pixelcat.mood-happy svg {
-  animation: cat-bounce 0.7s var(--ease-spring) infinite;
-  transform-origin: 50% 100%;
+.cat-stage {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
 }
-.pixelcat.mood-talking svg {
-  animation: cat-nod 0.76s ease-in-out infinite;
-  transform-origin: 50% 100%;
+.cat-stage-view {
+  display: grid;
+  place-items: center;
+  width: 170px;
+  height: 170px;
+  border-radius: 16px;
+  background: rgb(127 127 127 / 0.08);
+  cursor: grab;
+  touch-action: none;
 }
-.pixelcat.mood-thinking svg {
-  animation: cat-tilt 1.6s ease-in-out infinite;
-  transform-origin: 50% 90%;
+.cat-stage-view.dragging {
+  cursor: grabbing;
 }
-.pixelcat.mood-working svg {
-  animation: cat-work 0.52s steps(2, end) infinite;
-  transform-origin: 50% 100%;
+.cat-stage-view:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
 }
-.pixelcat.mood-error svg {
-  animation: cat-shake 0.5s ease-in-out infinite;
-  filter: drop-shadow(0 0 4px rgba(255, 107, 107, 0.7));
+.cat-moods {
+  display: flex;
+  gap: 4px;
 }
-@keyframes cat-breathe {
-  0%,
-  100% {
-    transform: scaleY(1);
-  }
-  50% {
-    transform: scaleY(1.04);
-  }
+.cat-moods > button {
+  padding: 3px 9px !important;
+  font-size: 11px;
+  border-radius: 999px !important;
+  opacity: 0.7;
 }
-@keyframes cat-bounce {
-  0%,
-  100% {
-    transform: translateY(0) scale(1, 1);
-  }
-  40% {
-    transform: translateY(-14%) scale(0.96, 1.06);
-  }
-  70% {
-    transform: translateY(0) scale(1.04, 0.95);
-  }
+.cat-moods > button.on {
+  opacity: 1;
+  border-color: currentColor !important;
 }
-@keyframes cat-nod {
-  0%,
-  100% {
-    transform: rotate(0);
-  }
-  50% {
-    transform: rotate(-4deg) translateY(-2%);
-  }
-}
-@keyframes cat-tilt {
-  0%,
-  100% {
-    transform: rotate(0);
-  }
-  50% {
-    transform: rotate(7deg);
-  }
-}
-@keyframes cat-work {
-  0% {
-    transform: translateY(0);
-  }
-  100% {
-    transform: translateY(-5%);
-  }
-}
-@keyframes cat-shake {
-  0%,
-  100% {
-    transform: translateX(0);
-  }
-  25% {
-    transform: translateX(-6%) rotate(-3deg);
-  }
-  75% {
-    transform: translateX(6%) rotate(3deg);
-  }
-}
-.cat-bubble,
-.cat-zzz,
-.cat-spark {
-  position: absolute;
-  right: -0.35em;
-  top: -0.55em;
-  font-family: var(--font-mono);
-  font-weight: 700;
-  line-height: 1;
-  font-size: 0.42em;
-  pointer-events: none;
-}
-.cat-bubble {
-  color: var(--c-sky);
-  letter-spacing: 0.1em;
-}
-.cat-zzz {
-  color: var(--c-violet);
-  animation: cat-float 2.4s ease-in-out infinite;
-}
-.cat-spark {
-  color: var(--neon-yellow);
-  animation: cat-twinkle 0.52s steps(2, end) infinite;
-}
-@keyframes cat-float {
-  0% {
-    opacity: 0;
-    transform: translate(0, 0.3em);
-  }
-  30%,
-  70% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-    transform: translate(0.5em, -0.9em);
-  }
-}
-@keyframes cat-twinkle {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0.2;
-  }
-}
-html[data-motion="off"] .pixelcat svg,
-html[data-motion="off"] .cat-zzz,
-html[data-motion="off"] .cat-spark {
-  animation: none;
-}
-
-/* The picker. */
-.cat-choice {
+.cat-picker-row > button:not(.cat-swatch) {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 8px 6px 6px;
-  border: 1px solid rgb(var(--ov-rgb) / 0.08);
-  border-radius: var(--radius-cut);
-  background: rgb(var(--ov-rgb) / 0.03);
-  color: var(--t3);
-  width: 72px;
+  gap: 2px;
+  width: 62px;
+  padding: 6px 2px 4px;
+  font-size: 11px;
+  opacity: 0.75;
 }
-.cat-choice.on {
-  border-color: var(--neon-cyan);
-  box-shadow: var(--glow-cyan);
-  color: var(--t1);
-  background: rgb(var(--accent-rgb) / 0.08);
+.cat-picker-row > button.on {
+  opacity: 1;
+  border-color: currentColor;
 }
 .cat-swatch {
-  width: 26px;
-  height: 26px;
-  border: 2px solid;
-  border-radius: var(--radius-cut);
+  width: 28px;
+  height: 28px;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  border: 2px solid transparent !important;
 }
 .cat-swatch.on {
-  outline: 2px solid var(--neon-cyan);
+  outline: 2px solid currentColor;
   outline-offset: 2px;
-  box-shadow: var(--glow-cyan);
 }
+
 .avatar-stage {
   display: flex;
   align-items: flex-end;
