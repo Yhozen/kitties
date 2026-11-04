@@ -137,8 +137,8 @@ export const makeNotifications = Effect.gen(function* () {
         const id = `owner-${body.operationId}`;
         const counts = yield* home.list("run-health");
         const title = path.endsWith("digest")
-          ? `Kitties: ${counts.filter((row) => JSON.parse(row.body).status === "completed").length} tareas terminadas, ${counts.filter((row) => JSON.parse(row.body).status === "suspended").length} necesitan atención`
-          : "Tus notificaciones de Kitties funcionan";
+          ? `Puppies: ${counts.filter((row) => JSON.parse(row.body).status === "completed").length} tareas terminadas, ${counts.filter((row) => JSON.parse(row.body).status === "suspended").length} necesitan atención`
+          : "Tus notificaciones de Puppies funcionan";
         yield* home.queueNotice(id, "health", title, "/", true);
         yield* tick;
         return json({ ok: true }, 202);

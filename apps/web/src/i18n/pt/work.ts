@@ -3,7 +3,7 @@ import type { Dictionary } from "../../i18n";
 // The chat, goals, journal, limits, approvals, memory, library, sign-in and the words for people.
 const dict: Dictionary = {
   // Conversation
-  "The kitty's display": "A tela do kitty",
+  "The puppy's display": "A tela do cachorrinho",
   "Open the screenshot": "Abrir a captura de tela",
   "it did not work: {error}": "não funcionou: {error}",
   "Good answer": "Boa resposta",
@@ -19,8 +19,8 @@ const dict: Dictionary = {
   "waiting for your yes: {action} ({connector})": "esperando o seu sim: {action} ({connector})",
   "skill · {name}": "habilidade · {name}",
   "No chat open": "Nenhum chat aberto",
-  "Pick a chat on the left, or start one with the kitties you want in it. In a group, write @name to pick who answers.":
-    "Escolha um chat à esquerda, ou comece um com os kitties que você quiser. Em um grupo, escreva @nome para escolher quem responde.",
+  "Pick a chat on the left, or start one with the puppies you want in it. In a group, write @name to pick who answers.":
+    "Escolha um chat à esquerda, ou comece um com os cachorrinhos que você quiser. Em um grupo, escreva @nome para escolher quem responde.",
   "Say hello to the team, or give them a task. Write @name to pick who answers.":
     "Diga oi para a equipe ou passe uma tarefa. Escreva @nome para escolher quem responde.",
   "Say hello, ask a question, or give it a task to work on.":
@@ -170,8 +170,8 @@ const dict: Dictionary = {
   "anything on {connector}": "qualquer coisa em {connector}",
   "{action} on {connector}": "{action} em {connector}",
   Approvals: "Aprovações",
-  "Actions that reach other people or move money wait here until you say yes. A kitty you keep saying yes to earns the right to do that kind of thing alone: sooner if you are relaxed, later if you are demanding.":
-    "Ações que chegam a outras pessoas ou movimentam dinheiro esperam aqui até você dizer sim. Um kitty para quem você continua dizendo sim ganha o direito de fazer esse tipo de coisa sozinho: mais cedo se você for tranquilo, mais tarde se for exigente.",
+  "Actions that reach other people or move money wait here until you say yes. A puppy you keep saying yes to earns the right to do that kind of thing alone: sooner if you are relaxed, later if you are demanding.":
+    "Ações que chegam a outras pessoas ou movimentam dinheiro esperam aqui até você dizer sim. Um cachorrinho para quem você continua dizendo sim ganha o direito de fazer esse tipo de coisa sozinho: mais cedo se você for tranquilo, mais tarde se for exigente.",
   "Waiting for you": "Esperando você",
   "Nothing is waiting.": "Nada esperando.",
   Limits: "Limites",
@@ -222,8 +222,8 @@ const dict: Dictionary = {
   skills: "habilidades",
   artifacts: "arquivos",
   "{n} proposed": "{n} propostas",
-  "Procedures the kitties read before a task and extend when they learn something. A proposal waits here until you accept it.":
-    "Procedimentos que os kitties leem antes de uma tarefa e ampliam quando aprendem algo. Uma proposta espera aqui até você aceitar.",
+  "Procedures the puppies read before a task and extend when they learn something. A proposal waits here until you accept it.":
+    "Procedimentos que os cachorrinhos leem antes de uma tarefa e ampliam quando aprendem algo. Uma proposta espera aqui até você aceitar.",
   "built in": "incluída",
   proposed: "proposta",
   accept: "aceitar",
@@ -238,14 +238,14 @@ const dict: Dictionary = {
   "Write a skill": "Escrever uma habilidade",
   edit: "editar",
   "Close the skill": "Fechar a habilidade",
-  "Files the kitties saved for later: reports, tables, diagrams, drafts. Any kitty can read them in any chat; you can download or delete them.":
-    "Arquivos que os kitties guardaram para depois: relatórios, tabelas, diagramas, rascunhos. Qualquer kitty pode ler em qualquer chat; você pode baixar ou excluir.",
+  "Files the puppies saved for later: reports, tables, diagrams, drafts. Any puppy can read them in any chat; you can download or delete them.":
+    "Arquivos que os cachorrinhos guardaram para depois: relatórios, tabelas, diagramas, rascunhos. Qualquer cachorrinho pode ler em qualquer chat; você pode baixar ou excluir.",
   "by {name}": "de {name}",
   "{size} bytes": "{size} bytes",
   download: "baixar",
   "Delete {name}?": "Excluir {name}?",
-  "Nothing saved yet. A kitty saves one with @artifact save, or a connector such as the diagram renderer does.":
-    "Nada guardado ainda. Um kitty guarda um com @artifact save, ou uma conexão como o gerador de diagramas faz isso.",
+  "Nothing saved yet. A puppy saves one with @artifact save, or a connector such as the diagram renderer does.":
+    "Nada guardado ainda. Um cachorrinho guarda um com @artifact save, ou uma conexão como o gerador de diagramas faz isso.",
   "Close the artifact": "Fechar o arquivo",
 
   // Signing in with a subscription
@@ -310,8 +310,8 @@ const dict: Dictionary = {
   "Sign in with your ChatGPT account: your plan pays for the answers, no API key or credits needed.":
     "Entre com sua conta do ChatGPT: seu plano paga as respostas, sem precisar de chave de API nem créditos.",
   "Pro or Max": "Pro ou Max",
-  "Your Claude plan pays for the answers. Anthropic allows it only through its own Claude Code program: Kitties runs it for you, signed in with your account.":
-    "Seu plano do Claude paga as respostas. A Anthropic só permite isso pelo próprio programa Claude Code: o Kitties roda ele para você, conectado com a sua conta.",
+  "Your Claude plan pays for the answers. Anthropic allows it only through its own Claude Code program: Puppies runs it for you, signed in with your account.":
+    "Seu plano do Claude paga as respostas. A Anthropic só permite isso pelo próprio programa Claude Code: o Puppies roda ele para você, conectado com a sua conta.",
   "any Copilot plan, Free included": "qualquer plano do Copilot, incluindo o Free",
   "Sign in with GitHub: open the link, type the code shown here, and your Copilot plan pays for the answers.":
     "Entre com o GitHub: abra o link, digite o código mostrado aqui e seu plano do Copilot paga as respostas.",
@@ -409,17 +409,17 @@ const dict: Dictionary = {
   "The backup is sealed and kept away from the desktop, and goes back into it when it is made anew. It is also made when the desktop stops.":
     "A cópia é criptografada e guardada longe da área de trabalho, e volta a ela quando é refeita. Também é feita quando a área de trabalho para.",
   Secrets: "Segredos",
-  "Passwords and codes your kitties may type for you. A kitty is told only the names, and asks for one by name: the secret goes from here to its keyboard, and neither the kitty nor its AI model ever reads it. They are kept encrypted on the gateway.":
-    "Senhas e códigos que seus kitties podem digitar por você. Um kitty só recebe os nomes e pede um pelo nome: o segredo vai daqui para o teclado dele, e nem o kitty nem o modelo de IA o leem jamais. Ficam guardados criptografados no gateway.",
-  "No secrets yet. Save one below, or tick “it is a secret” when a kitty asks for help.":
-    "Ainda não há segredos. Salve um abaixo, ou marque «é um segredo» quando um kitty pedir ajuda.",
+  "Passwords and codes your puppies may type for you. A puppy is told only the names, and asks for one by name: the secret goes from here to its keyboard, and neither the puppy nor its AI model ever reads it. They are kept encrypted on the gateway.":
+    "Senhas e códigos que seus cachorrinhos podem digitar por você. Um cachorrinho só recebe os nomes e pede um pelo nome: o segredo vai daqui para o teclado dele, e nem o cachorrinho nem o modelo de IA o leem jamais. Ficam guardados criptografados no gateway.",
+  "No secrets yet. Save one below, or tick “it is a secret” when a puppy asks for help.":
+    "Ainda não há segredos. Salve um abaixo, ou marque «é um segredo» quando um cachorrinho pedir ajuda.",
   "Remove the secret {name}": "Remover o segredo {name}",
   "Remove the secret {name}?": "Remover o segredo {name}?",
   "May be used by {names}": "Podem usar: {names}",
-  "Kitties that may use {name}": "Kitties que podem usar {name}",
+  "Puppies that may use {name}": "Puppies que podem usar {name}",
   "Shop password": "Senha da loja",
   "The secret": "O segredo",
-  "Kitties that may use it": "Kitties que podem usá-lo",
+  "Puppies that may use it": "Puppies que podem usá-lo",
   "Save the secret": "Salvar o segredo",
   "the secret": "o segredo",
   "Keep it for {name} under the name (optional)": "Guardar para {name} com o nome (opcional)",
@@ -461,7 +461,7 @@ const dict: Dictionary = {
   "Send to {name}": "Enviar para {name}",
   "Copy from {name}": "Copiar de {name}",
   "{name} is waiting for you on its desktop.": "{name} está esperando você na área de trabalho.",
-  "The kitty": "O kitty",
+  "The puppy": "O cachorrinho",
   "Asked you for help: {reason}": "Pediu sua ajuda: {reason}",
   "Asked you for help on its desktop": "Pediu sua ajuda na área de trabalho",
   "Desktop look": "Aparência da área de trabalho",

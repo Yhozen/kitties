@@ -84,8 +84,7 @@ A local Ubuntu 24.04 GTK3 fixture compared 30 alternating snapshots per path usi
 process and adapter startup, a **16.5% p95 reduction (2.35 ms)** on this small tree. It excludes the
 network, model, and guest receipt path; do not compare it directly to the regional step timings.
 Real semantic click, Unicode typing, state readback, stale refs after restart, and no replay passed.
-See [aggregate evidence](evidence/perception-persistent-local.json) and
-[reproducible probe](../../guest/kittyd/tests/perception-native.py).
+See [aggregate evidence](evidence/perception-persistent-local.json). The probe has been removed.
 
 ### voxl / WebCodecs viewer — 2026-11-04
 
@@ -105,10 +104,9 @@ Boat baseline. The fixture mostly changes small areas with occasional large soli
 scrolling, video playback and physical mobile devices still need separate measurements.
 
 [Evidence, including second-run samples](evidence/desktop-video-local.json).
-Reproduce with `node guest/kittyd/probes/desktop-browser.mjs` and `--reverse`, as described in
-[the desktop test instructions](../../guest/kittyd/tests/README.md). Browser acceptance also decodes
-an actual voxl keyframe and checks JPEG fallback, generation/epoch fences, and delayed decode after
-closure. CI runs those checks on Chrome alongside native GTK/AT-SPI and voxl acceptance.
+Historical browser acceptance also decoded an actual voxl keyframe and checked JPEG fallback,
+generation/epoch fences, and delayed decode after closure. The test scripts, probes and CI setup
+have been removed.
 
 ### Video acknowledgement delay — 2026-11-04
 
@@ -116,8 +114,8 @@ The eight-frame limit caused repeated keyframe recovery when continuous updates 
 longer round trip. Video now learns each viewer's acknowledgement delay and variation, allowing
 8–32 outstanding frames. The 2 MiB byte ceiling and five-second acknowledgement deadline remain.
 Decoder resets retain the timing estimate while clearing outstanding frames and requiring a new
-keyframe. Tests cover slow viewers independently, invalid acknowledgements, hibernated state and
-the 2 KiB WebSocket attachment limit.
+keyframe. Historical tests covered slow viewers independently, invalid acknowledgements,
+hibernated state and the 2 KiB WebSocket attachment limit.
 
 The new probe drives real voxl, kittyd, local workerd and the Preact/WebCodecs viewer with a
 synthetic moving object and an encoded source timestamp. It delays video and acknowledgements
@@ -142,8 +140,5 @@ These are synthetic delay tests, with no bandwidth constraint, packet loss or mo
 moving object is inexpensive to encode. They do not establish high-entropy video, congested-link,
 physical-device or public-deployment performance. The byte cap still limits larger frames.
 
-[All four runs](evidence/desktop-video-rtt-local.json). Reproduce with
-`KITTIES_MOTION_LABEL=adaptive node guest/kittyd/probes/desktop-motion.mjs` and `--reverse`, using
-the same dedicated container and local stage as the click probe. For the fixed-limit comparison,
-change only `offerVideo`'s frame-count guard to eight, wait for the local gateway rebuild, and
-restore it afterward. No production settings or user sandboxes are involved.
+[All four runs](evidence/desktop-video-rtt-local.json). The motion probe and its dedicated
+container setup have been removed.

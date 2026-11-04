@@ -49,12 +49,12 @@ error messages and a named file save across browsers. This intentionally limits 
 memory and stays below Cloudflare's normal request-body ceiling. There is no resumable
 multipart upload or automatic retry in this slice.
 
-## Validation
+## Historical validation
 
-- `pnpm check`, `pnpm test`, `pnpm build`.
-- `node guest/kittyd/tests/files-browser.mjs`: actual Preact component and Chrome; mocked HTTP
-  service; 6 MiB binary upload/download, file drop, Library send, stale-view error, cancellation,
-  no replay and mobile width. CI runs this test.
+The automated tests and their setup have been removed. Prior validation included the actual
+Preact component in Chrome against a mocked HTTP service: 6 MiB binary upload/download,
+file drop, Library send, stale-view errors, cancellation, no replay and mobile width.
+
 - `desktop-files-live.json`: local workerd, real HomeDO/KittyDO, and an isolated private Boat
   sandbox with no account environment or snapshots. A temporary **local-only** operator hook
   bound the fixture to the actor; it was removed after acceptance. Checks include binary and

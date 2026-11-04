@@ -15,8 +15,6 @@ dist/
 apps/*/dist/
 packages/*/dist/
 guest/*/dist/
-apps/web/test-results/
-apps/web/playwright-report/
 
 # Editors and operating systems
 .DS_Store

@@ -1,9 +1,9 @@
-// CatAvatar draws a kitty as a small 3D cat: it breathes, blinks, follows the pointer with its
+// PuppyAvatar draws a puppy as a small 3D dog: it breathes, blinks, follows the pointer with its
 // eyes and body, and eases between moods (idle, thinking, happy). Pointing at it cheers it up.
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { AvatarMotion } from "./bot-avatar/index.ts";
 import { mountAvatar, type AvatarOptions, type MountedAvatar } from "./bot-avatar/dom/index.ts";
-import { BREEDS, CATS, COATS, COLORS, breedOf, coatOf } from "./cats";
+import { BREEDS, PUPPIES, COATS, COLORS, breedOf, coatOf, skinOf } from "./puppies";
 import { t } from "./i18n";
 
 type View = { yaw: number; pitch: number };
@@ -30,15 +30,16 @@ interface Props {
 
 const motionOff = () => document.documentElement.dataset.motion === "off";
 
-export default function CatAvatar({ breed, color, mood = "idle", size = 32, follow = true, cheer = true, view, holdGaze, still, label = "", class: cls }: Props) {
+export default function PuppyAvatar({ breed, color, mood = "idle", size = 32, follow = true, cheer = true, view, holdGaze, still, label = "", class: cls }: Props) {
   const host = useRef<HTMLSpanElement>(null);
   const avatar = useRef<MountedAvatar | null>(null);
   const [pointed, setPointed] = useState(false);
-  const coat = COATS[coatOf(color)];
+  const b = breedOf(breed), c = coatOf(color);
   const options: Partial<AvatarOptions> = {
-    definition: CATS[breedOf(breed)],
-    color: coat.body,
-    eyeColor: coat.eyes,
+    definition: PUPPIES[b].definition,
+    color: COATS[c].body,
+    eyeColor: COATS[c].ink,
+    skin: useMemo(() => skinOf(b, c), [b, c]),
     mood: cheer && pointed && !still ? "happy" : mood,
     followPointer: follow && !still,
     holdGaze: !!holdGaze,
@@ -58,7 +59,7 @@ export default function CatAvatar({ breed, color, mood = "idle", size = 32, foll
   return (
     <span
       ref={host}
-      class={`cat-avatar ${cls ?? ""}`}
+      class={`pup-avatar ${cls ?? ""}`}
       style={{ width: `${size}px`, height: `${size}px` }}
       onPointerEnter={cheer && !still ? () => setPointed(true) : undefined}
       onPointerLeave={cheer && !still ? () => setPointed(false) : undefined}
@@ -76,9 +77,9 @@ const clampPitch = (p: number) => Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, p
 // Keep yaw in -π..π so a reset never spins the long way round.
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
-// CatStage shows one cat large: it follows the pointer, turns when dragged (double-click or Home
+// PuppyStage shows one puppy large: it follows the pointer, turns when dragged (double-click or Home
 // resets), and plays the mood chosen below it.
-export function CatStage({ breed, color, size = 150 }: { breed: string; color: string; size?: number }) {
+export function PuppyStage({ breed, color, size = 150 }: { breed: string; color: string; size?: number }) {
   const [mood, setMood] = useState<AvatarMotion>("idle");
   const [view, setView] = useState<View>({ yaw: 0, pitch: 0 });
   const drag = useRef<{ id: number; x: number; y: number; start: View } | null>(null);
@@ -104,13 +105,13 @@ export function CatStage({ breed, color, size = 150 }: { breed: string; color: s
     ArrowDown: (v, s) => ({ yaw: v.yaw, pitch: clampPitch(v.pitch - s) }),
   };
   return (
-    <div class="cat-stage">
+    <div class="pup-stage">
       <div
-        class={`cat-stage-view ${dragging ? "dragging" : ""}`}
+        class={`pup-stage-view ${dragging ? "dragging" : ""}`}
         tabIndex={0}
         role="group"
         aria-roledescription={t("3D preview")}
-        aria-label={t("Drag or use the arrow keys to turn the cat; Home resets the view.")}
+        aria-label={t("Drag or use the arrow keys to turn the puppy; Home resets the view.")}
         onPointerDown={(e) => {
           if (e.button !== 0) return;
           cancelAnimationFrame(easing.current);
@@ -146,9 +147,9 @@ export function CatStage({ breed, color, size = 150 }: { breed: string; color: s
           setView(move(view, e.shiftKey ? 0.6 : 0.2));
         }}
       >
-        <CatAvatar breed={breed} color={color} size={size} mood={mood} view={view} holdGaze={dragging} cheer={false} />
+        <PuppyAvatar breed={breed} color={color} size={size} mood={mood} view={view} holdGaze={dragging} cheer={false} />
       </div>
-      <div class="cat-moods" role="radiogroup" aria-label={t("Mood")}>
+      <div class="pup-moods" role="radiogroup" aria-label={t("Mood")}>
         {MOODS.map((m) => (
           <button key={m.value} type="button" role="radio" aria-checked={mood === m.value} class={mood === m.value ? "on" : ""} onClick={() => setMood(m.value)}>
             {t(m.label)}
@@ -159,25 +160,25 @@ export function CatStage({ breed, color, size = 150 }: { breed: string; color: s
   );
 }
 
-// CatPicker chooses the silhouette and the coat: a live preview of the choice, and every cat
+// PuppyPicker chooses the silhouette and the coat: a live preview of the choice, and every puppy
 // shown in the chosen coat.
-export function CatPicker({ breed, color, onChange }: { breed: string; color: string; onChange: (pick: { breed: string; color: string }) => void }) {
+export function PuppyPicker({ breed, color, onChange }: { breed: string; color: string; onChange: (pick: { breed: string; color: string }) => void }) {
   const b = breedOf(breed), c = coatOf(color);
   return (
-    <div class="cat-picker">
-      <CatStage breed={b} color={c} />
-      <div class="cat-picker-choices">
-        <div role="radiogroup" aria-label={t("Avatar")} class="cat-picker-row">
+    <div class="pup-picker">
+      <PuppyStage breed={b} color={c} />
+      <div class="pup-picker-choices">
+        <div role="radiogroup" aria-label={t("Avatar")} class="pup-picker-row">
           {BREEDS.map((id) => (
-            <button key={id} type="button" role="radio" aria-checked={id === b} class={id === b ? "on" : ""} title={t(CATS[id].name)} onClick={() => onChange({ breed: id, color: c })}>
-              <CatAvatar breed={id} color={c} size={48} still />
-              <span>{t(CATS[id].name)}</span>
+            <button key={id} type="button" role="radio" aria-checked={id === b} class={id === b ? "on" : ""} title={t(PUPPIES[id].definition.name)} onClick={() => onChange({ breed: id, color: c })}>
+              <PuppyAvatar breed={id} color={c} size={48} still />
+              <span>{t(PUPPIES[id].definition.name)}</span>
             </button>
           ))}
         </div>
-        <div role="radiogroup" aria-label={t("Color")} class="cat-picker-row">
+        <div role="radiogroup" aria-label={t("Color")} class="pup-picker-row">
           {COLORS.map((id) => (
-            <button key={id} type="button" role="radio" aria-checked={id === c} aria-label={t(COATS[id].label)} title={t(COATS[id].label)} class={`cat-swatch ${id === c ? "on" : ""}`} style={{ background: COATS[id].body }} onClick={() => onChange({ breed: b, color: id })} />
+            <button key={id} type="button" role="radio" aria-checked={id === c} aria-label={t(COATS[id].label)} title={t(COATS[id].label)} class={`pup-swatch ${id === c ? "on" : ""}`} style={{ background: `linear-gradient(135deg, ${COATS[id].body} 55%, ${COATS[id].accent} 55%)` }} onClick={() => onChange({ breed: b, color: id })} />
           ))}
         </div>
       </div>

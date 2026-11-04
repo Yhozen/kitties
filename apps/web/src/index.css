@@ -842,34 +842,34 @@ html[data-motion="off"] *::after {
   scrollbar-color: rgb(var(--ov-rgb) / 0.15) transparent;
 }
 
-/* ─── The cat avatars ──────────────────────────────────────────────────────────────────────── */
-.cat-avatar {
+/* ─── The puppy avatars ──────────────────────────────────────────────────────────────────────── */
+.pup-avatar {
   display: inline-block;
   flex: none;
   vertical-align: middle;
 }
-.cat-picker {
+.pup-picker {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
   gap: 16px;
 }
-.cat-picker-choices {
+.pup-picker-choices {
   flex: 1 1 260px;
   display: grid;
   gap: 12px;
 }
-.cat-picker-row {
+.pup-picker-row {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
-.cat-stage {
+.pup-stage {
   display: grid;
   justify-items: center;
   gap: 8px;
 }
-.cat-stage-view {
+.pup-stage-view {
   display: grid;
   place-items: center;
   width: 170px;
@@ -879,28 +879,28 @@ html[data-motion="off"] *::after {
   cursor: grab;
   touch-action: none;
 }
-.cat-stage-view.dragging {
+.pup-stage-view.dragging {
   cursor: grabbing;
 }
-.cat-stage-view:focus-visible {
+.pup-stage-view:focus-visible {
   outline: 2px solid currentColor;
   outline-offset: 2px;
 }
-.cat-moods {
+.pup-moods {
   display: flex;
   gap: 4px;
 }
-.cat-moods > button {
+.pup-moods > button {
   padding: 3px 9px !important;
   font-size: 11px;
   border-radius: 999px !important;
   opacity: 0.7;
 }
-.cat-moods > button.on {
+.pup-moods > button.on {
   opacity: 1;
   border-color: currentColor !important;
 }
-.cat-picker-row > button:not(.cat-swatch) {
+.pup-picker-row > button:not(.pup-swatch) {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -910,18 +910,18 @@ html[data-motion="off"] *::after {
   font-size: 11px;
   opacity: 0.75;
 }
-.cat-picker-row > button.on {
+.pup-picker-row > button.on {
   opacity: 1;
   border-color: currentColor;
 }
-.cat-swatch {
+.pup-swatch {
   width: 28px;
   height: 28px;
   padding: 0 !important;
   border-radius: 50% !important;
   border: 2px solid transparent !important;
 }
-.cat-swatch.on {
+.pup-swatch.on {
   outline: 2px solid currentColor;
   outline-offset: 2px;
 }

@@ -70,6 +70,39 @@ export interface RenderOptions {
   motionBlend?: AvatarMotionBlend;
   /** Freeze body motion and blinking at a calm pose; gaze still applies. */
   reducedMotion?: boolean;
+  /** Puppies extension: per-part colors, soft shading and painted face decals. */
+  skin?: AvatarSkin;
+}
+
+/**
+ * Puppies extension (not upstream): how the body is painted. Colors are #rgb or #rrggbb.
+ * With a skin, every cross-section is drawn (none are culled), so shading and decals show.
+ */
+export interface AvatarSkin {
+  /** Fill per part, in subpath order; missing entries use the body color. */
+  parts?: (string | undefined)[];
+  /** Rim darkening, 0 (flat, the default) to 1: gives the volume a soft, clay-like gradient. */
+  shade?: number;
+  /**
+   * Paint on the eye part, in viewBox units, projected onto its front along z: a muzzle, a
+   * nose, a mouth, markings. Drawn into each front-facing cross-section, clipped to it.
+   */
+  decals?: SkinDecal[];
+  /** Eye width multiplier (default 1): rounder, oval eyes instead of the contract's slim pills. */
+  eyeWidth?: number;
+  /** A small highlight in each open eye, e.g. "#ffffff". */
+  eyeShine?: string;
+  /** Per-part shift along depth in viewBox units, in subpath order: negative sets a part behind (ears behind a head). */
+  offsets?: (number | undefined)[];
+}
+
+export interface SkinDecal {
+  /** SVG path data, the same commands as a body path. */
+  d: string;
+  fill?: string;
+  stroke?: string;
+  /** Stroke width in viewBox units. */
+  width?: number;
 }
 
 export type ValidationResult =

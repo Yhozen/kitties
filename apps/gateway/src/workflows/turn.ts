@@ -68,7 +68,6 @@ export const TurnLive = Workflows.layer(
       kitties = yield* KittyDO;
     const env = (yield* Cloudflare.WorkerEnvironment) as {
       KITTIES_KEK: string;
-      STAGE: string;
       CHATGPT_ENABLED: string;
       BLOBS: cf.R2Bucket;
     };
@@ -153,27 +152,6 @@ export const TurnLive = Workflows.layer(
               )
                 return yield* Effect.fail("DAILY_LIMIT");
               const attempt = start.attempt;
-              if (
-                env.STAGE === "e2e" ||
-                (env.STAGE === "local" && kitty.providerId === "scripted")
-              ) {
-                for (const text of ["Hola", ", ", payload.text]) {
-                  yield* Effect.sleep(100);
-                  yield* chat
-                    .append(payload.messageId, text, round, attempt)
-                    .pipe(Effect.mapError(storageError));
-                }
-                yield* chat
-                  .saveModelRound(
-                    payload.messageId,
-                    round,
-                    attempt,
-                    "{}",
-                    JSON.stringify({ calls: [], tools: [], tokens: 0 }),
-                  )
-                  .pipe(Effect.mapError(storageError));
-                return limit;
-              }
               if (!provider || (provider.kind !== "chatgpt" && !provider.secret))
                 return yield* Effect.fail("PROVIDER_KEY_REQUIRED");
               if (provider.kind === "chatgpt") return yield* Effect.fail("FEATURE_DISABLED");

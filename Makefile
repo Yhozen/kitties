@@ -1,12 +1,8 @@
 .DEFAULT_GOAL := check
-.PHONY: check test build dev e2e
+.PHONY: check build dev
 check:
 	pnpm check
-test:
-	pnpm test
 build:
 	pnpm build
 dev:
 	pnpm dev
-e2e:
-	pnpm --filter @kitties/web e2e

@@ -76,7 +76,7 @@ const dict: Dictionary = {
     "Keys and tokens → OAuth 1.0 Keys → Consumer Key (a chave de API)",
   "Keys and tokens → OAuth 2.0 Keys → Access Token; it lasts two hours, so the keys above or the sign-in are better":
     "Keys and tokens → OAuth 2.0 Keys → Access Token; ele dura duas horas, então é melhor usar as chaves acima ou fazer login",
-  Kitties: "Kitties",
+  "Puppies": "Puppies",
   Linear: "Linear",
   LinkedIn: "LinkedIn",
   List: "Lista",
@@ -272,36 +272,36 @@ const dict: Dictionary = {
   "mentions, replies and likes": "menções, respostas e curtidas",
   "name.bsky.social": "name.bsky.social",
   "ntfy (push)": "ntfy (push)",
-  "only to sign in through an app of your own at Admin Center → Apps and integrations → APIs → OAuth clients; empty: Kitties' own":
-    "só para fazer login com um app seu em Admin Center → Apps and integrations → APIs → OAuth clients; vazio: o do Kitties",
-  "only to sign in through an app of your own at airtable.com/create/oauth; empty: Kitties' own":
-    "só para fazer login com um app seu em airtable.com/create/oauth; vazio: o do Kitties",
-  "only to sign in through an app of your own at console.cloud.google.com (a Desktop or Web client); empty: Kitties' own":
-    "só para fazer login com um app seu em console.cloud.google.com (um cliente Desktop ou Web); vazio: o do Kitties",
-  "only to sign in through an app of your own at developer.atlassian.com/console/myapps; empty: Kitties' own":
-    "só para fazer login com um app seu em developer.atlassian.com/console/myapps; vazio: o do Kitties",
-  "only to sign in through an app of your own at developer.spotify.com (redirect: this gateway's /v1/oauth/callback); empty: Kitties' own":
-    "só para fazer login com um app seu em developer.spotify.com (redirecionamento: /v1/oauth/callback deste gateway); vazio: o do Kitties",
-  "only to sign in through an app of your own at developer.tidal.com (redirect: this gateway's /v1/oauth/callback); empty: Kitties' own":
-    "só para fazer login com um app seu em developer.tidal.com (redirecionamento: /v1/oauth/callback deste gateway); vazio: o do Kitties",
-  "only to sign in through an app of your own at developer.todoist.com/appconsole.html; empty: Kitties' own":
-    "só para fazer login com um app seu em developer.todoist.com/appconsole.html; vazio: o do Kitties",
-  "only to sign in through an app of your own at developers.facebook.com; empty: Kitties' own":
-    "só para fazer login com um app seu em developers.facebook.com; vazio: o do Kitties",
-  "only to sign in through an app of your own at dropbox.com/developers; empty: Kitties' own":
-    "só para fazer login com um app seu em dropbox.com/developers; vazio: o do Kitties",
-  "only to sign in through an app of your own at entra.microsoft.com (an app registration); empty: Kitties' own":
-    "só para fazer login com um app seu em entra.microsoft.com (um registro de aplicativo); vazio: o do Kitties",
-  "only to sign in through an app of your own at figma.com/developers/apps; empty: Kitties' own":
-    "só para fazer login com um app seu em figma.com/developers/apps; vazio: o do Kitties",
-  "only to sign in through an app of your own at linear.app/settings/api/applications; empty: Kitties' own":
-    "só para fazer login com um app seu em linear.app/settings/api/applications; vazio: o do Kitties",
-  "only to sign in through an app of your own at linkedin.com/developers; empty: Kitties' own":
-    "só para fazer login com um app seu em linkedin.com/developers; vazio: o do Kitties",
-  "only to sign in through an app of your own at notion.so/my-integrations (a public integration); empty: Kitties' own":
-    "só para fazer login com um app seu em notion.so/my-integrations (uma integração pública); vazio: o do Kitties",
-  "only to sign in through an app of your own at your GitLab: Preferences → Applications; empty: Kitties' own":
-    "só para fazer login com um app seu no seu GitLab: Preferences → Applications; vazio: o do Kitties",
+  "only to sign in through an app of your own at Admin Center → Apps and integrations → APIs → OAuth clients; empty: Puppies' own":
+    "só para fazer login com um app seu em Admin Center → Apps and integrations → APIs → OAuth clients; vazio: o do Puppies",
+  "only to sign in through an app of your own at airtable.com/create/oauth; empty: Puppies' own":
+    "só para fazer login com um app seu em airtable.com/create/oauth; vazio: o do Puppies",
+  "only to sign in through an app of your own at console.cloud.google.com (a Desktop or Web client); empty: Puppies' own":
+    "só para fazer login com um app seu em console.cloud.google.com (um cliente Desktop ou Web); vazio: o do Puppies",
+  "only to sign in through an app of your own at developer.atlassian.com/console/myapps; empty: Puppies' own":
+    "só para fazer login com um app seu em developer.atlassian.com/console/myapps; vazio: o do Puppies",
+  "only to sign in through an app of your own at developer.spotify.com (redirect: this gateway's /v1/oauth/callback); empty: Puppies' own":
+    "só para fazer login com um app seu em developer.spotify.com (redirecionamento: /v1/oauth/callback deste gateway); vazio: o do Puppies",
+  "only to sign in through an app of your own at developer.tidal.com (redirect: this gateway's /v1/oauth/callback); empty: Puppies' own":
+    "só para fazer login com um app seu em developer.tidal.com (redirecionamento: /v1/oauth/callback deste gateway); vazio: o do Puppies",
+  "only to sign in through an app of your own at developer.todoist.com/appconsole.html; empty: Puppies' own":
+    "só para fazer login com um app seu em developer.todoist.com/appconsole.html; vazio: o do Puppies",
+  "only to sign in through an app of your own at developers.facebook.com; empty: Puppies' own":
+    "só para fazer login com um app seu em developers.facebook.com; vazio: o do Puppies",
+  "only to sign in through an app of your own at dropbox.com/developers; empty: Puppies' own":
+    "só para fazer login com um app seu em dropbox.com/developers; vazio: o do Puppies",
+  "only to sign in through an app of your own at entra.microsoft.com (an app registration); empty: Puppies' own":
+    "só para fazer login com um app seu em entra.microsoft.com (um registro de aplicativo); vazio: o do Puppies",
+  "only to sign in through an app of your own at figma.com/developers/apps; empty: Puppies' own":
+    "só para fazer login com um app seu em figma.com/developers/apps; vazio: o do Puppies",
+  "only to sign in through an app of your own at linear.app/settings/api/applications; empty: Puppies' own":
+    "só para fazer login com um app seu em linear.app/settings/api/applications; vazio: o do Puppies",
+  "only to sign in through an app of your own at linkedin.com/developers; empty: Puppies' own":
+    "só para fazer login com um app seu em linkedin.com/developers; vazio: o do Puppies",
+  "only to sign in through an app of your own at notion.so/my-integrations (a public integration); empty: Puppies' own":
+    "só para fazer login com um app seu em notion.so/my-integrations (uma integração pública); vazio: o do Puppies",
+  "only to sign in through an app of your own at your GitLab: Preferences → Applications; empty: Puppies' own":
+    "só para fazer login com um app seu no seu GitLab: Preferences → Applications; vazio: o do Puppies",
   "open a pull request": "abrir um pull request",
   "open an issue": "abrir uma issue",
   "owner/name": "owner/name",
@@ -410,8 +410,8 @@ const dict: Dictionary = {
   "the comments of a ticket": "os comentários de um ticket",
   "the comments on a post": "os comentários de uma publicação",
   "the home timeline": "a linha do tempo inicial",
-  "the house through Home Assistant: what the lights, sensors, heating and doors say, and acting on them; an automation can tell the kitties what happens (a rest_command posting to /v1/hooks/<name>)":
-    "a casa pelo Home Assistant: o que dizem as luzes, sensores, aquecimento e portas, e acionar tudo isso; uma automação pode avisar os kitties do que acontece (um rest_command que envie para /v1/hooks/<name>)",
+  "the house through Home Assistant: what the lights, sensors, heating and doors say, and acting on them; an automation can tell the puppies what happens (a rest_command posting to /v1/hooks/<name>)":
+    "a casa pelo Home Assistant: o que dizem as luzes, sensores, aquecimento e portas, e acionar tudo isso; uma automação pode avisar os cachorrinhos do que acontece (um rest_command que envie para /v1/hooks/<name>)",
   "the latest Messenger conversations: who wrote and their last message":
     "as últimas conversas do Messenger: quem escreveu e a última mensagem",
   "the latest from the RSS and Atom feeds a person follows: blogs, news, releases, podcasts":
