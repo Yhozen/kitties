@@ -19,6 +19,7 @@ import {
   type ApprovalRecord,
 } from "./entities.ts";
 import { ComputerOp } from "./computer-definition.ts";
+import { makeComputerResume } from "./computer-resume.ts";
 import { Turn } from "./turn-definition.ts";
 import { DesktopAttempt } from "./desktop-definition.ts";
 import { Approval, ApprovalDecision } from "./approval-definition.ts";
@@ -53,6 +54,7 @@ export const makeApplication = Effect.gen(function* () {
     kitties = yield* KittyDO,
     chats = yield* ChatDO;
   const computers = yield* Workflows.RunWorkflow(ComputerOp);
+  const resumeComputer = yield* makeComputerResume;
   const turns = yield* Workflows.RunWorkflow(Turn);
   const desktops = yield* Workflows.RunWorkflow(DesktopAttempt);
   const approvals = yield* Workflows.RunWorkflow(Approval);
@@ -122,14 +124,8 @@ export const makeApplication = Effect.gen(function* () {
             }),
           );
           if (computerRoute[2] === "resume") {
-            const saved = yield* home().read("computer-run", body.operationId);
-            if (!saved) return json({ code: "NOT_FOUND", params: {} }, 404);
-            const record = JSON.parse(saved) as { executionId: string; kittyId: string };
-            if (record.kittyId !== id) return json({ code: "NOT_FOUND", params: {} }, 404);
-            yield* ComputerOp.resume(record.executionId).pipe(
-              Effect.provideService(WorkflowEngine.WorkflowEngine, engine),
-            );
-            return json({ executionId: record.executionId }, 202);
+            const run = yield* resumeComputer(id, body.operationId);
+            return run ? json(run, 202) : json({ code: "NOT_FOUND", params: {} }, 404);
           }
           if (computerRoute[2] === "repair") {
             // Only a suspended run may be replaced; a live run keeps its operation.
