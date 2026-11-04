@@ -17,7 +17,7 @@ const dict: Dictionary = {
     "O token fica no servidor: este navegador guarda só uma sessão, que você pode encerrar com Sair.",
 
   // Composer
-  "A kitty is working on its desktop…": "Um kitty está trabalhando na área de trabalho dele…",
+  "A puppy is working on its desktop…": "Um cachorrinho está trabalhando na área de trabalho dele…",
   "Say something to the team; @name picks who answers":
     "Escreva algo para a equipe; @nome escolhe quem responde",
   "Say something…": "Escreva algo…",
@@ -25,23 +25,23 @@ const dict: Dictionary = {
   Send: "Enviar",
 
   // Welcome
-  "Give your kitties a brain": "Dê um cérebro aos seus kitties",
+  "Give your puppies a brain": "Dê um cérebro aos seus cachorrinhos",
   "Add a model from a provider you have an account with (Claude, OpenAI, Gemini…), or Ollama to run free models on this computer.":
     "Adicione um modelo de um provedor onde você tem conta (Claude, OpenAI, Gemini…), ou o Ollama para usar modelos grátis neste computador.",
   "Add a model": "Adicionar um modelo",
-  "Create your first kitty": "Crie seu primeiro kitty",
+  "Create your first puppy": "Crie seu primeiro cachorrinho",
   "Give it a name, a personality and a look. It starts working at once.":
     "Dê a ele um nome, uma personalidade e uma aparência. Ele começa a trabalhar na hora.",
-  "Create a kitty": "Criar um kitty",
+  "Create a puppy": "Criar um cachorrinho",
   "Start a chat": "Começar um chat",
-  "Ask it anything, or give it a task. Several kitties in one chat work as a team.":
-    "Pergunte o que quiser ou dê uma tarefa. Vários kitties no mesmo chat trabalham em equipe.",
-  "Welcome to Kitties": "Boas-vindas ao Kitties",
+  "Ask it anything, or give it a task. Several puppies in one chat work as a team.":
+    "Pergunte o que quiser ou dê uma tarefa. Vários cachorrinhos no mesmo chat trabalham em equipe.",
+  "Welcome to Puppies": "Boas-vindas ao Puppies",
   "No chat open": "Nenhum chat aberto",
-  "One step to get your kitties working.":
-    "Falta um passo para seus kitties começarem a trabalhar.",
-  "{count} steps to get your kitties working.":
-    "Faltam {count} passos para seus kitties começarem a trabalhar.",
+  "One step to get your puppies working.":
+    "Falta um passo para seus cachorrinhos começarem a trabalhar.",
+  "{count} steps to get your puppies working.":
+    "Faltam {count} passos para seus cachorrinhos começarem a trabalhar.",
   "Pick a chat on the left, or start a new one. In a group, write @name to pick who answers.":
     "Escolha um chat à esquerda ou comece um novo. Em um grupo, escreva @nome para escolher quem responde.",
   "New chat": "Novo chat",
@@ -53,9 +53,9 @@ const dict: Dictionary = {
   "No chats yet.": "Ainda não há chats.",
   help: "ajuda",
   goal: "objetivo",
-  Kitties: "Kitties",
-  "No kitties yet.": "Ainda não há kitties.",
-  "New kitty": "Novo kitty",
+  "Puppies": "Puppies",
+  "No puppies yet.": "Ainda não há cachorrinhos.",
+  "New puppy": "Novo cachorrinho",
   Approvals: "Aprovações",
   "{count} waiting": "{count} esperando",
   Library: "Biblioteca",
@@ -78,22 +78,22 @@ const dict: Dictionary = {
   "The gateway did not answer or refused the token.": "O gateway não respondeu ou recusou o token.",
 
   // New chat
-  "A chat is a conversation with your kitties, and there is none yet. Create a kitty first, then chat with it.":
-    "Um chat é uma conversa com seus kitties, e você ainda não tem nenhum. Primeiro crie um kitty e depois converse com ele.",
-  "Pick one kitty, or several for a group that works as a team.":
-    "Escolha um kitty, ou vários para um grupo que trabalha em equipe.",
+  "A chat is a conversation with your puppies, and there is none yet. Create a puppy first, then chat with it.":
+    "Um chat é uma conversa com seus cachorrinhos, e você ainda não tem nenhum. Primeiro crie um cachorrinho e depois converse com ele.",
+  "Pick one puppy, or several for a group that works as a team.":
+    "Escolha um cachorrinho, ou vários para um grupo que trabalha em equipe.",
   "Title (optional)": "Título (opcional)",
   "Launch planning": "Planejar o lançamento",
   "Start group chat": "Começar chat em grupo",
   "Start chat": "Começar chat",
-  "a kitty": "um kitty",
+  "a puppy": "um cachorrinho",
 
   // New kitty
-  "A kitty needs a brain to think with, and there is no model yet. Add one in Settings (it takes a minute: pick a provider and paste its key), then come back.":
-    "Um kitty precisa de um cérebro para pensar, e ainda não há nenhum modelo. Adicione um em Configurações (leva um minuto: escolha um provedor e cole a chave dele) e depois volte.",
+  "A puppy needs a brain to think with, and there is no model yet. Add one in Settings (it takes a minute: pick a provider and paste its key), then come back.":
+    "Um cachorrinho precisa de um cérebro para pensar, e ainda não há nenhum modelo. Adicione um em Configurações (leva um minuto: escolha um provedor e cole a chave dele) e depois volte.",
   "{name} was created, but {why}": "{name} foi criado, mas {why}",
   Name: "Nome",
-  "There is already a kitty called ": "Já existe um kitty chamado ",
+  "There is already a puppy called ": "Já existe um cachorrinho chamado ",
   ": pick another name.": ": escolha outro nome.",
   "It will be called ": "Ele vai se chamar ",
   " (lowercase letters, digits and dashes).": " (letras minúsculas, números e hifens).",
@@ -110,16 +110,16 @@ const dict: Dictionary = {
     "Deixar usar minhas conexões ({list}, e as que eu adicionar depois)",
   "Give it a computer of its own (a desktop with a browser it can use)":
     "Dar a ele um computador próprio (uma área de trabalho com um navegador que ele pode usar)",
-  "Needs Docker running on the gateway's machine. Without it the kitty still thinks, talks and uses connections.":
-    "Precisa do Docker rodando na máquina do gateway. Sem ele, o kitty continua pensando, falando e usando conexões.",
-  "Docker is not installed on the gateway's machine. Install Docker Desktop to give kitties a computer; without it they still think, talk and use connections.":
-    "O Docker não está instalado na máquina do gateway. Instale o Docker Desktop para dar um computador aos kitties; sem ele eles continuam pensando, falando e usando conexões.",
+  "Needs Docker running on the gateway's machine. Without it the puppy still thinks, talks and uses connections.":
+    "Precisa do Docker rodando na máquina do gateway. Sem ele, o cachorrinho continua pensando, falando e usando conexões.",
+  "Docker is not installed on the gateway's machine. Install Docker Desktop to give puppies a computer; without it they still think, talk and use connections.":
+    "O Docker não está instalado na máquina do gateway. Instale o Docker Desktop para dar um computador aos cachorrinhos; sem ele eles continuam pensando, falando e usando conexões.",
   "Docker is installed but not running. Open Docker Desktop and wait for it to start; the option unlocks by itself.":
     "O Docker está instalado, mas não está rodando. Abra o Docker Desktop e espere iniciar; a opção é liberada sozinha.",
   "Creating…": "Criando…",
   Create: "Criar",
   "a name": "um nome",
-  "a name no other kitty has": "um nome que nenhum outro kitty tenha",
+  "a name no other puppy has": "um nome que nenhum outro cachorrinho tenha",
 
   // Kitty: basics
   "{name} may use {connection}.": "{name} pode usar {connection}.",
@@ -130,8 +130,8 @@ const dict: Dictionary = {
   "Saved.": "Salvo.",
   "Save personality": "Salvar personalidade",
   Connections: "Conexões",
-  "None yet. Add services in Settings, Connections, and choose the kitties that may use them.":
-    "Nenhuma ainda. Adicione serviços em Configurações, Conexões, e escolha quais kitties podem usá-los.",
+  "None yet. Add services in Settings, Connections, and choose the puppies that may use them.":
+    "Nenhuma ainda. Adicione serviços em Configurações, Conexões, e escolha quais cachorrinhos podem usá-los.",
   "Every connection, including the ones you add later":
     "Todas as conexões, incluindo as que você adicionar depois",
   "{name} uses no connection.": "{name} não usa nenhuma conexão.",
@@ -156,16 +156,16 @@ const dict: Dictionary = {
   "This address is plain http: the token would travel unencrypted. Use https.":
     "Este endereço é http sem criptografia: o token viajaria sem proteção. Use https.",
   "the address": "o endereço",
-  "The app is a remote for the Kitties gateway running on your computer or server. Type its address on the network and its token.":
-    "O app é um controle remoto para o gateway do Kitties que roda no seu computador ou servidor. Digite o endereço dele na rede e o token.",
+  "The app is a remote for the Puppies gateway running on your computer or server. Type its address on the network and its token.":
+    "O app é um controle remoto para o gateway do Puppies que roda no seu computador ou servidor. Digite o endereço dele na rede e o token.",
   "Let the gateway listen on the network, not only on the computer:":
     "Deixe o gateway escutar na rede, e não só no computador:",
   " (or a server with HTTPS, see DEPLOY.md).": " (ou um servidor com HTTPS, veja DEPLOY.md).",
   "The address is the computer's, like": "O endereço é o do computador, por exemplo",
   "The token is in ": "O token está em ",
   " on that computer.": " nesse computador.",
-  "The address of the kitties gateway. On this machine the token is found on its own (the gateway leaves it in ":
-    "O endereço do gateway dos kitties. Nesta máquina o token é encontrado sozinho (o gateway o deixa em ",
+  "The address of the puppies gateway. On this machine the token is found on its own (the gateway leaves it in ":
+    "O endereço do gateway dos cachorrinhos. Nesta máquina o token é encontrado sozinho (o gateway o deixa em ",
   "); a remote gateway needs the token it printed when it started.":
     "); um gateway remoto precisa do token que ele mostrou ao iniciar.",
   " Leave the address empty when this page is served by the gateway itself.":

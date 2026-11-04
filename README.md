@@ -1,6 +1,11 @@
-# Kitties
+# Puppies
 
-Autonomous AI agents, each with its own personality, memory and Boat desktop.
+A customized, opinionated fork of [Kitties](https://github.com/madkoding/kitties): autonomous AI
+agents, each with its own personality, memory and Boat desktop, shown as animated 3D puppies.
+
+Puppies follows its own choices rather than tracking upstream. Internal names (the `kitties`
+packages, `/v1/kitties` routes, `KittyDO`, `kittyd`, Cloudflare resources and the deployment
+address) keep the upstream spelling so existing state and integrations keep working.
 
 Open **[kitties.rccpr.tech](https://kitties.rccpr.tech)** and sign in through Cloudflare Access.
 The installable PWA is the client on desktop and mobile. Production runs TypeScript and Effect
@@ -16,7 +21,7 @@ on Cloudflare Workers, SQLite Durable Objects and Alchemy Effect Workflows.
 - English, Spanish and Portuguese; at most five active Boat desktops.
 
 Production switched to the Effect application on November 1, 2026. This is fresh state: enter
-provider keys and authorize connections in Settings, then create a kitty and chat. The new ChatGPT
+provider keys and authorize connections in Settings, then create a puppy and chat. The new ChatGPT
 [Mac linking helper](docs/effect/CHATGPT.md) is on `next`; subscription inference stays disabled
 until live acceptance passes. Old Go state and checkpoints were not migrated.
 
@@ -48,7 +53,7 @@ Numix/Greybird themes, [Lucide](https://lucide.dev) icons, Sansation and JetBrai
 The original wallpaper is by madkoding, generated with Qwen AI; guest assets and licences live
 under `guest/desktop/`. Perception uses [agent-browser](https://github.com/vercel-labs/agent-browser)
 and [agent-desktop](https://github.com/vercel-labs/agent-desktop).
-The cat avatars are drawn with [open-bot-avatar](https://github.com/DominikScholz/open-bot-avatar)
-(MIT, vendored in `apps/web/src/bot-avatar/`).
+The puppy avatars are drawn with [open-bot-avatar](https://github.com/DominikScholz/open-bot-avatar)
+(MIT, vendored and extended in `apps/web/src/bot-avatar/`).
 
 [GPL-3.0-or-later](LICENSE) · © 2026 madkoding
