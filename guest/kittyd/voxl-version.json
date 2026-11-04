@@ -3,5 +3,8 @@
   "url": "https://github.com/tembo/voxl/releases/download/v0.3.2/voxl-server-0.3.2.crate",
   "sha256": "5a7563fe3f84d90ae29cd63772d057f7891aeb1073ccafdc1bc1c393791c5893",
   "rust": "1.93.0",
-  "esbuild": "0.25.0"
+  "esbuild": "0.25.0",
+  "patches": {
+    "voxl-private-shm.patch": "2ca20ed76f0642afb7a18985939b2ce263b29ca612d07c6c6bae3addfdf9379d"
+  }
 }

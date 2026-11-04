@@ -1,0 +1,102 @@
+--- a/src/capture.rs
++++ b/src/capture.rs
+@@ -83,7 +83,7 @@
+     pub width: u32,
+     pub height: u32,
+     pub stride: usize,
+-    seg: u32,
++    seg: Option<u32>,
+     buf: ShmBuf,
+     /// Byte offset of pixel data inside `buf` (non-zero for an Xvfb XWD framebuffer).
+     offset: usize,
+@@ -131,6 +131,7 @@
+             .map_err(|e| e.to_string())?;
+         let mut stride = width as usize * 4;
+         let seg = conn.generate_id().map_err(|e| e.to_string())?;
++        let mut shared = false;
+         let server_pid = display.and_then(xserver_pid);
+         let (buf, offset, direct) =
+             match find_xvfb_framebuffer(&conn, root, width, height, server_pid) {
+@@ -147,13 +148,19 @@
+                     "Xvfb framebuffer not found (start Xvfb with -shmem); falling back to GetImage"
+                 );
+                     let buf = ShmBuf::new(stride * height as usize)?;
+-                    conn.shm_attach(seg, buf.shmid as u32, false)
++                    // Keep the segment private. A different-UID X server cannot
++                    // attach it; use ordinary X11 GetImage instead of failing video.
++                    shared = conn.shm_attach(seg, buf.shmid as u32, false)
+                         .map_err(|e| e.to_string())?
+                         .check()
+-                        .map_err(|e| e.to_string())?;
++                        .is_ok();
+                     // Mark for removal now; it stays alive while attached.
+                     unsafe { libc::shmctl(buf.shmid, libc::IPC_RMID, std::ptr::null_mut()) };
+-                    log::info!("capturing via MIT-SHM GetImage");
++                    if shared {
++                        log::info!("capturing via MIT-SHM GetImage");
++                    } else {
++                        log::info!("private MIT-SHM attach unavailable; capturing via X11 GetImage");
++                    }
+                     (buf, 0, false)
+                 }
+             };
+@@ -167,7 +174,7 @@
+             width,
+             height,
+             stride,
+-            seg,
++            seg: shared.then_some(seg),
+             buf,
+             offset,
+             direct,
+@@ -314,21 +321,35 @@
+             return Ok(());
+         }
+         let off = band.y0 as usize * self.stride;
+-        self.conn
+-            .shm_get_image(
+-                self.root,
+-                0,
+-                band.y0 as i16,
+-                self.width as u16,
+-                h as u16,
+-                !0,
+-                ImageFormat::Z_PIXMAP.into(),
+-                self.seg,
+-                off as u32,
+-            )
+-            .map_err(|e| e.to_string())?
+-            .reply()
+-            .map_err(|e| e.to_string())?;
++        if let Some(seg) = self.seg {
++            self.conn
++                .shm_get_image(
++                    self.root, 0, band.y0 as i16, self.width as u16, h as u16,
++                    !0, ImageFormat::Z_PIXMAP.into(), seg, off as u32,
++                )
++                .map_err(|e| e.to_string())?
++                .reply()
++                .map_err(|e| e.to_string())?;
++        } else {
++            let image = self.conn
++                .get_image(
++                    ImageFormat::Z_PIXMAP, self.root, 0, band.y0 as i16,
++                    self.width as u16, h as u16, !0,
++                )
++                .map_err(|e| e.to_string())?
++                .reply()
++                .map_err(|e| e.to_string())?;
++            if image.data.len() != h as usize * self.stride
++                || off + image.data.len() > self.buf.len
++            {
++                return Err("unexpected X11 image size".into());
++            }
++            unsafe {
++                std::ptr::copy_nonoverlapping(
++                    image.data.as_ptr(), self.buf.ptr.add(off), image.data.len(),
++                );
++            }
++        }
+         Ok(())
+     }
+ }

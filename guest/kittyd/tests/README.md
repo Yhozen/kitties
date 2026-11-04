@@ -35,6 +35,7 @@ at `/usr/local/lib/kittyd/voxl`. Chrome must be available at `/usr/bin/google-ch
 mkdir -p .context
 KITTYD_VIDEO_FIXTURE="$PWD/.context/video-fixture.bin" xvfb-run -a -s '-screen 0 1280x800x24' bun guest/kittyd/tests/video-native.ts
 KITTYD_VIDEO_FIXTURE="$PWD/.context/video-fixture.bin" node guest/kittyd/tests/viewer-browser.mjs
+bash guest/kittyd/tests/video-cross-user.sh
 ```
 
 The fresh Xvfb contains no user applications. Its encoded keyframe feeds the browser test, which
@@ -65,6 +66,11 @@ The private guest config is deleted and that fixture's daemon is stopped afterwa
 sandbox is created or touched. Results and synthetic screenshots go under `.context/desktop-benchmark`.
 Chrome's local-network permission check is disabled only in this intercepted local test page;
 production browser settings are unchanged.
+
+The cross-user video case starts a private Xvfb fixture and runs the real guest relay as
+`nobody`, matching the separate `kitty` display and `kittyd` daemon users in production.
+It requires successful H.264 capture and keyframe recovery without changing shared-memory
+permissions. Same-user capture tests alone do not cover this installed-service configuration.
 
 ## Continuous video with acknowledgement delay
 
