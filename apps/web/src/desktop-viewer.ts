@@ -1,4 +1,15 @@
+import * as Schema from "effect/Schema";
 import { VIDEO_HEADER_BYTES, videoHeader } from "@kitties/protocol/video";
+
+const parseControl = Schema.decodeUnknownSync(
+  Schema.Struct({
+    type: Schema.optional(Schema.String),
+    generation: Schema.optional(Schema.Number),
+    epoch: Schema.optional(Schema.Number),
+  }),
+);
+
+const parseText = Schema.decodeUnknownSync(Schema.String);
 
 export type DesktopViewMode = "video" | "jpeg";
 
@@ -42,7 +53,7 @@ export function createDesktopViewer(options: Options) {
     ready = false;
 
   let mode: DesktopViewMode =
-    typeof VideoDecoder === "function" && typeof EncodedVideoChunk === "function"
+    typeof VideoDecoder !== "undefined" && typeof EncodedVideoChunk !== "undefined"
       ? "video"
       : "jpeg";
 
@@ -60,7 +71,7 @@ export function createDesktopViewer(options: Options) {
     waitingKey = true;
   }
 
-  function send(body: unknown) {
+  function send(body: { type: "keyframe" } | { type: "frame_ack" | "video_ack"; seq: number }) {
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(body));
   }
 
@@ -222,9 +233,10 @@ export function createDesktopViewer(options: Options) {
       if (stopped || socket !== peer) return;
 
       try {
-        if (typeof event.data === "string") {
+        if (!(event.data instanceof ArrayBuffer)) {
           if (event.data === "pong") return;
-          const body = JSON.parse(event.data);
+
+          const body = parseControl(JSON.parse(parseText(event.data)));
 
           if (body.type === "video_ready") {
             if (body.generation !== options.generation || body.epoch !== options.epoch) {

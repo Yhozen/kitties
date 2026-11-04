@@ -1,3 +1,4 @@
+import * as Schema from "effect/Schema";
 import * as Effect from "effect/Effect";
 import { WorkflowEngine } from "effect/workflow";
 import { seal } from "./secrets.ts";
@@ -23,20 +24,29 @@ export const workflowActor = (
 
   if (slash < 1 || !id) throw Error("INVALID_WORKFLOW");
 
-  const invoke = <A>(method: string, ...args: readonly unknown[]) =>
-    (engine as unknown as Administration).adminCall(workflow, id, method, args) as Effect.Effect<A>;
+  // SAFETY: The pinned @alchemy.run/cloudflare patch installs adminCall on every
+  // DurableObjectEngine instance; this adapter is only given that engine.
+  const administration = engine as WorkflowEngine.WorkflowEngine["Service"] & Administration;
+
+  const invoke = <A>(method: string, schema: Schema.Codec<A>, ...args: readonly unknown[]) =>
+    administration.adminCall(workflow, id, method, args).pipe(
+      Effect.flatMap(Schema.decodeUnknownEffect(schema)),
+      Effect.mapError(() => "STORAGE_UNAVAILABLE"),
+    );
 
   return {
-    adminSummary: () => invoke<unknown>("adminSummary"),
-    adminBookmark: (at?: number) => invoke<string>("adminBookmark", at),
-    adminPrepareRestore: (bookmark: string) => invoke<string>("adminPrepareRestore", bookmark),
-    adminEvict: () => invoke<void>("adminEvict"),
-    adminCapture: (capture: string) => invoke<string>("adminCapture", capture),
-    adminPurge: (before: number) => invoke<boolean>("adminPurge", before),
+    adminSummary: () => invoke("adminSummary", Schema.Unknown),
+    adminBookmark: (at?: number) => invoke("adminBookmark", Schema.String, at),
+    adminPrepareRestore: (bookmark: string) =>
+      invoke("adminPrepareRestore", Schema.String, bookmark),
+    adminEvict: () => invoke("adminEvict", Schema.Void),
+    adminCapture: (capture: string) => invoke("adminCapture", Schema.String, capture),
+    adminPurge: (before: number) => invoke("adminPurge", Schema.Boolean, before),
     adminExportPart: (capture: string, table: string, row: number, part: number, aad: string) =>
       Effect.gen(function* () {
-        const value = yield* invoke<{ body: string; last: boolean }>(
+        const value = yield* invoke(
           "adminReadPart",
+          Schema.Struct({ body: Schema.String, last: Schema.Boolean }),
           capture,
           table,
           row,

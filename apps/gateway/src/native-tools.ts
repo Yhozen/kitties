@@ -1,13 +1,28 @@
+import * as Schema from "effect/Schema";
+import * as Option from "effect/Option";
 import type { Connection, ToolDefinition, ToolCall } from "./entities.ts";
 import { allowedFetch } from "./outbound.ts";
 import { jsonResponse } from "./oauth-core.ts";
+
+const FileArguments = Schema.Struct({
+  query: Schema.optional(Schema.String.check(Schema.isMaxLength(1000))),
+});
+
+const eventText = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1000));
+
+const EventArguments = Schema.Struct({
+  title: eventText,
+  start: eventText,
+  end: eventText,
+  timezone: eventText,
+});
 
 export const nativeBase = {
   google: "https://www.googleapis.com",
   m365: "https://graph.microsoft.com/v1.0",
 };
 
-const object = (properties: Record<string, unknown>, required: string[] = []) => ({
+const object = (properties: Schema.JsonObject, required: string[] = []) => ({
   type: "object",
   properties,
   required,
@@ -67,24 +82,28 @@ export async function executeNative(
 
   if (connection.url !== base || !token) throw Error("OAUTH_AUTHORIZATION_REQUIRED");
 
-  if (!call.params || typeof call.params !== "object" || Array.isArray(call.params))
-    throw Error("INVALID_ARGUMENTS");
-  const params = call.params as Record<string, unknown>;
+  const argumentsResult = Schema.decodeUnknownOption(Schema.JsonObject)(call.params);
+
+  if (Option.isNone(argumentsResult)) throw Error("INVALID_ARGUMENTS");
+  const args = argumentsResult.value;
 
   let url: URL,
     method = "GET",
     body: string | undefined;
 
   switch (tool.remoteName) {
-    case "files":
+    case "files": {
+      const decoded = Schema.decodeUnknownOption(FileArguments)(args);
+
+      if (Option.isNone(decoded)) throw Error("INVALID_ARGUMENTS");
+      const params = decoded.value;
+
       if (kind === "google") {
         url = new URL(`${base}/drive/v3/files`);
         url.searchParams.set("pageSize", "50");
         url.searchParams.set("fields", "files(id,name,mimeType,webViewLink),nextPageToken");
 
         if (params.query !== undefined) {
-          if (typeof params.query !== "string" || params.query.length > 1000)
-            throw Error("INVALID_ARGUMENTS");
           url.searchParams.set(
             "q",
             `trashed=false and name contains '${params.query.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`,
@@ -96,13 +115,13 @@ export async function executeNative(
         url.searchParams.set("$select", "id,name,webUrl,file,folder");
 
         if (params.query !== undefined) {
-          if (typeof params.query !== "string" || params.query.length > 1000)
-            throw Error("INVALID_ARGUMENTS");
           url.searchParams.set("$filter", `startswith(name,'${params.query.replace(/'/g, "''")}')`);
         }
       }
 
       break;
+    }
+
     case "events":
       url = new URL(
         kind === "google" ? `${base}/calendar/v3/calendars/primary/events` : `${base}/me/events`,
@@ -121,9 +140,10 @@ export async function executeNative(
 
       break;
     case "create_event": {
-      for (const key of ["title", "start", "end", "timezone"])
-        if (typeof params[key] !== "string" || !params[key] || params[key].length > 1000)
-          throw Error("INVALID_ARGUMENTS");
+      const decoded = Schema.decodeUnknownOption(EventArguments)(args);
+
+      if (Option.isNone(decoded)) throw Error("INVALID_ARGUMENTS");
+      const params = decoded.value;
 
       const start = String(params.start),
         end = String(params.end),

@@ -1,4 +1,4 @@
-import { makeRecoveryGuard, guardedActivities } from "../recovery-guard.ts";
+import { RecoveryGuard, guardedActivities } from "../recovery-guard.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Workflows from "alchemy/Workflows";
 import * as Effect from "effect/Effect";
@@ -8,7 +8,14 @@ import * as Schedule from "effect/Schedule";
 import { DurableClock } from "effect/workflow";
 import { HomeDO, KittyDO } from "../actors.ts";
 import { ComputerOp } from "../computer-definition.ts";
-import { boatClient, ownsSandbox, activeSandbox, readySandbox, type BoatSandbox } from "../boat.ts";
+import {
+  boatClient,
+  ownsSandbox,
+  activeSandbox,
+  readySandbox,
+  BoatSandboxResponse,
+  BoatSavedSnapshotResponse,
+} from "../boat.ts";
 import type { ComputerState } from "../computer-state.ts";
 import { bootstrapPython, prepareBootstrap, executeBootstrap } from "../guest-bootstrap.ts";
 import { releaseUrl } from "../releases.ts";
@@ -20,12 +27,13 @@ const storage = () => "STORAGE_UNAVAILABLE";
 export const ComputerOpLive = Workflows.layer(
   ComputerOp,
   Effect.gen(function* () {
-    const recovery = yield* makeRecoveryGuard;
+    const recovery = yield* RecoveryGuard;
     const fenced = (id: string) => guardedActivities(recovery(ComputerOp._tag, id));
 
     const homes = yield* HomeDO,
       kitties = yield* KittyDO;
 
+    // SAFETY: Gateway declares these bindings in worker.ts and Alchemy supplies them to workflows.
     const env = (yield* Cloudflare.WorkerEnvironment) as {
       BOAT_DEV_API_KEY: string;
       KITTIES_DEPLOYMENT: string;
@@ -59,10 +67,11 @@ export const ComputerOpLive = Workflows.layer(
         const request = <A>(
           method: string,
           path: string,
-          body?: unknown,
+          response: Schema.Codec<A>,
+          body?: Schema.Json,
           headers?: Record<string, string>,
         ) =>
-          boat.request<A>(method, path, body, headers).pipe(
+          boat.request(method, path, response, body, headers).pipe(
             Effect.retry({
               times: 3,
               schedule: Schedule.spaced("2 seconds"),
@@ -76,7 +85,7 @@ export const ComputerOpLive = Workflows.layer(
           );
 
         const get = (id: string) =>
-          request<{ sandbox: BoatSandbox }>("GET", "/sandboxes/" + encodeURIComponent(id)).pipe(
+          request("GET", "/sandboxes/" + encodeURIComponent(id), BoatSandboxResponse).pipe(
             Effect.map((value) => value.sandbox),
           );
 
@@ -179,9 +188,10 @@ export const ComputerOpLive = Workflows.layer(
               }
 
               // The fallback is idempotent quiescence, never an arbitrary desktop input.
-              const result = yield* request<{ success: boolean }>(
+              const result = yield* request(
                 "POST",
                 `/sandboxes/${state.remoteId}/commands`,
+                Schema.Struct({ success: Schema.Boolean }),
                 {
                   command: "sudo -n -H -u kitty env DISPLAY=:99 /usr/local/bin/kitty-quiesce",
                   timeoutSeconds: 60,
@@ -209,7 +219,12 @@ export const ComputerOpLive = Workflows.layer(
 
               // A repaired or replayed operation may find the machine already archived.
               if ((yield* get(state.remoteId)).state === "archived") return;
-              yield* request("POST", `/sandboxes/${state.remoteId}/stop`, { force: false });
+              yield* request(
+                "POST",
+                `/sandboxes/${state.remoteId}/stop`,
+                Schema.Union([Schema.Json, Schema.Void]),
+                { force: false },
+              );
             }),
           );
           yield* poll(
@@ -252,8 +267,16 @@ export const ComputerOpLive = Workflows.layer(
                 ),
               );
 
-              if (!exists)
-                yield* request("POST", "/saved-snapshots", { sandboxId: state.remoteId, name });
+              if (!exists) {
+                if (!state.remoteId) return yield* Effect.fail("REMOTE_NOT_FOUND");
+                yield* request(
+                  "POST",
+                  "/saved-snapshots",
+                  Schema.Union([Schema.Json, Schema.Void]),
+                  { sandboxId: state.remoteId, name },
+                );
+              }
+
               yield* home
                 .insert(
                   "checkpoint-pending",
@@ -271,16 +294,16 @@ export const ComputerOpLive = Workflows.layer(
                 .pipe(Effect.mapError(storage));
 
               if (!pending) return yield* Effect.fail("CHECKPOINT_NOT_FOUND");
-              const point = JSON.parse(pending) as { name: string; remoteId: string };
 
-              const { snapshot } = yield* request<{
-                snapshot: {
-                  name: string;
-                  snapshotId: string;
-                  sourceSandboxId: string;
-                  status: string;
-                };
-              }>("GET", "/saved-snapshots/" + encodeURIComponent(point.name));
+              const point = Schema.decodeUnknownSync(
+                Schema.Struct({ name: Schema.String, remoteId: Schema.String }),
+              )(JSON.parse(pending));
+
+              const { snapshot } = yield* request(
+                "GET",
+                "/saved-snapshots/" + encodeURIComponent(point.name),
+                BoatSavedSnapshotResponse,
+              );
 
               if (snapshot.status === "failed") return yield* Effect.fail("CHECKPOINT_FAILED");
 
@@ -315,9 +338,15 @@ export const ComputerOpLive = Workflows.layer(
               "delete",
               Effect.gen(function* () {
                 const state = yield* read;
-                yield* request("DELETE", `/sandboxes/${state.remoteId}`, undefined, {
-                  "X-Ascii-Confirm-Delete": state.remoteId!,
-                });
+                yield* request(
+                  "DELETE",
+                  `/sandboxes/${state.remoteId}`,
+                  Schema.Union([Schema.Json, Schema.Void]),
+                  undefined,
+                  {
+                    "X-Ascii-Confirm-Delete": state.remoteId!,
+                  },
+                );
               }),
             );
             yield* poll(
@@ -393,9 +422,11 @@ export const ComputerOpLive = Workflows.layer(
             if (payload.kind === "restore") {
               if (!checkpoint?.quiesced) return yield* Effect.fail("CHECKPOINT_REQUIRED");
 
-              const { snapshot } = yield* request<{
-                snapshot: { snapshotId: string; sourceSandboxId: string; status: string };
-              }>("GET", "/saved-snapshots/" + encodeURIComponent(checkpoint.name));
+              const { snapshot } = yield* request(
+                "GET",
+                "/saved-snapshots/" + encodeURIComponent(checkpoint.name),
+                BoatSavedSnapshotResponse,
+              );
 
               if (
                 snapshot.status !== "ready" ||
@@ -419,7 +450,7 @@ export const ComputerOpLive = Workflows.layer(
                   "kitties.kitty": payload.kittyId,
                   "kitties.generation": String(state.generation),
                 },
-                ...(payload.kind === "restore" ? { from: checkpoint!.name } : {}),
+                from: payload.kind === "restore" ? checkpoint!.name : undefined,
               });
 
               const key = yield* Effect.promise(() =>
@@ -462,10 +493,15 @@ export const ComputerOpLive = Workflows.layer(
                 return yield* Effect.fail("FOREIGN_COMPUTER");
 
               if (!activeSandbox(machine))
-                yield* request("POST", `/sandboxes/${state.remoteId}/resume`, {
-                  ttlSeconds: 3600,
-                  noEnv: true,
-                });
+                yield* request(
+                  "POST",
+                  `/sandboxes/${state.remoteId}/resume`,
+                  Schema.Union([Schema.Json, Schema.Void]),
+                  {
+                    ttlSeconds: 3600,
+                    noEnv: true,
+                  },
+                );
               yield* home
                 .bindCapacity(payload.kittyId, payload.operationId, state.remoteId!)
                 .pipe(Effect.mapError(storage));
@@ -495,12 +531,9 @@ export const ComputerOpLive = Workflows.layer(
             if (!remote) {
               if (Date.now() - operation.at >= 24 * 3600000)
                 return yield* Effect.fail("CREATE_KEY_EXPIRED");
-              remote = (yield* request<{ sandbox: BoatSandbox }>(
-                "POST",
-                "/sandboxes",
-                operation.body,
-                { "Idempotency-Key": operation.key },
-              )).sandbox;
+              remote = (yield* request("POST", "/sandboxes", BoatSandboxResponse, operation.body, {
+                "Idempotency-Key": operation.key,
+              })).sandbox;
             }
 
             if (!/^bx_[a-z0-9]{8}$/.test(remote.id)) return yield* Effect.fail("INVALID_REMOTE");
@@ -554,7 +587,10 @@ export const ComputerOpLive = Workflows.layer(
               .pipe(Effect.mapError(storage));
 
             if (!releaseBody) return yield* Effect.fail("GUEST_RELEASE_REQUIRED");
-            const release = JSON.parse(releaseBody) as { key: string; sha256: string };
+
+            const release = Schema.decodeUnknownSync(
+              Schema.Struct({ key: Schema.String, sha256: Schema.String }),
+            )(JSON.parse(releaseBody));
 
             const tokenId = `${payload.kittyId}:${state.generation}:${state.tokenVersion}`,
               aad = `guest-token:${tokenId}`;
@@ -577,6 +613,7 @@ export const ComputerOpLive = Workflows.layer(
               encrypted = yield* home.read("guest-token", tokenId).pipe(Effect.mapError(storage));
             }
 
+            // SAFETY: the bootstrap activity above seals the channel token and persists its Envelope for this tokenId.
             const token = yield* Effect.tryPromise({
               try: () => open(env.KITTIES_KEK, aad, JSON.parse(encrypted!) as Envelope),
               catch: () => "KEY_UNAVAILABLE",
@@ -611,9 +648,10 @@ export const ComputerOpLive = Workflows.layer(
               sha256: release.sha256,
             };
 
-            const prepared = yield* request<{ success: boolean }>(
+            const prepared = yield* request(
               "POST",
               `/sandboxes/${state.remoteId}/commands`,
+              Schema.Struct({ success: Schema.Boolean }),
               { command: prepareBootstrap, timeoutSeconds: 30 },
             );
 
@@ -624,14 +662,20 @@ export const ComputerOpLive = Workflows.layer(
               ["artifact.json", JSON.stringify(manifest)],
               ["bootstrap.py", bootstrapPython],
             ])
-              yield* request("PUT", `/sandboxes/${state.remoteId}/files`, {
-                path: "/home/user/.config/kittyd-bootstrap/" + name,
-                content,
-              });
+              yield* request(
+                "PUT",
+                `/sandboxes/${state.remoteId}/files`,
+                Schema.Union([Schema.Json, Schema.Void]),
+                {
+                  path: "/home/user/.config/kittyd-bootstrap/" + name,
+                  content,
+                },
+              );
 
-            const result = yield* request<{ success: boolean }>(
+            const result = yield* request(
               "POST",
               `/sandboxes/${state.remoteId}/commands`,
+              Schema.Struct({ success: Schema.Boolean }),
               { command: executeBootstrap, timeoutSeconds: 30 },
             );
 
@@ -669,10 +713,10 @@ export const ComputerOpLive = Workflows.layer(
         effect.pipe(
           Effect.tapCause((cause) => {
             if (Cause.hasInterruptsOnly(cause)) return Effect.void;
-            const failure = cause.reasons.find((reason) => reason._tag === "Fail");
+            const failure = cause.reasons.find(Cause.isFailReason);
 
             const code =
-              failure?._tag === "Fail" && typeof failure.error === "string"
+              failure && Schema.is(Schema.String)(failure.error)
                 ? failure.error
                 : "COMPUTER_UNAVAILABLE";
 

@@ -1,3 +1,7 @@
+import * as Context from "effect/Context";
+import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
+import * as Option from "effect/Option";
 import { publicHttps, allowedFetch } from "./outbound.ts";
 import { seal, open, type Envelope } from "./secrets.ts";
 
@@ -33,6 +37,44 @@ interface Credentials {
   revision: string;
 }
 
+const ConfigRecord = Schema.Struct({
+  issuer: Schema.String,
+  authorizationEndpoint: Schema.String,
+  tokenEndpoint: Schema.String,
+  clientId: Schema.String,
+  clientSecret: Schema.optional(Schema.String),
+  authMethod: Schema.optional(
+    Schema.Literals(["none", "client_secret_post", "client_secret_basic"]),
+  ),
+  scope: Schema.String,
+  resource: Schema.optional(Schema.String),
+  redirectUri: Schema.String,
+  protectedUrl: Schema.String,
+});
+
+const TokenRecord = Schema.Struct({
+  accessToken: Schema.String,
+  refreshToken: Schema.optional(Schema.String),
+  expiresAt: Schema.Number,
+});
+
+const EnvelopeRecord = Schema.Struct({ kid: Schema.String, iv: Schema.String, ct: Schema.String });
+
+const CredentialRecord = Schema.Struct({
+  envelope: EnvelopeRecord,
+  status: Schema.Literals(["ready", "refreshing", "reauthorize"]),
+  revision: Schema.String,
+});
+
+const FlowRecord = Schema.Struct({
+  connectionId: Schema.String,
+  verifier: Schema.String,
+  config: ConfigRecord,
+  expiresAt: Schema.Number,
+});
+
+const StoredAuthorization = Schema.Struct({ config: ConfigRecord, tokens: TokenRecord });
+
 export interface OAuthStorage {
   get(kind: string, id: string): string | null;
   put(kind: string, id: string, body: string): void;
@@ -53,7 +95,7 @@ export const pkceChallenge = async (verifier: string) =>
 export async function jsonResponse(
   response: Response,
   maxBytes = 262144,
-): Promise<Record<string, unknown>> {
+): Promise<Schema.JsonObject> {
   if (!response.ok) throw Error("OAUTH_REMOTE_UNAVAILABLE");
   const reader = response.body?.getReader();
 
@@ -83,12 +125,13 @@ export async function jsonResponse(
     at += chunk.length;
   }
 
-  const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
+  const value = Schema.decodeUnknownOption(Schema.JsonObject)(
+    JSON.parse(new TextDecoder().decode(bytes)),
+  );
 
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    throw Error("OAUTH_INVALID_RESPONSE");
+  if (Option.isNone(value)) throw Error("OAUTH_INVALID_RESPONSE");
 
-  return value as Record<string, unknown>;
+  return value.value;
 }
 
 const getJson = (url: string) =>
@@ -105,7 +148,7 @@ export async function discoverOAuth(resource: string) {
     url.origin,
   );
 
-  let metadata: Record<string, unknown>;
+  let metadata: Schema.JsonObject;
 
   try {
     metadata = await getJson(prm.href);
@@ -113,11 +156,11 @@ export async function discoverOAuth(resource: string) {
     metadata = await getJson(new URL("/.well-known/oauth-protected-resource", url.origin).href);
   }
 
-  if (typeof metadata.resource !== "string" || new URL(metadata.resource).href !== url.href)
+  if (!Schema.is(Schema.String)(metadata.resource) || new URL(metadata.resource).href !== url.href)
     throw Error("OAUTH_RESOURCE_MISMATCH");
   const issuers = metadata.authorization_servers;
 
-  if (!Array.isArray(issuers) || typeof issuers[0] !== "string")
+  if (!Array.isArray(issuers) || !Schema.is(Schema.String)(issuers[0]))
     throw Error("OAUTH_DISCOVERY_REQUIRED");
   const issuer = publicHttps(issuers[0]);
 
@@ -137,26 +180,31 @@ export async function discoverOAuth(resource: string) {
   )
     throw Error("OAUTH_PKCE_REQUIRED");
 
-  for (const key of ["authorization_endpoint", "token_endpoint"])
-    if (typeof server[key] !== "string") throw Error("OAUTH_INVALID_METADATA");
-    else publicHttps(server[key]);
+  const endpointResult = Schema.decodeUnknownOption(
+    Schema.Struct({
+      authorization_endpoint: Schema.String,
+      token_endpoint: Schema.String,
+    }),
+  )(server);
+
+  if (Option.isNone(endpointResult)) throw Error("OAUTH_INVALID_METADATA");
+  const endpoints = endpointResult.value;
+  publicHttps(endpoints.authorization_endpoint);
+  publicHttps(endpoints.token_endpoint);
 
   return {
     issuer: String(server.issuer),
-    authorizationEndpoint: String(server.authorization_endpoint),
-    tokenEndpoint: String(server.token_endpoint),
-    registrationEndpoint:
-      typeof server.registration_endpoint === "string"
-        ? publicHttps(server.registration_endpoint).href
-        : undefined,
+    authorizationEndpoint: endpoints.authorization_endpoint,
+    tokenEndpoint: endpoints.token_endpoint,
+    registrationEndpoint: Schema.is(Schema.String)(server.registration_endpoint)
+      ? publicHttps(server.registration_endpoint).href
+      : undefined,
     cimd: server.client_id_metadata_document_supported === true,
     authMethods: Array.isArray(server.token_endpoint_auth_methods_supported)
-      ? server.token_endpoint_auth_methods_supported.filter(
-          (method): method is string => typeof method === "string",
-        )
+      ? server.token_endpoint_auth_methods_supported.filter(Schema.is(Schema.String))
       : ["client_secret_basic"],
     scopes: Array.isArray(metadata.scopes_supported)
-      ? metadata.scopes_supported.filter((s): s is string => typeof s === "string")
+      ? metadata.scopes_supported.filter(Schema.is(Schema.String))
       : [],
   };
 }
@@ -184,14 +232,17 @@ async function exchange(
 ): Promise<Tokens> {
   body.set("client_id", config.clientId);
 
-  const headers: Record<string, string> = {
+  const headers = new Headers({
     "Content-Type": "application/x-www-form-urlencoded",
     Accept: "application/json",
-  };
+  });
 
   if (config.clientSecret && config.authMethod === "client_secret_basic") {
     const form = (value: string) => new URLSearchParams({ v: value }).toString().slice(2);
-    headers.Authorization = `Basic ${btoa(`${form(config.clientId)}:${form(config.clientSecret)}`)}`;
+    headers.set(
+      "Authorization",
+      `Basic ${btoa(`${form(config.clientId)}:${form(config.clientSecret)}`)}`,
+    );
   } else if (config.clientSecret) body.set("client_secret", config.clientSecret);
 
   if (config.resource) body.set("resource", config.resource);
@@ -210,17 +261,18 @@ async function exchange(
   const result = await jsonResponse(response);
 
   if (
-    typeof result.access_token !== "string" ||
+    !Schema.is(Schema.String)(result.access_token) ||
     !result.access_token ||
     result.access_token.length > 32768 ||
     (result.token_type !== undefined &&
-      (typeof result.token_type !== "string" || result.token_type.toLowerCase() !== "bearer"))
+      (!Schema.is(Schema.String)(result.token_type) ||
+        result.token_type.toLowerCase() !== "bearer"))
   )
     throw Error("OAUTH_INVALID_TOKEN");
 
   if (
     result.refresh_token !== undefined &&
-    (typeof result.refresh_token !== "string" || result.refresh_token.length > 32768)
+    (!Schema.is(Schema.String)(result.refresh_token) || result.refresh_token.length > 32768)
   )
     throw Error("OAUTH_INVALID_TOKEN");
 
@@ -232,8 +284,9 @@ async function exchange(
 
   return {
     accessToken: result.access_token,
-    refreshToken:
-      typeof result.refresh_token === "string" ? result.refresh_token : previous?.refreshToken,
+    refreshToken: Schema.is(Schema.String)(result.refresh_token)
+      ? result.refresh_token
+      : previous?.refreshToken,
     // Providers with non-expiring tokens omit expires_in. Never guess a refresh interval.
     expiresAt: result.expires_in === undefined ? 0 : Date.now() + Number(result.expires_in) * 1000,
   };
@@ -247,7 +300,9 @@ export function makeOAuthStorage(storage: OAuthStorage, kek: string) {
   const aad = (id: string) => `oauth:${id}:credentials`;
 
   const read = async (id: string, row: Credentials) =>
-    JSON.parse(await open(kek, aad(id), row.envelope)) as { config: OAuthConfig; tokens: Tokens };
+    Schema.decodeUnknownSync(StoredAuthorization)(
+      JSON.parse(await open(kek, aad(id), row.envelope)),
+    );
 
   const save = async (
     id: string,
@@ -269,7 +324,11 @@ export function makeOAuthStorage(storage: OAuthStorage, kek: string) {
     } else {
       const current = storage.get("oauth-credentials", id);
 
-      if (!current || (JSON.parse(current) as Credentials).revision !== expected.revision)
+      if (
+        !current ||
+        Schema.decodeUnknownSync(CredentialRecord)(JSON.parse(current)).revision !==
+          expected.revision
+      )
         throw Error("OAUTH_REVISION_CHANGED");
     }
 
@@ -289,7 +348,7 @@ export function makeOAuthStorage(storage: OAuthStorage, kek: string) {
       storage.put("oauth-attempt", connectionId, state);
       const url = publicHttps(config.authorizationEndpoint);
 
-      for (const [key, value] of Object.entries({
+      const params = new URLSearchParams({
         response_type: "code",
         client_id: config.clientId,
         redirect_uri: config.redirectUri,
@@ -297,9 +356,11 @@ export function makeOAuthStorage(storage: OAuthStorage, kek: string) {
         state,
         code_challenge: await pkceChallenge(verifier),
         code_challenge_method: "S256",
-        ...(config.resource ? { resource: config.resource } : {}),
-      }))
-        url.searchParams.set(key, value);
+      });
+
+      if (config.resource) params.set("resource", config.resource);
+
+      for (const [key, value] of params) url.searchParams.set(key, value);
 
       return { url: url.href, expiresAt: flow.expiresAt };
     },
@@ -311,9 +372,15 @@ export function makeOAuthStorage(storage: OAuthStorage, kek: string) {
 
       if (!saved) throw Error("OAUTH_STATE_USED");
 
-      const flow = JSON.parse(
-        await open(kek, `oauth-flow:${state}:pkce`, JSON.parse(saved) as Envelope),
-      ) as Flow;
+      const flow = Schema.decodeUnknownSync(FlowRecord)(
+        JSON.parse(
+          await open(
+            kek,
+            `oauth-flow:${state}:pkce`,
+            Schema.decodeUnknownSync(EnvelopeRecord)(JSON.parse(saved)),
+          ),
+        ),
+      );
 
       if (expectedId && flow.connectionId !== expectedId) throw Error("OAUTH_RESOURCE_MISMATCH");
 
@@ -348,7 +415,7 @@ export function makeOAuthStorage(storage: OAuthStorage, kek: string) {
         const raw = storage.get("oauth-credentials", id);
 
         if (!raw) throw Error("OAUTH_AUTHORIZATION_REQUIRED");
-        const row = JSON.parse(raw) as Credentials;
+        const row = Schema.decodeUnknownSync(CredentialRecord)(JSON.parse(raw));
 
         if (row.status !== "ready") throw Error("OAUTH_REAUTHORIZE_REQUIRED");
         const { config, tokens } = await read(id, row);
@@ -375,7 +442,11 @@ export function makeOAuthStorage(storage: OAuthStorage, kek: string) {
 
           const current = storage.get("oauth-credentials", id);
 
-          if (!current || (JSON.parse(current) as Credentials).revision !== row.revision)
+          if (
+            !current ||
+            Schema.decodeUnknownSync(CredentialRecord)(JSON.parse(current)).revision !==
+              row.revision
+          )
             throw Error("OAUTH_REVISION_CHANGED");
           await save(id, config, updated, { revision: row.revision });
 
@@ -383,7 +454,11 @@ export function makeOAuthStorage(storage: OAuthStorage, kek: string) {
         } catch {
           const current = storage.get("oauth-credentials", id);
 
-          if (current && (JSON.parse(current) as Credentials).revision === row.revision)
+          if (
+            current &&
+            Schema.decodeUnknownSync(CredentialRecord)(JSON.parse(current)).revision ===
+              row.revision
+          )
             storage.put("oauth-credentials", id, JSON.stringify({ ...row, status: "reauthorize" }));
           throw Error("OAUTH_REAUTHORIZE_REQUIRED");
         }
@@ -400,11 +475,22 @@ export function makeOAuthStorage(storage: OAuthStorage, kek: string) {
     status: (id: string) => {
       const raw = storage.get("oauth-credentials", id);
 
-      return raw ? (JSON.parse(raw) as Credentials).status : "disconnected";
+      return raw
+        ? Schema.decodeUnknownSync(CredentialRecord)(JSON.parse(raw)).status
+        : "disconnected";
     },
     disconnect: (id: string) => {
       storage.take("oauth-credentials", id);
       storage.take("oauth-attempt", id);
     },
   };
+}
+
+export class OAuthCredentials extends Context.Service<
+  OAuthCredentials,
+  ReturnType<typeof makeOAuthStorage>
+>()("@kitties/gateway/oauth-core/OAuthCredentials") {
+  static layer(storage: OAuthStorage, kek: string) {
+    return Layer.sync(OAuthCredentials, () => OAuthCredentials.of(makeOAuthStorage(storage, kek)));
+  }
 }

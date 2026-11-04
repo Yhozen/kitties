@@ -1,4 +1,4 @@
-import { makeRecoveryGuard, guardedActivities } from "../recovery-guard.ts";
+import { RecoveryGuard, guardedActivities } from "../recovery-guard.ts";
 import * as Workflows from "alchemy/Workflows";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -10,7 +10,7 @@ import type { ApprovalRecord } from "../entities.ts";
 export const ApprovalLive = Workflows.layer(
   Approval,
   Effect.gen(function* () {
-    const recovery = yield* makeRecoveryGuard;
+    const recovery = yield* RecoveryGuard;
     const fenced = (id: string) => guardedActivities(recovery(Approval._tag, id));
     const homes = yield* HomeDO;
 
@@ -29,6 +29,7 @@ export const ApprovalLive = Workflows.layer(
 
           if (!saved) return yield* Effect.fail("APPROVAL_NOT_FOUND");
 
+          // SAFETY: Turn persists typed ApprovalRecord values; HomeDO updates only decision/status fields.
           return (JSON.parse(saved) as ApprovalRecord).expiresAt;
         }),
       });
@@ -56,6 +57,7 @@ export const ApprovalLive = Workflows.layer(
               .read("approval", id)
               .pipe(Effect.mapError(() => "STORAGE_UNAVAILABLE"));
 
+            // SAFETY: Turn persists typed ApprovalRecord values; HomeDO updates only decision/status fields.
             if (saved && (JSON.parse(saved) as ApprovalRecord).status === "pending")
               yield* home
                 .queueNotice(
@@ -94,6 +96,7 @@ export const ApprovalLive = Workflows.layer(
             .read("approval", id)
             .pipe(Effect.mapError(() => "STORAGE_UNAVAILABLE"));
 
+          // SAFETY: Turn persists typed ApprovalRecord values; HomeDO updates only decision/status fields.
           return !!saved && (JSON.parse(saved) as ApprovalRecord).status === "approved";
         }),
       });

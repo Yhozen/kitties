@@ -1,4 +1,4 @@
-import { makeRecoveryGuard, guardedActivities } from "../recovery-guard.ts";
+import { RecoveryGuard, guardedActivities } from "../recovery-guard.ts";
 import * as Workflows from "alchemy/Workflows";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -14,7 +14,7 @@ const storage = () => "STORAGE_UNAVAILABLE";
 export const DelegationLive = Workflows.layer(
   Delegation,
   Effect.gen(function* () {
-    const recovery = yield* makeRecoveryGuard;
+    const recovery = yield* RecoveryGuard;
     const fenced = (id: string) => guardedActivities(recovery(Delegation._tag, id));
 
     const homes = yield* HomeDO,
@@ -104,6 +104,7 @@ export const DelegationLive = Workflows.layer(
         const raw = yield* home.read("delegation-child", key).pipe(Effect.mapError(storage));
 
         if (!raw) return yield* Effect.fail("DELEGATION_NOT_FOUND");
+        // SAFETY: The plan activity above writes delegation-child from this Turn payload before storing its key.
         children.push(JSON.parse(raw) as typeof Turn.payloadSchema.Type);
       }
 

@@ -19,7 +19,7 @@ export const LimitToolInput = Schema.Struct({
 const make = (
   remoteName: string,
   description: string,
-  parameters: Record<string, unknown>,
+  parameters: ToolDefinition["parameters"],
   readOnly = false,
 ): ToolDefinition => ({
   name: `kitty_${remoteName}`,
@@ -71,8 +71,7 @@ export const autonomyTools = (
         make(
           "delegate",
           `Ask teammates to perform independent tasks and return their results. Team: ${team
-            .filter((cat) => cat.id !== kittyId)
-            .map((cat) => `${cat.name} (${cat.id})`)
+            .flatMap((cat) => (cat.id !== kittyId ? [`${cat.name} (${cat.id})`] : []))
             .join(", ")}. Delegation depth is limited to two.`,
           {
             type: "object",
@@ -86,7 +85,7 @@ export const autonomyTools = (
                   properties: {
                     kittyId: {
                       type: "string",
-                      enum: team.filter((cat) => cat.id !== kittyId).map((cat) => cat.id),
+                      enum: team.flatMap((cat) => (cat.id !== kittyId ? [cat.id] : [])),
                     },
                     instruction: { type: "string", maxLength: 16000 },
                   },

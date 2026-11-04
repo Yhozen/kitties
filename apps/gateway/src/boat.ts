@@ -11,7 +11,7 @@ export interface BoatSandbox {
   id: string;
   name: string;
   state: string;
-  labels: Record<string, string>;
+  labels?: Record<string, string> | null;
   access?: string;
   archiveAfter?: string;
   hydrated?: boolean;
@@ -28,6 +28,55 @@ export interface SavedSnapshot {
   status: string;
   error?: string | null;
 }
+
+export const BoatSandboxResponse = Schema.Struct({
+  sandbox: Schema.Struct({
+    id: Schema.String,
+    name: Schema.String,
+    state: Schema.String,
+    labels: Schema.optional(Schema.NullOr(Schema.Record(Schema.String, Schema.String))),
+    access: Schema.optional(Schema.String),
+    archiveAfter: Schema.optional(Schema.String),
+    hydrated: Schema.optional(Schema.Boolean),
+    snapshotAvailable: Schema.optional(Schema.Boolean),
+    lastSnapshotStatus: Schema.optional(Schema.String),
+    stop: Schema.optional(
+      Schema.Struct({ status: Schema.String, forced: Schema.optional(Schema.Boolean) }),
+    ),
+    dataExpiredAt: Schema.optional(Schema.NullOr(Schema.String)),
+  }),
+});
+
+export const BoatSavedSnapshotResponse = Schema.Struct({
+  snapshot: Schema.Struct({
+    name: Schema.String,
+    snapshotId: Schema.String,
+    sourceSandboxId: Schema.String,
+    status: Schema.String,
+    error: Schema.optional(Schema.NullOr(Schema.String)),
+  }),
+});
+
+export const BoatInventoryResponse = Schema.Struct({
+  sandboxes: Schema.Array(BoatSandboxResponse.fields.sandbox),
+  pageInfo: Schema.optional(
+    Schema.NullOr(
+      Schema.Struct({
+        hasMore: Schema.optional(Schema.Boolean),
+        nextCursor: Schema.optional(Schema.String),
+      }),
+    ),
+  ),
+});
+
+const CreateReceipt = Schema.Struct({
+  name: Schema.String,
+  labels: Schema.Record(Schema.String, Schema.String),
+});
+
+const BoatFailure = Schema.Struct({
+  code: Schema.String.check(Schema.isPattern(/^[a-z0-9_]{1,80}$/)),
+});
 
 export const readySandbox = (sandbox: BoatSandbox) =>
   ["provisioned", "idle", "busy", "ready", "running"].includes(sandbox.state) &&
@@ -72,7 +121,7 @@ export function ownsSandbox(
     return false;
 
   try {
-    const body = JSON.parse(receipt.body) as { name: string; labels: Record<string, string> };
+    const body = Schema.decodeUnknownSync(CreateReceipt)(JSON.parse(receipt.body));
 
     return (
       body.name === sandbox.name &&
@@ -86,57 +135,70 @@ export function ownsSandbox(
 }
 
 export function boatClient(key: string) {
-  const request = <A>(
+  function request(method: string, path: string): Effect.Effect<Schema.Json | void, BoatError>;
+  function request<A>(
     method: string,
     path: string,
-    body?: unknown,
+    responseSchema: Schema.Codec<A>,
+    body?: Schema.Json,
+    headers?: Record<string, string>,
+  ): Effect.Effect<A, BoatError>;
+  function request<A>(
+    method: string,
+    path: string,
+    responseSchema?: Schema.Codec<A>,
+    body?: Schema.Json,
     headers: Record<string, string> = {},
-  ) =>
-    Effect.tryPromise({
+  ) {
+    return Effect.tryPromise({
       try: async () => {
-        const response = await fetch("https://boat.dev/api/v1" + path, {
+        const init: RequestInit = {
           method,
           headers: {
             Authorization: `Bearer ${key}`,
             "Content-Type": "application/json",
             ...headers,
           },
-          ...(body === undefined
-            ? {}
-            : { body: typeof body === "string" ? body : JSON.stringify(body) }),
           redirect: "manual",
           signal: AbortSignal.timeout(path.endsWith("/commands") ? 600000 : 60000),
-        });
+        };
+
+        if (body !== undefined)
+          init.body = Schema.is(Schema.String)(body) ? body : JSON.stringify(body);
+        const response = await fetch("https://boat.dev/api/v1" + path, init);
 
         if (!response.ok) {
-          const data = (await response.json().catch(() => ({}))) as { code?: string };
+          const data = await response.json().catch(() => ({}));
           throw new BoatError({
-            code:
-              typeof data.code === "string" && /^[a-z0-9_]{1,80}$/.test(data.code)
-                ? data.code
-                : "BOAT_UNAVAILABLE",
+            code: Schema.is(BoatFailure)(data) ? data.code : "BOAT_UNAVAILABLE",
             status: response.status,
             retryAfter: Math.min(300, Number(response.headers.get("Retry-After")) || 5),
           });
         }
 
-        return response.status === 204 ? (undefined as A) : ((await response.json()) as A);
+        const value = response.status === 204 ? undefined : await response.json();
+
+        return responseSchema
+          ? Schema.decodeUnknownSync(responseSchema)(value)
+          : Schema.decodeUnknownSync(Schema.Union([Schema.Json, Schema.Void]))(value);
       },
-      catch: (error) =>
-        error instanceof BoatError
-          ? error
+      catch: (cause) =>
+        cause instanceof BoatError
+          ? cause
           : new BoatError({ code: "BOAT_UNAVAILABLE", status: 0, retryAfter: 5 }),
     });
+  }
 
   const inventory = Effect.gen(function* () {
     const found: BoatSandbox[] = [];
     let cursor = "";
 
     for (let page = 0; page < 100; page++) {
-      const reply = yield* request<{
-        sandboxes: BoatSandbox[];
-        pageInfo?: { hasMore: boolean; nextCursor?: string };
-      }>("GET", "/sandboxes?limit=100" + (cursor ? "&cursor=" + encodeURIComponent(cursor) : ""));
+      const reply = yield* request(
+        "GET",
+        "/sandboxes?limit=100" + (cursor ? "&cursor=" + encodeURIComponent(cursor) : ""),
+        BoatInventoryResponse,
+      );
 
       found.push(...reply.sandboxes);
 
@@ -158,13 +220,14 @@ export function boatClient(key: string) {
     request,
     inventory,
     get: (id: string) =>
-      request<{ sandbox: BoatSandbox }>("GET", "/sandboxes/" + encodeURIComponent(id)).pipe(
+      request("GET", "/sandboxes/" + encodeURIComponent(id), BoatSandboxResponse).pipe(
         Effect.map((value) => value.sandbox),
       ),
     saved: (name: string) =>
-      request<{ snapshot: SavedSnapshot }>(
+      request(
         "GET",
         "/saved-snapshots/" + encodeURIComponent(name),
+        BoatSavedSnapshotResponse,
       ).pipe(Effect.map((value) => value.snapshot)),
   };
 }

@@ -1,37 +1,40 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 
-export type PerceptionAction =
-  | { action: "ui_read" }
-  | { action: "ui_click"; ref: string }
-  | { action: "ui_type"; ref: string; text: string };
+import * as Schema from "effect/Schema";
+import * as Result from "effect/Result";
+import { flow } from "effect/Function";
 
-export interface PerceptionResult {
-  status: "completed" | "failed" | "unknown";
-  result: string;
-}
+const PerceptionRef = Schema.String.check(
+  Schema.isPattern(/^@[a-zA-Z0-9_-]{3,64}:e[1-9][0-9]{0,9}$/),
+  Schema.makeFilter((ref) => Number(ref.split(":e")[1]) <= 0xffffffff),
+);
 
-export function perceptionAction(value: unknown): PerceptionAction {
-  if (!value || typeof value !== "object") throw Error("INVALID_ARGUMENT");
-  const body = value as Record<string, unknown>;
+export const PerceptionAction = Schema.Union([
+  Schema.Struct({ action: Schema.Literal("ui_read") }),
+  Schema.Struct({ action: Schema.Literal("ui_click"), ref: PerceptionRef }),
+  Schema.Struct({
+    action: Schema.Literal("ui_type"),
+    ref: PerceptionRef,
+    text: Schema.String.check(Schema.isMaxLength(4000), Schema.isPattern(/^[^\0]*$/)),
+  }),
+]);
 
-  if (body.action === "ui_read") return { action: body.action };
+export type PerceptionAction = typeof PerceptionAction.Type;
 
-  if (body.action !== "ui_click" && body.action !== "ui_type") throw Error("INVALID_ARGUMENT");
+export const PerceptionResult = Schema.Struct({
+  status: Schema.Literals(["completed", "failed", "unknown"]),
+  result: Schema.String,
+});
 
-  if (
-    typeof body.ref !== "string" ||
-    !/^@[a-zA-Z0-9_-]{3,64}:e[1-9][0-9]{0,9}$/.test(body.ref) ||
-    Number(body.ref.split(":e")[1]) > 0xffffffff
-  )
-    throw Error("INVALID_ARGUMENT");
+export type PerceptionResult = typeof PerceptionResult.Type;
 
-  if (body.action === "ui_click") return { action: body.action, ref: body.ref };
+export const perceptionAction = flow(
+  Schema.decodeUnknownResult(PerceptionAction),
+  Result.getOrThrowWith(() => Error("INVALID_ARGUMENT")),
+);
 
-  if (typeof body.text !== "string" || body.text.length > 4000 || body.text.includes("\0"))
-    throw Error("INVALID_ARGUMENT");
-
-  return { action: body.action, ref: body.ref, text: body.text };
-}
+const parseReady = Schema.decodeUnknownSync(Schema.Struct({ ready: Schema.Literal(1) }));
+const parseResult = Schema.decodeUnknownSync(PerceptionResult);
 
 // One helper owns one native adapter. No request queue: the guest already serializes
 // actions, and accepting a delayed mutation here would outlive its caller's deadline.
@@ -126,21 +129,16 @@ export class PerceptionSession {
         if (newline !== buffer.length - 1) return this.fail();
 
         try {
-          const body = JSON.parse(buffer.toString("utf8")) as Record<string, unknown>;
+          const body = JSON.parse(buffer.toString("utf8"));
           buffer = Buffer.alloc(0);
 
           if (!this.ready) {
-            if (body.ready !== 1) return this.fail();
+            parseReady(body);
             this.ready = true;
             this.write();
           } else {
-            if (
-              !this.pending?.sent ||
-              !["completed", "failed", "unknown"].includes(String(body.status)) ||
-              typeof body.result !== "string"
-            )
-              return this.fail();
-            this.finish(body as unknown as PerceptionResult);
+            if (!this.pending?.sent) return this.fail();
+            this.finish(parseResult(body));
           }
         } catch {
           this.fail();

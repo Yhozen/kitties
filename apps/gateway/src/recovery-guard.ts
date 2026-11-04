@@ -1,3 +1,4 @@
+import * as Layer from "effect/Layer";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -16,7 +17,7 @@ const StartedAt = Context.Reference<number>(
 export const permitCacheMs = 5000;
 const granted = new Map<string, number>();
 
-export const makeRecoveryGuard = Effect.gen(function* () {
+const makeRecoveryGuard = Effect.gen(function* () {
   const roots = yield* RecoveryDO;
 
   return (workflow: string, id: string) =>
@@ -88,3 +89,10 @@ export const guardedActivities =
         }),
       ),
     });
+
+export class RecoveryGuard extends Context.Service<
+  RecoveryGuard,
+  Effect.Success<typeof makeRecoveryGuard>
+>()("@kitties/gateway/RecoveryGuard") {
+  static readonly layer = Layer.effect(RecoveryGuard, makeRecoveryGuard);
+}

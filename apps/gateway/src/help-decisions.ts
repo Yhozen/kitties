@@ -1,5 +1,6 @@
+import { stored } from "./stored-records.ts";
 import * as Effect from "effect/Effect";
-import { savedHelpDecision, type HelpDecision, type HelpRecord } from "./help-store.ts";
+import { savedHelpDecision, type HelpDecision, HelpRecord } from "./help-store.ts";
 
 // The decision record doubles as a durable signaling outbox until the workflow
 // completes it. DurableDeferred completion is idempotent, including lost replies.
@@ -12,7 +13,7 @@ export const retryHelpDecisions = <E>(
     yield* Effect.forEach(
       rows,
       ({ body }) => {
-        const row = JSON.parse(body) as HelpRecord;
+        const row = stored(HelpRecord, body);
         const decision = savedHelpDecision(row);
 
         return decision && row.status !== "completed"

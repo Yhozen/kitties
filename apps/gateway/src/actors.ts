@@ -1,3 +1,16 @@
+import * as Schema from "effect/Schema";
+import { stored, KittyRecord, NameRecord, GoalRecord, ApprovalRecord } from "./stored-records.ts";
+import {
+  MemoryRecord,
+  MemoryCommandRecord,
+  TurnKittyRecord,
+  GoalUpdateRecord,
+  NotificationSettingsRecord,
+  NotificationFoldRecord,
+  NotificationBatchRecord,
+  RuleModeRecord,
+  TrustRecord,
+} from "./actor-records.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as SqliteClient from "@effect/sql-sqlite-do/SqliteClient";
 import * as Migrator from "@effect/sql-sqlite-do/SqliteMigrator";
@@ -6,13 +19,13 @@ import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
 import { RecoveryDO } from "./recovery-store.ts";
-import { makeStorageAdmin } from "./storage-admin.ts";
-import { freshMemory, updateMemory, type Memory, type MemoryCommand } from "./memory.ts";
-import { makeOAuthStorage, type OAuthConfig } from "./oauth-core.ts";
-import { makeChatgptStorage, type ChatgptCallback } from "./chatgpt-core.ts";
+import { StorageAdmin } from "./storage-admin.ts";
+import { freshMemory, updateMemory } from "./memory.ts";
+import { OAuthCredentials, type OAuthConfig } from "./oauth-core.ts";
+import { ChatgptCredentials, type ChatgptCallback } from "./chatgpt-core.ts";
 import { safeChatgptError } from "./chatgpt-errors.ts";
-import { authorization, type RuleMode } from "./approval-policy.ts";
-import { makeHelpStore, type HelpDecision } from "./help-store.ts";
+import { authorization } from "./approval-policy.ts";
+import { HelpStore, type HelpDecision } from "./help-store.ts";
 
 const makeActor = Effect.gen(function* () {
   const state = yield* Cloudflare.DurableObjectState;
@@ -23,6 +36,7 @@ const makeActor = Effect.gen(function* () {
       ? roots.getByName("control", { locationHint: "weur" }).register(kind, id)
       : Effect.void;
 
+  // SAFETY: Gateway deployment declares these named bindings in worker.ts; Cloudflare injects their declared values into every bound actor.
   const env = (yield* Cloudflare.WorkerEnvironment) as { KITTIES_KEK: string };
 
   return Effect.gen(function* () {
@@ -53,7 +67,17 @@ const makeActor = Effect.gen(function* () {
       "CREATE TABLE IF NOT EXISTS webhook_deliveries (id TEXT PRIMARY KEY,digest TEXT NOT NULL,body TEXT NOT NULL,at INTEGER NOT NULL)",
     );
     const raw = state.raw.storage.sql;
-    const help = makeHelpStore(state);
+    const help = yield* HelpStore.pipe(Effect.provide(HelpStore.layer));
+
+    const admin = yield* StorageAdmin.pipe(
+      Effect.provide(
+        StorageAdmin.layer(
+          ["records", "charges", "connector_effects", "capacity_leases", "webhook_deliveries"],
+          env.KITTIES_KEK,
+        ),
+      ),
+    );
+
     // Hard cutover: old provider-owned Codex grants and active-attempt pointers
     // cannot remain usable through the generic OAuth callback after redeploy/PITR.
     raw.exec(
@@ -92,10 +116,16 @@ const makeActor = Effect.gen(function* () {
           .toArray(),
     };
 
-    const oauth = makeOAuthStorage(credentialStorage, env.KITTIES_KEK);
+    const oauth = yield* OAuthCredentials.pipe(
+      Effect.provide(OAuthCredentials.layer(credentialStorage, env.KITTIES_KEK)),
+    );
 
-    const chatgpt = makeChatgptStorage(credentialStorage, env.KITTIES_KEK, () =>
-      Effect.runPromise(roots.getByName("control", { locationHint: "weur" }).chatgptContext()),
+    const chatgpt = yield* ChatgptCredentials.pipe(
+      Effect.provide(
+        ChatgptCredentials.layer(credentialStorage, env.KITTIES_KEK, () =>
+          Effect.runPromise(roots.getByName("control", { locationHint: "weur" }).chatgptContext()),
+        ),
+      ),
     );
 
     const oauthError = () => "OAUTH_AUTHORIZATION_REQUIRED";
@@ -116,7 +146,7 @@ const makeActor = Effect.gen(function* () {
             const kittyBody = get("kitty", kittyId);
 
             if (!kittyBody) throw Error("KITTY_NOT_FOUND");
-            const kitty = JSON.parse(kittyBody) as import("./entities.ts").KittyProfile;
+            const kitty = stored(KittyRecord, kittyBody);
             const provider = kitty.providerId ? get("provider", kitty.providerId) : undefined;
             body = JSON.stringify({
               kitty,
@@ -127,7 +157,7 @@ const makeActor = Effect.gen(function* () {
                 .toArray()
                 .map((row) => ({
                   id: row.id,
-                  name: (JSON.parse(row.body) as { name: string }).name,
+                  name: stored(NameRecord, row.body).name,
                 })),
               desktop: get("desktop-enabled", kittyId) === "true",
               provider: provider ? JSON.parse(provider) : null,
@@ -155,10 +185,7 @@ const makeActor = Effect.gen(function* () {
             Date.now(),
           );
 
-          return (
-            (JSON.parse(body) as { kitty: { limits?: { max_rounds: number } } }).kitty.limits
-              ?.max_rounds ?? 12
-          );
+          return stored(TurnKittyRecord, body).kitty.limits?.max_rounds ?? 12;
         }),
       );
 
@@ -173,7 +200,7 @@ const makeActor = Effect.gen(function* () {
             .toArray()[0]?.body;
 
         if (!body) throw Error("CONFIG_NOT_FOUND");
-        const kitty = (JSON.parse(body) as { kitty: { id: string } }).kitty.id;
+        const kitty = stored(TurnKittyRecord, body).kitty.id;
 
         const spent = raw
           .exec<{ tokens: number; actions: number }>(
@@ -187,13 +214,7 @@ const makeActor = Effect.gen(function* () {
       });
 
     return {
-      ...makeStorageAdmin(state, env.KITTIES_KEK, [
-        "records",
-        "charges",
-        "connector_effects",
-        "capacity_leases",
-        "webhook_deliveries",
-      ]),
+      ...admin,
       chatgptAccounts: () => Effect.tryPromise({ try: chatgpt.accounts, catch: safeChatgptError }),
       chatgptAccount: (id: string) =>
         Effect.tryPromise({ try: () => chatgpt.account(id), catch: safeChatgptError }),
@@ -251,27 +272,21 @@ const makeActor = Effect.gen(function* () {
             const prefs = get("settings", "notifications");
 
             if (!prefs) return;
-            const settings = JSON.parse(prefs) as { enabled: boolean; events: string[] };
+            const settings = stored(NotificationSettingsRecord, prefs);
 
-            if (!settings.enabled || !settings.events.includes(kind)) return;
+            if (!settings.enabled || !settings.events.some((event) => event === kind)) return;
 
             if (get("notification-event", eventId)) return;
 
             const at = Date.now(),
               fold = get("notification-fold", kind),
-              previous = fold ? (JSON.parse(fold) as { id: string; dueAt: number }) : null;
+              previous = fold ? stored(NotificationFoldRecord, fold) : null;
 
             const batchId = !immediate && previous && previous.dueAt > at ? previous.id : eventId;
             const saved = get("notification-batch", batchId);
 
             const batch = saved
-              ? (JSON.parse(saved) as {
-                  title: string;
-                  url: string;
-                  dueAt: number;
-                  count: number;
-                  status: string;
-                })
+              ? stored(NotificationBatchRecord, saved)
               : {
                   title: title.slice(0, 500),
                   url,
@@ -311,7 +326,7 @@ const makeActor = Effect.gen(function* () {
                 .exec<{ body: string }>("SELECT body FROM records WHERE kind=? AND id=?", kind, id)
                 .toArray()[0]?.body;
 
-          const parts = JSON.parse(policyKey) as string[];
+          const parts = stored(Schema.Array(Schema.String), policyKey);
           const wildcard = JSON.stringify([parts[0], parts[1], "*"]);
 
           const rule = get("approval-rule", policyKey) ?? get("approval-rule", wildcard),
@@ -321,9 +336,9 @@ const makeActor = Effect.gen(function* () {
           return authorization({
             always,
             free,
-            mode: rule ? (JSON.parse(rule) as { mode: RuleMode }).mode : undefined,
-            streak: trust ? (JSON.parse(trust) as { streak: number }).streak : 0,
-            demand: memory ? (JSON.parse(memory) as Memory).profile.demand : 3,
+            mode: rule ? stored(RuleModeRecord, rule).mode : undefined,
+            streak: trust ? stored(TrustRecord, trust).streak : 0,
+            demand: memory ? stored(MemoryRecord, memory).profile.demand : 3,
           });
         }),
       claimWebhook: (id: string, digest: string, body: string) =>
@@ -357,15 +372,15 @@ const makeActor = Effect.gen(function* () {
               .exec<{ body: string }>("SELECT body FROM records WHERE kind='goal' AND id=?", id)
               .toArray()[0];
 
-            const previous = old ? (JSON.parse(old.body) as import("./entities.ts").Goal) : null;
+            const previous = old ? stored(GoalRecord, old.body) : null;
 
             const goal = {
-              ...JSON.parse(body),
+              ...stored(GoalUpdateRecord, body),
               id,
               revision: (previous?.revision ?? 0) + 1,
               chatId: previous?.chatId ?? `goal-${id}`,
               updatedAt: Date.now(),
-            } as import("./entities.ts").Goal;
+            };
 
             raw.exec(
               "INSERT INTO records VALUES ('goal',?,?,?) ON CONFLICT(kind,id) DO UPDATE SET body=excluded.body,updated_at=excluded.updated_at",
@@ -386,7 +401,7 @@ const makeActor = Effect.gen(function* () {
                 .toArray()[0];
 
             if (!row) return;
-            const goal = JSON.parse(row.body) as import("./entities.ts").Goal;
+            const goal = stored(GoalRecord, row.body);
 
             if (goal.revision !== revision || !goal.enabled || goal.nextSlot > slot) return;
             raw.exec(
@@ -493,7 +508,7 @@ const makeActor = Effect.gen(function* () {
             .exec<{ body: string }>("SELECT body FROM records WHERE kind='memory' AND id=?", id)
             .toArray()[0];
 
-          return row ? (JSON.parse(row.body) as Memory) : freshMemory();
+          return row ? stored(MemoryRecord, row.body) : freshMemory();
         }),
       applyDistillation: (runId: string, kittyId: string, command: string) =>
         Effect.sync(() =>
@@ -514,8 +529,8 @@ const makeActor = Effect.gen(function* () {
               .toArray()[0];
 
             const next = updateMemory(
-              row ? (JSON.parse(row.body) as Memory) : freshMemory(),
-              JSON.parse(command) as MemoryCommand,
+              row ? stored(MemoryRecord, row.body) : freshMemory(),
+              stored(MemoryCommandRecord, command),
             );
 
             raw.exec(
@@ -537,8 +552,8 @@ const makeActor = Effect.gen(function* () {
               .toArray()[0];
 
             const next = updateMemory(
-              row ? (JSON.parse(row.body) as Memory) : freshMemory(),
-              JSON.parse(body) as MemoryCommand,
+              row ? stored(MemoryRecord, row.body) : freshMemory(),
+              stored(MemoryCommandRecord, body),
             );
 
             raw.exec(
@@ -623,7 +638,7 @@ const makeActor = Effect.gen(function* () {
               .toArray()[0];
 
             if (!row) return null;
-            const value = JSON.parse(row.body) as import("./entities.ts").ApprovalRecord;
+            const value = stored(ApprovalRecord, row.body);
 
             if (value.digest !== digest) return null;
             const desired = decision ? "approved" : "denied";
@@ -645,7 +660,7 @@ const makeActor = Effect.gen(function* () {
                 .toArray()[0];
 
               const streak = decision
-                ? (previous ? (JSON.parse(previous.body) as { streak: number }).streak : 0) + 1
+                ? (previous ? stored(TrustRecord, previous.body).streak : 0) + 1
                 : 0;
 
               raw.exec(
@@ -675,7 +690,7 @@ const makeActor = Effect.gen(function* () {
             .toArray()[0];
 
           if (!row) return;
-          const value = JSON.parse(row.body) as import("./entities.ts").ApprovalRecord;
+          const value = stored(ApprovalRecord, row.body);
 
           if (value.status === "pending" && value.expiresAt <= Date.now()) {
             value.status = "expired";

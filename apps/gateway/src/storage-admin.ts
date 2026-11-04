@@ -1,8 +1,10 @@
+import * as Context from "effect/Context";
+import * as Layer from "effect/Layer";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Effect from "effect/Effect";
 import { seal } from "./secrets.ts";
 
-export const makeStorageAdmin = (
+const makeStorageAdmin = (
   state: Effect.Success<typeof Cloudflare.DurableObjectState>,
   kek: string,
   tables: readonly string[],
@@ -141,3 +143,18 @@ export const makeStorageAdmin = (
       }),
   };
 };
+
+export class StorageAdmin extends Context.Service<
+  StorageAdmin,
+  ReturnType<typeof makeStorageAdmin>
+>()("@kitties/gateway/StorageAdmin") {
+  static readonly layer = (tables: readonly string[], kek: string) =>
+    Layer.effect(
+      StorageAdmin,
+      Effect.gen(function* () {
+        const state = yield* Cloudflare.DurableObjectState;
+
+        return makeStorageAdmin(state, kek, tables);
+      }),
+    );
+}

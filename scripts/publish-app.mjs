@@ -108,7 +108,6 @@ for (const { name, id, settings, bundle, assets } of prepared) {
     }),
     keep_bindings: ["secret_text"],
     keep_assets: !assets,
-    ...(assets ? { assets: { jwt: assetJwt, config: { run_worker_first: true, not_found_handling: "none", ...(assets._headers ? { _headers: assets._headers } : {}), ...(assets._redirects ? { _redirects: assets._redirects } : {}) } } } : {}),
     limits: settings.limits,
     observability: settings.observability,
     tags: settings.tags,
@@ -116,6 +115,15 @@ for (const { name, id, settings, bundle, assets } of prepared) {
     placement: settings.placement,
     tail_consumers: settings.tail_consumers,
   };
+
+  if (assets) {
+    const config = { run_worker_first: true, not_found_handling: "none" };
+
+    if (assets._headers) config._headers = assets._headers;
+
+    if (assets._redirects) config._redirects = assets._redirects;
+    metadata.assets = { jwt: assetJwt, config };
+  }
 
   const form = new FormData();
   form.set("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));

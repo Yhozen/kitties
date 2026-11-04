@@ -1,4 +1,16 @@
-import { makeDesktopFiles } from "./desktop-files.ts";
+import {
+  stored,
+  ProviderRecord,
+  ConnectionRecord,
+  KittyRecord,
+  ChatRecord,
+  ApprovalRecord,
+  ExecutionRecord,
+  StatusRecord,
+} from "./stored-records.ts";
+import * as Context from "effect/Context";
+import * as Layer from "effect/Layer";
+import { DesktopFiles } from "./desktop-files.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Workflows from "alchemy/Workflows";
 import * as Effect from "effect/Effect";
@@ -16,10 +28,9 @@ import {
   type KittyProfile,
   type ChatProfile,
   type Connection,
-  type ApprovalRecord,
 } from "./entities.ts";
 import { ComputerOp } from "./computer-definition.ts";
-import { makeComputerResume } from "./computer-resume.ts";
+import { ComputerResume } from "./computer-resume.ts";
 import { Turn } from "./turn-definition.ts";
 import { DesktopAttempt } from "./desktop-definition.ts";
 import { Approval, ApprovalDecision } from "./approval-definition.ts";
@@ -30,16 +41,16 @@ import { allowedFetch } from "./outbound.ts";
 import { publicHttps } from "./outbound.ts";
 import { discoverTools } from "./tools.ts";
 import { readBody } from "./request.ts";
-import { makeOwnerData } from "./owner-data.ts";
-import { makeWorkspaceData } from "./workspace-data.ts";
-import { makeAutonomy } from "./autonomy.ts";
+import { OwnerData } from "./owner-data.ts";
+import { WorkspaceData } from "./workspace-data.ts";
+import { Autonomy } from "./autonomy.ts";
 import { nativeBase } from "./native-tools.ts";
-import { makeRecovery } from "./recovery.ts";
-import { makeChatgpt } from "./chatgpt.ts";
-import { makeOAuth } from "./oauth.ts";
-import { makeNotifications } from "./notifications.ts";
+import { Recovery } from "./recovery.ts";
+import { Chatgpt } from "./chatgpt.ts";
+import { OAuth } from "./oauth.ts";
+import { Notifications } from "./notifications.ts";
 
-const json = (body: unknown, status = 200) =>
+const json = <Value>(body: Value, status = 200) =>
   HttpServerResponse.fromWeb(
     Response.json(body, { status, headers: { "Cache-Control": "no-store" } }),
   );
@@ -50,26 +61,27 @@ const viewProvider = (provider: Provider) => ({
   hasKey: !!provider.secret,
 });
 
-export const makeApplication = Effect.gen(function* () {
+const makeApplication = Effect.gen(function* () {
   const homes = yield* HomeDO,
     kitties = yield* KittyDO,
     chats = yield* ChatDO;
 
   const computers = yield* Workflows.RunWorkflow(ComputerOp);
-  const resumeComputer = yield* makeComputerResume;
+  const resumeComputer = yield* ComputerResume;
   const turns = yield* Workflows.RunWorkflow(Turn);
   const desktops = yield* Workflows.RunWorkflow(DesktopAttempt);
   const approvals = yield* Workflows.RunWorkflow(Approval);
   const engine = yield* WorkflowEngine.WorkflowEngine;
-  const workspaceData = yield* makeWorkspaceData;
-  const ownerData = yield* makeOwnerData;
-  const desktopFiles = yield* makeDesktopFiles;
-  const autonomy = yield* makeAutonomy;
-  const notifications = yield* makeNotifications;
-  const oauth = yield* makeOAuth;
-  const chatgpt = yield* makeChatgpt;
-  const recovery = yield* makeRecovery;
+  const workspaceData = yield* WorkspaceData;
+  const ownerData = yield* OwnerData;
+  const desktopFiles = yield* DesktopFiles;
+  const autonomy = yield* Autonomy;
+  const notifications = yield* Notifications;
+  const oauth = yield* OAuth;
+  const chatgpt = yield* Chatgpt;
+  const recovery = yield* Recovery;
 
+  // SAFETY: Gateway deployment declares these named bindings in worker.ts; Cloudflare injects their declared values into every bound actor.
   const env = (yield* Cloudflare.WorkerEnvironment) as {
     KITTIES_KEK: string;
     STAGE: string;
@@ -78,10 +90,10 @@ export const makeApplication = Effect.gen(function* () {
 
   const home = () => homes.getByName("owner", { locationHint: "weur" });
 
-  const list = <A>(kind: string) =>
+  const list = <S extends Schema.ConstraintDecoder<unknown>>(kind: string, schema: S) =>
     home()
       .list(kind)
-      .pipe(Effect.map((rows) => rows.map((row) => JSON.parse(row.body) as A)));
+      .pipe(Effect.map((rows) => rows.map((row) => stored(schema, row.body))));
 
   return (request: Request) =>
     Effect.gen(function* () {
@@ -159,10 +171,10 @@ export const makeApplication = Effect.gen(function* () {
 
             if (!stuck) return json({ code: "NOTHING_TO_REPAIR", params: {} }, 409);
             const saved = yield* home().read("computer-run", stuck.id);
-            const runId = saved ? (JSON.parse(saved) as { executionId: string }).executionId : null;
+            const runId = saved ? stored(ExecutionRecord, saved).executionId : null;
             const health = runId ? yield* home().read("run-health", runId) : null;
 
-            if (!health || (JSON.parse(health) as { status?: string }).status !== "suspended")
+            if (!health || stored(StatusRecord, health).status !== "suspended")
               return json({ code: "RUN_NOT_SUSPENDED", params: {} }, 409);
             yield* kitty
               .abandonComputer(stuck.id)
@@ -186,7 +198,10 @@ export const makeApplication = Effect.gen(function* () {
             return json({ executionId: run.executionId, replaced: stuck.id }, 202);
           }
 
-          const kind = computerRoute[2] as "start" | "sleep" | "restore" | "delete" | "upgrade";
+          const kind = Schema.decodeUnknownSync(ComputerOp.payloadSchema.fields.kind)(
+            computerRoute[2],
+          );
+
           // Claim synchronously: concurrent owner/idle requests must report busy
           // before a workflow journals a terminal begin failure.
           yield* kitty
@@ -226,7 +241,7 @@ export const makeApplication = Effect.gen(function* () {
 
       if (path === "/v1/connections" && method === "GET")
         return json(
-          (yield* list<Connection>("connection")).map(({ secret, ...value }) => ({
+          (yield* list("connection", ConnectionRecord)).map(({ secret, ...value }) => ({
             ...value,
             hasToken: !!secret,
           })),
@@ -264,17 +279,19 @@ export const makeApplication = Effect.gen(function* () {
                 catch: () => "KEY_UNAVAILABLE",
               })
             : saved
-              ? (JSON.parse(saved) as Connection).secret
+              ? stored(ConnectionRecord, saved).secret
               : undefined;
 
           if (saved) {
-            const old = JSON.parse(saved) as Connection;
+            const old = stored(ConnectionRecord, saved);
 
             if (old.url !== config.url || old.kind !== config.kind || token)
               yield* home().oauthDisconnect(id);
           }
 
-          const connection: Connection = { ...config, id, ...(secret ? { secret } : {}) };
+          const connection: Connection = { ...config, id };
+
+          if (secret) connection.secret = secret;
           yield* home().write("connection", id, JSON.stringify(connection));
 
           return json({ ...config, id, hasToken: !!secret });
@@ -289,7 +306,7 @@ export const makeApplication = Effect.gen(function* () {
 
         if (method === "POST" && connectionRoute[2] === "test") {
           if (!saved) return json({ code: "NOT_FOUND", params: {} }, 404);
-          const connection = JSON.parse(saved) as Connection;
+          const connection = stored(ConnectionRecord, saved);
           const oauthStatus = yield* home().oauthStatus(id);
 
           const token =
@@ -307,7 +324,7 @@ export const makeApplication = Effect.gen(function* () {
       }
 
       if (path === "/v1/approvals" && method === "GET")
-        return json(yield* list<ApprovalRecord>("approval"));
+        return json(yield* list("approval", ApprovalRecord));
       const approvalRoute = path.match(/^\/v1\/approvals\/([^/]+)\/decision$/);
 
       if (approvalRoute && method === "POST") {
@@ -326,7 +343,8 @@ export const makeApplication = Effect.gen(function* () {
         return json({ ok: true });
       }
 
-      if (path === "/v1/runs" && method === "GET") return json(yield* list("run-health"));
+      if (path === "/v1/runs" && method === "GET")
+        return json(yield* list("run-health", Schema.Json));
       const runStatus = path.match(/^\/v1\/runs\/([a-f0-9]{32})$/);
 
       if (runStatus && method === "GET") return json(yield* turns.get(runStatus[1]!).status);
@@ -336,13 +354,13 @@ export const makeApplication = Effect.gen(function* () {
         const saved = yield* home().read("approval", decodeURIComponent(approvalStatus[1]!));
 
         if (!saved) return json({ code: "NOT_FOUND", params: {} }, 404);
-        const record = JSON.parse(saved) as ApprovalRecord;
+        const record = stored(ApprovalRecord, saved);
 
         return json({ ...record, workflow: yield* approvals.get(record.executionId).status });
       }
 
       if (path === "/v1/providers" && method === "GET")
-        return json((yield* list<Provider>("provider")).map(viewProvider));
+        return json((yield* list("provider", ProviderRecord)).map(viewProvider));
       const providerRoute = path.match(/^\/v1\/providers\/([a-zA-Z0-9_-]{1,128})(?:\/(test))?$/);
 
       if (providerRoute) {
@@ -355,7 +373,7 @@ export const makeApplication = Effect.gen(function* () {
           if (body.kind === "chatgpt") return json({ code: "FEATURE_DISABLED", params: {} }, 404);
           yield* Effect.try({ try: () => providerBaseUrl(body), catch: () => "HOST_DENIED" });
           const { apiKey, ...config } = body;
-          const old = saved ? (JSON.parse(saved) as Provider) : null;
+          const old = saved ? stored(ProviderRecord, saved) : null;
 
           const secret = apiKey
             ? yield* Effect.tryPromise({
@@ -364,7 +382,9 @@ export const makeApplication = Effect.gen(function* () {
               })
             : old?.secret;
 
-          const provider: Provider = { ...config, id, ...(secret ? { secret } : {}) };
+          const provider: Provider = { ...config, id };
+
+          if (secret) provider.secret = secret;
           yield* home().write("provider", id, JSON.stringify(provider));
 
           return json(viewProvider(provider));
@@ -378,7 +398,7 @@ export const makeApplication = Effect.gen(function* () {
 
         if (method === "POST" && providerRoute[2] === "test") {
           if (!saved) return json({ code: "NOT_FOUND", params: {} }, 404);
-          const provider = JSON.parse(saved) as Provider;
+          const provider = stored(ProviderRecord, saved);
 
           if (provider.kind === "chatgpt")
             return json({ code: "FEATURE_DISABLED", params: {} }, 404);
@@ -407,8 +427,17 @@ export const makeApplication = Effect.gen(function* () {
             );
 
           const data = yield* Effect.tryPromise({
-            try: () =>
-              response.json() as Promise<{ data?: { id: string }[]; models?: { name: string }[] }>,
+            try: async () =>
+              Schema.decodeUnknownSync(
+                Schema.Struct({
+                  data: Schema.optional(
+                    Schema.NullOr(Schema.Array(Schema.Struct({ id: Schema.String }))),
+                  ),
+                  models: Schema.optional(
+                    Schema.NullOr(Schema.Array(Schema.Struct({ name: Schema.String }))),
+                  ),
+                }),
+              )(await response.json()),
             catch: () => "PROVIDER_UNAVAILABLE",
           });
 
@@ -421,7 +450,7 @@ export const makeApplication = Effect.gen(function* () {
       }
 
       if (path === "/v1/kitties" && method === "GET") {
-        const profiles = yield* list<KittyProfile>("kitty");
+        const profiles = yield* list("kitty", KittyRecord);
 
         return json(
           yield* Effect.forEach(
@@ -461,7 +490,7 @@ export const makeApplication = Effect.gen(function* () {
 
         if (method === "PUT") {
           const body = yield* readBody(request, KittyInput),
-            old = JSON.parse(saved) as KittyProfile;
+            old = stored(KittyRecord, saved);
 
           const kitty = { ...body, id, createdAt: old.createdAt };
           yield* home().write("kitty", id, JSON.stringify(kitty));
@@ -482,7 +511,7 @@ export const makeApplication = Effect.gen(function* () {
         }
       }
 
-      if (path === "/v1/chats" && method === "GET") return json(yield* list<ChatProfile>("chat"));
+      if (path === "/v1/chats" && method === "GET") return json(yield* list("chat", ChatRecord));
 
       if (path === "/v1/chats" && method === "POST") {
         const body = yield* readBody(request, ChatInput);
@@ -506,7 +535,7 @@ export const makeApplication = Effect.gen(function* () {
 
         if (!saved) return json({ code: "NOT_FOUND", params: {} }, 404);
 
-        const profile = JSON.parse(saved) as ChatProfile,
+        const profile = stored(ChatRecord, saved),
           chat = chats.getByName(id, { locationHint: "weur" });
 
         if (method === "PUT" && !chatRoute[2]) {
@@ -577,12 +606,15 @@ export const makeApplication = Effect.gen(function* () {
             yield* chat.finish(body.messageId, "cancelled");
 
             for (const entry of yield* home().list("desktop-help")) {
-              const help = JSON.parse(entry.body) as {
-                chatId: string;
-                messageId: string;
-                executionId: string;
-                status: string;
-              };
+              const help = stored(
+                Schema.Struct({
+                  chatId: Schema.String,
+                  messageId: Schema.String,
+                  executionId: Schema.String,
+                  status: Schema.String,
+                }),
+                entry.body,
+              );
 
               if (
                 help.chatId !== id ||
@@ -598,7 +630,7 @@ export const makeApplication = Effect.gen(function* () {
               yield* desktops.get(help.executionId).interrupt;
             }
 
-            for (const record of yield* list<ApprovalRecord>("approval")) {
+            for (const record of yield* list("approval", ApprovalRecord)) {
               if (
                 record.messageId !== body.messageId ||
                 record.chatId !== id ||
@@ -615,14 +647,16 @@ export const makeApplication = Effect.gen(function* () {
 
             const cancelled = new Set([`${id}:${body.messageId}`]);
 
-            const children = (yield* home().list("delegation-child")).map(
-              (child) =>
-                JSON.parse(child.body) as {
-                  chatId: string;
-                  messageId: string;
-                  parentChatId: string;
-                  parentMessageId: string;
-                },
+            const children = (yield* home().list("delegation-child")).map((child) =>
+              stored(
+                Schema.Struct({
+                  chatId: Schema.String,
+                  messageId: Schema.String,
+                  parentChatId: Schema.String,
+                  parentMessageId: Schema.String,
+                }),
+                child.body,
+              ),
             );
 
             for (let depth = 0; depth < 2; depth++)
@@ -657,10 +691,17 @@ export const makeApplication = Effect.gen(function* () {
       Effect.catch((error) =>
         Effect.succeed(
           json(
-            { code: typeof error === "string" ? error : "UNAVAILABLE", params: {} },
-            typeof error === "string" ? 400 : 503,
+            { code: Schema.is(Schema.String)(error) ? error : "UNAVAILABLE", params: {} },
+            Schema.is(Schema.String)(error) ? 400 : 503,
           ),
         ),
       ),
     );
 });
+
+export class Application extends Context.Service<
+  Application,
+  Effect.Success<typeof makeApplication>
+>()("@kitties/gateway/Application") {
+  static readonly layer = Layer.effect(Application, makeApplication);
+}

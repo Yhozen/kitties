@@ -10,9 +10,7 @@ import { oauthOrigin } from "./oauth.ts";
 const binding = Effect.gen(function* () {
   if (!globalThis.__ALCHEMY_RUNTIME__) return yield* Cloudflare.Workers.bindWorker(Gateway);
 
-  return Cloudflare.Workers.makeRpcStub<Gateway>(
-    ((yield* Cloudflare.WorkerEnvironment) as Record<string, unknown>).Gateway,
-  );
+  return Cloudflare.Workers.makeRpcStub<Gateway>((yield* Cloudflare.WorkerEnvironment).Gateway);
 });
 
 export default class OAuthIngress extends Cloudflare.Worker<OAuthIngress>()(
@@ -35,7 +33,11 @@ export default class OAuthIngress extends Cloudflare.Worker<OAuthIngress>()(
   }),
   Effect.gen(function* () {
     const gateway = yield* binding;
-    const stage = ((yield* Cloudflare.WorkerEnvironment) as { STAGE: string }).STAGE;
+
+    const { STAGE: stage } = Schema.decodeUnknownSync(Schema.Struct({ STAGE: Schema.String }))(
+      yield* Cloudflare.WorkerEnvironment,
+    );
+
     const origin = oauthOrigin(stage);
 
     return {

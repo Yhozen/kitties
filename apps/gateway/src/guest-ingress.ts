@@ -1,11 +1,13 @@
 import type * as cf from "@cloudflare/workers-types";
 import { releaseSignature } from "./releases.ts";
 
-const native = globalThis as unknown as {
+// SAFETY: This entrypoint runs in Cloudflare Workers, whose global constructors
+// implement the Workers Request, Response (including webSocket), and Headers APIs.
+const native = globalThis as {
   Request: typeof cf.Request;
   Response: typeof cf.Response;
   Headers: typeof cf.Headers;
-};
+} & typeof globalThis;
 
 interface Env {
   KITTIES: cf.DurableObjectNamespace;

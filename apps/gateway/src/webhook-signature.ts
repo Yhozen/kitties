@@ -1,3 +1,7 @@
+import * as Schema from "effect/Schema";
+
+const StripeDelivery = Schema.Struct({ id: Schema.optional(Schema.String) });
+
 export async function verifyWebhook(
   kind: "github" | "stripe" | "generic",
   secret: string,
@@ -24,7 +28,7 @@ export async function verifyWebhook(
         .map((value) => value.slice(3));
 
       try {
-        delivery = JSON.parse(body).id ?? "";
+        delivery = Schema.decodeUnknownSync(StripeDelivery)(JSON.parse(body)).id ?? "";
       } catch {
         return null;
       }
@@ -39,7 +43,7 @@ export async function verifyWebhook(
     signed = `${timestamp}.${body}`;
   }
 
-  if (typeof delivery !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(delivery)) return null;
+  if (!/^[a-zA-Z0-9_-]{1,128}$/.test(delivery)) return null;
 
   const encoder = new TextEncoder(),
     key = await crypto.subtle.importKey(

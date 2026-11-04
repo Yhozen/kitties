@@ -1,8 +1,9 @@
+import * as Schema from "effect/Schema";
 import { Database } from "bun:sqlite";
 import { mkdir, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { startVideo } from "./video.ts";
-import type { PerceptionResult } from "./perception-session.ts";
+import { PerceptionResult } from "./perception-session.ts";
 
 class PerceptionFailure extends Error {
   constructor(readonly outcome: PerceptionResult) {
@@ -10,25 +11,64 @@ class PerceptionFailure extends Error {
   }
 }
 
-interface Config {
-  url: string;
-  token: string;
-  kittyId: string;
-  remoteId: string;
-  generation: number;
-  tokenVersion: number;
-  database: string;
-  display?: string;
-}
+const Config = Schema.Struct({
+  url: Schema.String,
+  token: Schema.String,
+  kittyId: Schema.String,
+  remoteId: Schema.String,
+  generation: Schema.Number,
+  tokenVersion: Schema.Number,
+  database: Schema.String,
+  display: Schema.optional(Schema.String),
+});
 
-interface Action {
-  type: "action";
+const Action = Schema.Struct({
+  type: Schema.Literal("action"),
+  intentId: Schema.String,
+  generation: Schema.Number,
+  epoch: Schema.Number,
+  deadline: Schema.Number,
+  action: Schema.String,
+  args: Schema.JsonObject,
+});
+
+type Action = typeof Action.Type;
+
+const Welcome = Schema.Struct({
+  type: Schema.Literal("welcome"),
+  epoch: Schema.Number,
+  viewers: Schema.optional(Schema.Number),
+  videoViewers: Schema.optional(Schema.Number),
+  reconcile: Schema.optional(Schema.Array(Schema.String)),
+});
+
+const Viewers = Schema.Struct({
+  type: Schema.Literal("viewers"),
+  count: Schema.Number,
+  videoCount: Schema.optional(Schema.Number),
+});
+
+const parseEnvelope = Schema.decodeUnknownSync(Schema.Struct({ type: Schema.String }));
+const parseWelcome = Schema.decodeUnknownSync(Welcome);
+const parseViewers = Schema.decodeUnknownSync(Viewers);
+const parseAction = Schema.decodeUnknownSync(Action);
+const parseSession = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.String));
+
+const parseOutcome = Schema.decodeUnknownSync(
+  PerceptionResult.mapFields((fields) => ({
+    ...fields,
+    result: Schema.String.check(Schema.isMaxLength(65536)),
+  })),
+);
+
+interface ReceiptAck {
+  type: "ack";
   intentId: string;
   generation: number;
   epoch: number;
-  deadline: number;
-  action: string;
-  args: Record<string, unknown>;
+  status: string;
+  result?: string;
+  timings?: { receivedAt: number; startedAt: number; completedAt: number };
 }
 
 interface Receipt {
@@ -40,11 +80,13 @@ interface Receipt {
   body: string;
 }
 
-const config: Config = JSON.parse(
-  await readFile(
-    process.env.KITTYD_CONFIG ??
-      `${process.env.CREDENTIALS_DIRECTORY ?? "/etc/kittyd"}/config.json`,
-    "utf8",
+const config = Schema.decodeUnknownSync(Config)(
+  JSON.parse(
+    await readFile(
+      process.env.KITTYD_CONFIG ??
+        `${process.env.CREDENTIALS_DIRECTORY ?? "/etc/kittyd"}/config.json`,
+      "utf8",
+    ),
   ),
 );
 
@@ -60,7 +102,7 @@ db.exec(
 );
 
 const session = await readFile("/tmp/kitties-session/env.json", "utf8")
-  .then((value) => JSON.parse(value) as Record<string, string>)
+  .then((value) => parseSession(JSON.parse(value)))
   .catch(() => ({}));
 
 const env = { ...process.env, ...session, DISPLAY: config.display ?? ":99" };
@@ -118,22 +160,20 @@ const headers = () => ({
   "X-Kitty-Epoch": String(epoch),
 });
 
-const send = (body: unknown) => {
+const send = (body: ReceiptAck | { type: "reconcile"; receipts: ReceiptAck[] }) => {
   if (active?.readyState === WebSocket.OPEN) active.send(JSON.stringify(body));
 };
 
-const boundedNumber = (value: unknown, min: number, max: number) => {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < min || value > max)
-    throw Error("INVALID_ARGUMENT");
+const boundedNumber = (value: Schema.Json | undefined, min: number, max: number) => {
+  const number = Schema.decodeUnknownSync(
+    Schema.Finite.check(Schema.isBetween({ minimum: min, maximum: max })),
+  )(value);
 
-  return String(Math.round(value));
+  return String(Math.round(number));
 };
 
-const boundedText = (value: unknown, limit = 65536) => {
-  if (typeof value !== "string" || value.length > limit) throw Error("INVALID_ARGUMENT");
-
-  return value;
-};
+const boundedText = (value: Schema.Json | undefined, limit = 65536) =>
+  Schema.decodeUnknownSync(Schema.String.check(Schema.isMaxLength(limit)))(value);
 
 async function run(command: string[], input?: string) {
   const child = Bun.spawn(command, {
@@ -280,15 +320,7 @@ async function execute(action: Action): Promise<string> {
           });
 
         if (!response.ok) throw Error("PERCEPTION_UNAVAILABLE");
-        const outcome = (await response.json()) as PerceptionResult;
-
-        if (
-          !outcome ||
-          !["completed", "failed", "unknown"].includes(outcome.status) ||
-          typeof outcome.result !== "string" ||
-          outcome.result.length > 65536
-        )
-          throw Error("PERCEPTION_UNAVAILABLE");
+        const outcome = parseOutcome(await response.json());
 
         if (outcome.status !== "completed") throw new PerceptionFailure(outcome);
 
@@ -427,7 +459,7 @@ async function startCapture() {
     expected = 0;
 
   try {
-    const reader = (child.stdout as ReadableStream<Uint8Array>).getReader();
+    const reader = child.stdout.getReader();
 
     while (capture === child) {
       const chunk = await reader.read();
@@ -516,15 +548,17 @@ function connect() {
   socket.onmessage = (event) => {
     try {
       if (event.data === "pong") return;
-      const body = JSON.parse(String(event.data));
+      const payload = JSON.parse(String(event.data));
+      const envelope = parseEnvelope(payload);
 
-      if (body.type === "welcome") {
+      if (envelope.type === "welcome") {
+        const body = parseWelcome(payload);
         epoch = body.epoch;
         console.info("Guest connected", { generation: config.generation, epoch });
         viewers = body.viewers ?? 0;
         videoDemand(body.videoViewers ?? 0);
 
-        const receipts = (body.reconcile ?? []).map((id: string) => {
+        const receipts = (body.reconcile ?? []).map((id): ReceiptAck => {
           const row = db
             .query<Receipt, [string]>(
               "SELECT * FROM intents WHERE id=? AND generation=" + config.generation,
@@ -548,7 +582,8 @@ function connect() {
         return;
       }
 
-      if (body.type === "viewers") {
+      if (envelope.type === "viewers") {
+        const body = parseViewers(payload);
         viewers = body.count;
         videoDemand(body.videoCount ?? 0);
 
@@ -560,7 +595,8 @@ function connect() {
         return;
       }
 
-      if (body.type === "action") {
+      if (envelope.type === "action") {
+        const body = parseAction(payload);
         const receivedAt = Date.now();
         queue = queue
           .then(() => dispatch(body, socket, receivedAt))

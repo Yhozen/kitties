@@ -1,3 +1,19 @@
+import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
+import * as Option from "effect/Option";
+
+const NotificationText = Schema.optional(Schema.String).pipe(
+  Schema.catchDecoding(() => Effect.succeed(Option.none())),
+);
+
+const parsePushPayload = Schema.decodeUnknownSync(
+  Schema.Struct({
+    url: NotificationText,
+    title: NotificationText,
+    tag: NotificationText,
+  }),
+);
+
 const CACHE = "kitties-shell-v2";
 
 self.addEventListener("install", (event) => {
@@ -58,23 +74,20 @@ self.addEventListener("push", (event) => {
       let data = {};
 
       try {
-        data = event.data?.json() ?? {};
+        data = parsePushPayload(event.data?.json() ?? {});
       } catch {}
 
       const url =
-        typeof data.url === "string" && data.url.startsWith("/") && !data.url.startsWith("//")
+        data.url !== undefined && data.url.startsWith("/") && !data.url.startsWith("//")
           ? data.url
           : "/";
 
-      await self.registration.showNotification(
-        typeof data.title === "string" ? data.title : "Puppies",
-        {
-          icon: "/icon-192.png",
-          badge: "/icon-192.png",
-          tag: typeof data.tag === "string" ? data.tag : "kitties",
-          data: { url },
-        },
-      );
+      await self.registration.showNotification(data.title ?? "Puppies", {
+        icon: "/icon-192.png",
+        badge: "/icon-192.png",
+        tag: data.tag ?? "kitties",
+        data: { url },
+      });
     })(),
   );
 });

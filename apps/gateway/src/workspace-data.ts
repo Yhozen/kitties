@@ -1,3 +1,6 @@
+import { stored } from "./stored-records.ts";
+import * as Context from "effect/Context";
+import * as Layer from "effect/Layer";
 import * as Effect from "effect/Effect";
 import * as Workflows from "alchemy/Workflows";
 import * as Schema from "effect/Schema";
@@ -8,12 +11,12 @@ import { MemoryNoteInput, MemoryProfileInput, SkillInput, FeedbackInput } from "
 import { readBody } from "./request.ts";
 import { validScope } from "./memory.ts";
 
-const json = (value: unknown, status = 200) =>
+const json = <Value>(value: Value, status = 200) =>
   HttpServerResponse.fromWeb(
     Response.json(value, { status, headers: { "Cache-Control": "no-store" } }),
   );
 
-export const makeWorkspaceData = Effect.gen(function* () {
+const makeWorkspaceData = Effect.gen(function* () {
   const homes = yield* HomeDO,
     chats = yield* ChatDO;
 
@@ -33,7 +36,9 @@ export const makeWorkspaceData = Effect.gen(function* () {
 
         return json(
           (yield* home.list("kitty-journal"))
-            .map((row) => JSON.parse(row.body) as { kittyId: string; at: number })
+            .map((row) =>
+              stored(Schema.Struct({ kittyId: Schema.String, at: Schema.Number }), row.body),
+            )
             .filter((row) => row.kittyId === journalRoute[1])
             .sort((a, b) => a.at - b.at)
             .slice(-200),
@@ -121,7 +126,7 @@ export const makeWorkspaceData = Effect.gen(function* () {
           .run(feedbackRoute[2]!);
 
         if (!row) return json({ code: "NOT_FOUND", params: {} }, 404);
-        const payload = JSON.parse(row.payload) as { kittyId: string };
+        const payload = stored(Schema.Struct({ kittyId: Schema.String }), row.payload);
 
         return json(
           yield* home.mutateMemory(
@@ -175,3 +180,10 @@ export const makeWorkspaceData = Effect.gen(function* () {
       return undefined;
     });
 });
+
+export class WorkspaceData extends Context.Service<
+  WorkspaceData,
+  Effect.Success<typeof makeWorkspaceData>
+>()("@kitties/gateway/WorkspaceData") {
+  static readonly layer = Layer.effect(WorkspaceData, makeWorkspaceData);
+}

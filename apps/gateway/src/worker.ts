@@ -1,6 +1,9 @@
+import { RecoveryGuard } from "./recovery-guard.ts";
+import { GatewayServices } from "./gateway-services.ts";
+import * as Match from "effect/Match";
 import type { ChatgptCallback } from "./chatgpt-core.ts";
 import { verifiedAccessIdentity } from "./access-jwt.ts";
-import { makeRecovery } from "./recovery.ts";
+import { Recovery } from "./recovery.ts";
 import { PurgeLive } from "./workflows/purge.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import { Stage } from "alchemy/Stage";
@@ -22,14 +25,14 @@ import { TurnLive } from "./workflows/turn.ts";
 import { DistillLive } from "./workflows/distill.ts";
 import { DelegationLive } from "./workflows/delegation.ts";
 import { GoalSlotLive } from "./workflows/goal.ts";
-import { makeAutonomy } from "./autonomy.ts";
-import { makeWebhooks } from "./webhooks.ts";
+import { Autonomy } from "./autonomy.ts";
+import { Webhooks } from "./webhooks.ts";
 import { NotifyLive } from "./workflows/notify.ts";
-import { makeNotifications } from "./notifications.ts";
+import { Notifications } from "./notifications.ts";
 import { ApprovalLive } from "./workflows/approval.ts";
-import { makeLifecycle } from "./lifecycle.ts";
-import { makeOAuth } from "./oauth.ts";
-import { makeApplication } from "./application.ts";
+import { Lifecycle } from "./lifecycle.ts";
+import { OAuth } from "./oauth.ts";
+import { Application } from "./application.ts";
 import { ownerError } from "./security.ts";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 
@@ -84,11 +87,17 @@ const props = Effect.gen(function* () {
       ),
       ACCESS_AUDIENCE: yield* Config.String("KITTIES_ACCESS_AUDIENCE").pipe(
         Config.withDefault(
-          stage === "next"
-            ? "6d0289542bd5627c4611d3191d290eb709f6dc21567ce86beede78b8d5e8ff10"
-            : stage === "prod"
-              ? "6c23180dee19ed077a61fdc54b8021bb5437c8cee924b3d72513f745c2fdb679"
-              : "",
+          Match.value(stage).pipe(
+            Match.when(
+              "next",
+              () => "6d0289542bd5627c4611d3191d290eb709f6dc21567ce86beede78b8d5e8ff10",
+            ),
+            Match.when(
+              "prod",
+              () => "6c23180dee19ed077a61fdc54b8021bb5437c8cee924b3d72513f745c2fdb679",
+            ),
+            Match.orElse(() => ""),
+          ),
         ),
       ),
       CHATGPT_ENABLED: yield* Config.String("KITTIES_CHATGPT_ENABLED").pipe(
@@ -117,14 +126,14 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
   Effect.gen(function* () {
     const homes = yield* HomeDO;
     const kitties = yield* KittyDO;
-    const application = yield* makeApplication;
-    const oauth = yield* makeOAuth;
-    const lifecycle = yield* makeLifecycle;
+    const application = yield* Application;
+    const oauth = yield* OAuth;
+    const lifecycle = yield* Lifecycle;
 
-    const autonomy = yield* makeAutonomy;
-    const receiveWebhook = yield* makeWebhooks;
-    const notifications = yield* makeNotifications;
-    const recovery = yield* makeRecovery;
+    const autonomy = yield* Autonomy;
+    const receiveWebhook = yield* Webhooks;
+    const notifications = yield* Notifications;
+    const recovery = yield* Recovery;
     yield* Cloudflare.Workers.cron("* * * * *", () =>
       lifecycle.pipe(
         Effect.andThen(autonomy.tick),
@@ -133,6 +142,7 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
       ),
     );
 
+    // SAFETY: Gateway deployment declares these named bindings in worker.ts; Cloudflare injects their declared values into every bound actor.
     const env = (yield* Cloudflare.WorkerEnvironment) as {
       PUBLIC_URL: string;
       ACCESS_EMAIL: string;
@@ -143,7 +153,7 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
       ASSETS: { fetch(request: Request): Promise<Response> };
     };
 
-    const json = (body: unknown, status = 200) =>
+    const json = <Value>(body: Value, status = 200) =>
       HttpServerResponse.fromWeb(
         Response.json(body, { status, headers: { "Cache-Control": "no-store" } }),
       );
@@ -230,6 +240,7 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
     Effect.tapCause((cause) =>
       Effect.logError("Gateway initialization failed", Cause.pretty(cause)),
     ),
+    Effect.provide(GatewayServices),
     Effect.provide(Cloudflare.Workers.CronEventSourceLive),
     Effect.provide(
       Layer.mergeAll(
@@ -245,6 +256,7 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
         ComputerOpLive,
         DesktopAttemptLive,
       ).pipe(
+        Layer.provideMerge(RecoveryGuard.layer),
         Layer.provideMerge(ChatDOLive),
         Layer.provideMerge(Cloudflare.Workflows.DurableObjectEngine),
       ),

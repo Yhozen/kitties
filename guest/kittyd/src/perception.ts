@@ -1,13 +1,13 @@
+import * as Schema from "effect/Schema";
 import { chmod, mkdir, readFile, unlink } from "node:fs/promises";
 import { perceptionAction, PerceptionSession } from "./perception-session.ts";
 
 const socket = "/run/kitties-perception/control.sock";
 
 export async function servePerception() {
-  const session = JSON.parse(await readFile("/tmp/kitties-session/env.json", "utf8")) as Record<
-    string,
-    string
-  >;
+  const session = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.String))(
+    JSON.parse(await readFile("/tmp/kitties-session/env.json", "utf8")),
+  );
 
   // AT-SPI authenticates the desktop UID. Neither process has guest credentials.
   const state = "/run/kitties-perception/state";

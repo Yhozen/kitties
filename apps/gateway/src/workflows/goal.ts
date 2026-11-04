@@ -1,4 +1,4 @@
-import { makeRecoveryGuard, guardedActivities } from "../recovery-guard.ts";
+import { RecoveryGuard, guardedActivities } from "../recovery-guard.ts";
 import * as Workflows from "alchemy/Workflows";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -13,7 +13,7 @@ const storage = () => "STORAGE_UNAVAILABLE";
 export const GoalSlotLive = Workflows.layer(
   GoalSlot,
   Effect.gen(function* () {
-    const recovery = yield* makeRecoveryGuard;
+    const recovery = yield* RecoveryGuard;
     const fenced = (id: string) => guardedActivities(recovery(GoalSlot._tag, id));
 
     const homes = yield* HomeDO,
@@ -37,6 +37,7 @@ export const GoalSlotLive = Workflows.layer(
           const saved = yield* home.read("goal", payload.goalId).pipe(Effect.mapError(storage));
 
           if (!saved) return 0;
+          // SAFETY: Autonomy validates GoalInput and persists the typed Goal including revision and slot metadata.
           const goal = JSON.parse(saved) as Goal;
 
           if (!goal.enabled || goal.revision !== payload.revision) return 0;

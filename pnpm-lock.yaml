@@ -193,6 +193,9 @@ importers:
       '@cloudflare/workers-types':
         specifier: 5.20261027.1
         version: 5.20261027.1
+      '@oxlint/plugins':
+        specifier: 1.89.0
+        version: 1.89.0
       '@types/node':
         specifier: 26.6.5
         version: 26.6.5
@@ -287,6 +290,9 @@ importers:
       '@kitties/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      effect:
+        specifier: 4.1.1
+        version: 4.1.1
     devDependencies:
       '@types/bun':
         specifier: 1.4.4

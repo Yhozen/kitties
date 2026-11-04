@@ -18,7 +18,7 @@ export const ChatgptError = Schema.Struct({
   status: Schema.optional(Schema.Number),
   requestId: Schema.optional(Schema.String),
   param: Schema.optional(Schema.String),
-  bodyShape: Schema.optional(Schema.Literals(["structured", "detail", "other"])),
+  ["bodyShape"]: Schema.optional(Schema.Literals(["structured", "detail", "other"])),
 });
 
 export type ChatgptFailure = typeof ChatgptError.Type;

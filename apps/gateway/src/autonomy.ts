@@ -1,25 +1,29 @@
+import { stored } from "./stored-records.ts";
+import * as Context from "effect/Context";
+import * as Layer from "effect/Layer";
 import * as Workflows from "alchemy/Workflows";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import { HomeDO, ChatDO } from "./actors.ts";
-import { GoalInput, HookInput, RuleInput, type Goal } from "./entities.ts";
+import { GoalInput, HookInput, RuleInput, GoalView } from "./entities.ts";
 import { GoalSlot } from "./goal-definition.ts";
 import { nextSlot } from "./schedule.ts";
 import { readBody } from "./request.ts";
 import { seal } from "./secrets.ts";
 
-const json = (value: unknown, status = 200) =>
+const json = <Value>(value: Value, status = 200) =>
   HttpServerResponse.fromWeb(
     Response.json(value, { status, headers: { "Cache-Control": "no-store" } }),
   );
 
-export const makeAutonomy = Effect.gen(function* () {
+const makeAutonomy = Effect.gen(function* () {
   const homes = yield* HomeDO,
     chats = yield* ChatDO,
     slots = yield* Workflows.RunWorkflow(GoalSlot);
 
+  // SAFETY: Gateway deployment declares these named bindings in worker.ts; Cloudflare injects their declared values into every bound actor.
   const env = (yield* Cloudflare.WorkerEnvironment) as { KITTIES_KEK: string };
 
   const tick = Effect.gen(function* () {
@@ -28,7 +32,7 @@ export const makeAutonomy = Effect.gen(function* () {
       yield* home.list("goal"),
       (row) =>
         Effect.gen(function* () {
-          const goal = JSON.parse(row.body) as Goal;
+          const goal = stored(GoalView, row.body);
 
           if (goal.enabled)
             yield* slots.start({
@@ -124,7 +128,7 @@ export const makeAutonomy = Effect.gen(function* () {
             }),
           );
 
-          const goal = JSON.parse(saved) as Goal;
+          const goal = stored(GoalView, saved);
           yield* chats.getByName(goal.chatId, { locationHint: "weur" }).enqueue({
             chatId: goal.chatId,
             messageId: `run-${body.operationId}`,
@@ -192,3 +196,9 @@ export const makeAutonomy = Effect.gen(function* () {
 
   return { route, tick };
 });
+
+export class Autonomy extends Context.Service<Autonomy, Effect.Success<typeof makeAutonomy>>()(
+  "@kitties/gateway/Autonomy",
+) {
+  static readonly layer = Layer.effect(Autonomy, makeAutonomy);
+}

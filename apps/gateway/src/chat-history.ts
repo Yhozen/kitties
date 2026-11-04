@@ -1,6 +1,7 @@
+import { stored } from "./stored-records.ts";
 import type * as Cloudflare from "@alchemy.run/cloudflare";
 import type * as Effect from "effect/Effect";
-import type { Turn } from "./turn-definition.ts";
+import { Turn } from "./turn-definition.ts";
 
 interface MessageRow {
   [key: string]: string | number | null;
@@ -37,12 +38,13 @@ export function readMessagePage(
     messages: rows
       .slice(0, 200)
       .reverse()
-      .map(({ stream_round, stream_attempt, ...row }) => ({
-        ...row,
-        payload: JSON.parse(row.payload) as typeof Turn.payloadSchema.Type,
-        ...(stream_round !== null && stream_attempt !== null
-          ? { revision: { round: stream_round, attempt: stream_attempt } }
-          : {}),
-      })),
+      .map(({ stream_round, stream_attempt, ...row }) => {
+        const message = { ...row, payload: stored(Turn.payloadSchema, row.payload) };
+
+        if (stream_round !== null && stream_attempt !== null)
+          return { ...message, revision: { round: stream_round, attempt: stream_attempt } };
+
+        return message;
+      }),
   };
 }

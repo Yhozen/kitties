@@ -8,7 +8,7 @@ const binding = Effect.gen(function* () {
   if (!globalThis.__ALCHEMY_RUNTIME__) return yield* Cloudflare.Workers.bindWorker(Gateway);
   const env = yield* Cloudflare.WorkerEnvironment;
 
-  return Cloudflare.Workers.makeRpcStub<Gateway>((env as Record<string, unknown>).Gateway);
+  return Cloudflare.Workers.makeRpcStub<Gateway>(env.Gateway);
 });
 
 export default class HookIngress extends Cloudflare.Worker<HookIngress>()(

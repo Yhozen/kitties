@@ -1,11 +1,13 @@
 import { desktopPerceptionPolicy } from "../desktop-tools.ts";
-import { makeRecoveryGuard, guardedActivities } from "../recovery-guard.ts";
+import { RecoveryGuard, guardedActivities } from "../recovery-guard.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Workflows from "alchemy/Workflows";
 import * as Effect from "effect/Effect";
 import * as Cause from "effect/Cause";
 import * as Schedule from "effect/Schedule";
 import * as Ref from "effect/Ref";
+import * as Match from "effect/Match";
+import { receiptResult, failedReceipt } from "../receipt-result.ts";
 import { memoryPrompt, type Memory } from "../memory.ts";
 import * as Schema from "effect/Schema";
 import type * as cf from "@cloudflare/workers-types";
@@ -45,6 +47,7 @@ interface RunConfig {
 const storageError = () => "STORAGE_UNAVAILABLE";
 
 const compactHistory = (body: string) => {
+  // SAFETY: this function receives only history exported by the Effect Chat session below.
   const parsed = JSON.parse(body) as { content?: { role: string; content?: unknown }[] };
 
   if (body.length < 600000 || !Array.isArray(parsed.content)) return body;
@@ -68,13 +71,14 @@ const compactHistory = (body: string) => {
 export const TurnLive = Workflows.layer(
   Turn,
   Effect.gen(function* () {
-    const recovery = yield* makeRecoveryGuard;
+    const recovery = yield* RecoveryGuard;
     const fenced = (id: string) => guardedActivities(recovery(Turn._tag, id));
 
     const homes = yield* HomeDO,
       chats = yield* ChatDO,
       kitties = yield* KittyDO;
 
+    // SAFETY: Gateway declares these bindings in worker.ts and Alchemy supplies them to workflows.
     const env = (yield* Cloudflare.WorkerEnvironment) as {
       KITTIES_KEK: string;
       CHATGPT_ENABLED: string;
@@ -94,6 +98,7 @@ export const TurnLive = Workflows.layer(
 
           if (!saved) return yield* Effect.fail("CONFIG_NOT_FOUND");
 
+          // SAFETY: HomeDO writes turn-config from the same typed round context consumed below.
           return JSON.parse(saved) as RunConfig;
         });
 
@@ -107,7 +112,10 @@ export const TurnLive = Workflows.layer(
           | { body: string; spent: { tokens: number; actions: number }; at: number }
           | undefined;
 
-        const warmTools = new Map<string, { tools: unknown[]; at: number }>();
+        const warmTools = new Map<
+          string,
+          { tools: Effect.Success<ReturnType<typeof discoverTools>>; at: number }
+        >();
 
         const warmContextMs = 15000,
           warmToolsMs = 60000;
@@ -157,6 +165,7 @@ export const TurnLive = Workflows.layer(
               );
 
               const contextLoadedAt = Date.now();
+              // SAFETY: HomeDO.turnContext serializes the kitty/provider/connection context as this record.
               const config = JSON.parse(context.body) as RunConfig;
 
               const limited =
@@ -199,8 +208,7 @@ export const TurnLive = Workflows.layer(
                   Effect.gen(function* () {
                     const cached = warmTools.get(connection.id);
 
-                    if (cached && Date.now() - cached.at < warmToolsMs)
-                      return cached.tools as Effect.Success<ReturnType<typeof discoverTools>>;
+                    if (cached && Date.now() - cached.at < warmToolsMs) return cached.tools;
 
                     const oauthStatus = yield* home
                       .oauthStatus(connection.id)
@@ -282,6 +290,7 @@ export const TurnLive = Workflows.layer(
               let prompt: Prompt.RawInput = payload.text;
 
               if (previousRound) {
+                // SAFETY: saveModelRound persists the typed ModelRound assembled by this workflow.
                 const prior = JSON.parse(previousRound.body) as ModelRound;
                 const parts = [];
                 const images: Prompt.FilePart[] = [];
@@ -294,11 +303,22 @@ export const TurnLive = Workflows.layer(
                       .pipe(Effect.mapError(storageError)));
 
                   if (!result) return yield* Effect.fail("TOOL_RESULT_MISSING");
-                  const value = JSON.parse(result) as { result: unknown; isFailure: boolean };
-                  const screenshot = (value.result as { screenshot?: unknown })?.screenshot;
+
+                  const value = Schema.decodeUnknownSync(
+                    Schema.Struct({
+                      result: Schema.Json,
+                      isFailure: Schema.Boolean,
+                    }),
+                  )(JSON.parse(result));
+
+                  const screenshot = Schema.is(Schema.Struct({ screenshot: Schema.String }))(
+                    value.result,
+                  )
+                    ? value.result.screenshot
+                    : undefined;
 
                   if (
-                    typeof screenshot === "string" &&
+                    screenshot !== undefined &&
                     screenshot.startsWith(`screenshots/${payload.kittyId}/`)
                   ) {
                     const blob = yield* Effect.tryPromise({
@@ -426,6 +446,7 @@ export const TurnLive = Workflows.layer(
             (yield* chat.modelRound(payload.messageId, round).pipe(Effect.mapError(storageError)));
 
           if (!stored) return yield* Effect.fail("ROUND_MISSING");
+          // SAFETY: saveModelRound persists the typed ModelRound assembled by this workflow.
           const result = JSON.parse(stored.body) as ModelRound;
 
           if (result.calls.length === 0) {
@@ -523,27 +544,22 @@ export const TurnLive = Workflows.layer(
                   tool.remoteName,
                 ).pipe(Effect.mapError(() => "UNSUPPORTED_ACTION"));
 
+                const args = yield* Schema.decodeUnknownEffect(Schema.JsonObject)(call.params).pipe(
+                  Effect.mapError(() => "INVALID_ARGUMENTS"),
+                );
+
                 const dispatchStartedAt = Date.now();
 
                 const receipt = yield* kitties
                   .getByName(payload.kittyId, { locationHint: "weur" })
-                  .agentAction(intentId, action, call.params as Record<string, unknown>)
+                  .agentAction(intentId, action, args)
                   .pipe(Effect.mapError(storageError));
 
                 if (["completed", "failed"].includes(receipt.status)) {
-                  let result: unknown = { status: receipt.status };
-
-                  if (receipt.result) {
-                    try {
-                      result = JSON.parse(receipt.result);
-                    } catch {
-                      result = { text: receipt.result, status: receipt.status };
-                    }
-                  }
+                  const result = receiptResult(receipt.result, receipt.status);
 
                   const body = JSON.stringify({
-                    isFailure:
-                      receipt.status !== "completed" || (result as { ok?: boolean })?.ok === false,
+                    isFailure: receipt.status !== "completed" || failedReceipt(result),
                     result,
                     timing: {
                       authorizedAt,
@@ -598,11 +614,11 @@ export const TurnLive = Workflows.layer(
                 const always =
                   (tool.connectionId === "kitty" &&
                     tool.remoteName === "limit" &&
-                    (call.params as { mode?: unknown })?.mode === "none") ||
+                    Schema.is(Schema.Struct({ mode: Schema.Literal("none") }))(call.params)) ||
                   tool.destructive ||
                   tool.remoteName === "type_secret" ||
                   /(?:pay|charge|refund|transfer|delete|publish)/i.test(tool.remoteName) ||
-                  (call.params as { method?: unknown })?.method === "DELETE";
+                  Schema.is(Schema.Struct({ method: Schema.Literal("DELETE") }))(call.params);
 
                 // The cancellation read is independent of authorization: overlap the two RPCs.
                 const [verdict, prefetchedRun] = yield* Effect.all(
@@ -612,11 +628,13 @@ export const TurnLive = Workflows.layer(
                         payload.kittyId,
                         policyKey,
                         always,
-                        tool.connectionId === "kitty"
-                          ? true
-                          : tool.connectionId === "desktop"
-                            ? tool.remoteName !== "type_secret"
-                            : !!connection && !needsApproval(connection, tool, call.params),
+                        Match.value(tool.connectionId).pipe(
+                          Match.when("kitty", () => true),
+                          Match.when("desktop", () => tool.remoteName !== "type_secret"),
+                          Match.orElse(
+                            () => !!connection && !needsApproval(connection, tool, call.params),
+                          ),
+                        ),
                       )
                       .pipe(Effect.mapError(storageError)),
                     tool.connectionId === "desktop"
@@ -714,16 +732,17 @@ export const TurnLive = Workflows.layer(
                   )
                     return "done";
                   const config = yield* getConfig;
-                  let output: unknown;
+                  let output: Schema.Json;
 
                   if (tool.remoteName === "delegate" || tool.remoteName === "give_up") {
                     let tasks: typeof DelegateInput.Type;
 
                     if (tool.remoteName === "give_up") {
-                      const reason = (call.params as { reason?: unknown })?.reason;
-
-                      if (typeof reason !== "string" || reason.length > 1000)
-                        return yield* Effect.fail("INVALID_ARGUMENTS");
+                      const { reason } = yield* Schema.decodeUnknownEffect(
+                        Schema.Struct({
+                          reason: Schema.String.check(Schema.isMaxLength(1000)),
+                        }),
+                      )(call.params).pipe(Effect.mapError(() => "INVALID_ARGUMENTS"));
 
                       if (
                         !config.kitty.backupId ||
@@ -812,7 +831,20 @@ export const TurnLive = Workflows.layer(
 
                     output = {
                       entries: rows
-                        .map((row) => JSON.parse(row.body) as { kittyId: string; at: number })
+                        .map((row) => {
+                          const entry = Schema.decodeUnknownSync(Schema.JsonObject)(
+                            JSON.parse(row.body),
+                          );
+
+                          if (
+                            !Schema.is(
+                              Schema.Struct({ kittyId: Schema.String, at: Schema.Number }),
+                            )(entry)
+                          )
+                            throw Error("INVALID_JOURNAL_ENTRY");
+
+                          return entry;
+                        })
                         .filter((row) => row.kittyId === payload.kittyId)
                         .sort((a, b) => a.at - b.at)
                         .slice(-50),
@@ -1045,6 +1077,7 @@ export const TurnLive = Workflows.layer(
                     .read("turn-config", executionId)
                     .pipe(Effect.mapError(storageError));
 
+                  // SAFETY: HomeDO writes turn-config from its typed round context for this execution.
                   const config = raw ? (JSON.parse(raw) as RunConfig) : undefined;
                   const backup = config?.kitty.backupId;
 
@@ -1101,6 +1134,7 @@ export const TurnLive = Workflows.layer(
                         .pipe(Effect.mapError(storageError))
                     : null;
 
+                  // SAFETY: Delegation saves this result after collecting typed child status/answer records.
                   const delegated = saved
                     ? (
                         JSON.parse(saved) as {
@@ -1151,12 +1185,10 @@ export const TurnLive = Workflows.layer(
           }),
           Effect.tapCause((cause) => {
             if (Cause.hasInterruptsOnly(cause)) return Effect.void;
-            const error = cause.reasons.find((reason) => reason._tag === "Fail");
+            const error = cause.reasons.find(Cause.isFailReason);
 
             const code =
-              error?._tag === "Fail" && typeof error.error === "string"
-                ? error.error
-                : "UNAVAILABLE";
+              error && Schema.is(Schema.String)(error.error) ? error.error : "UNAVAILABLE";
 
             return homes
               .getByName("owner", { locationHint: "weur" })

@@ -1,6 +1,36 @@
+import * as Schema from "effect/Schema";
+
+const AccessHeader = Schema.Struct({
+  alg: Schema.Literal("RS256"),
+  kid: Schema.String.check(Schema.isMaxLength(256)),
+});
+
+const AccessClaims = Schema.Struct({
+  iss: Schema.String,
+  exp: Schema.Number,
+  nbf: Schema.optional(Schema.Unknown),
+  email: Schema.String,
+  aud: Schema.Union([Schema.String, Schema.Array(Schema.Json)]),
+});
+
+const AccessKeySet = Schema.Struct({
+  keys: Schema.Array(
+    Schema.Struct({
+      kty: Schema.optional(Schema.String),
+      kid: Schema.optional(Schema.String),
+      alg: Schema.optional(Schema.String),
+      use: Schema.optional(Schema.String),
+      key_ops: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
+      ext: Schema.optional(Schema.Boolean),
+      n: Schema.optional(Schema.String),
+      e: Schema.optional(Schema.String),
+    }),
+  ).check(Schema.isMaxLength(100)),
+});
+
 export type AccessIdentity = { email: string };
 
-type KeySet = { keys: (JsonWebKey & { kid?: string; alg?: string })[] };
+type KeySet = typeof AccessKeySet.Type;
 
 const cached = new Map<string, { expires: number; value: Promise<KeySet> }>();
 
@@ -28,20 +58,15 @@ export async function verifiedAccessIdentity(
   if (parts.length !== 3) return;
 
   try {
-    const header = decode(parts[0]!),
-      claims = decode(parts[1]!);
+    const header = Schema.decodeUnknownSync(AccessHeader)(decode(parts[0]!)),
+      claims = Schema.decodeUnknownSync(AccessClaims)(decode(parts[1]!));
 
     const now = Date.now() / 1000;
 
     if (
-      header.alg !== "RS256" ||
-      typeof header.kid !== "string" ||
-      header.kid.length > 256 ||
       claims.iss !== issuer ||
-      typeof claims.exp !== "number" ||
       claims.exp <= now ||
-      (typeof claims.nbf === "number" && claims.nbf > now) ||
-      typeof claims.email !== "string" ||
+      (Schema.is(Schema.Number)(claims.nbf) && claims.nbf > now) ||
       !(Array.isArray(claims.aud) ? claims.aud : [claims.aud]).includes(audience)
     )
       return;
@@ -49,10 +74,7 @@ export async function verifiedAccessIdentity(
     const load = () => {
       const value = fetcher(issuer + "/cdn-cgi/access/certs").then(async (r) => {
         if (!r.ok) throw Error("ACCESS_KEYS_UNAVAILABLE");
-        const value = (await r.json()) as KeySet;
-
-        if (!Array.isArray(value.keys) || value.keys.length > 100)
-          throw Error("ACCESS_KEYS_UNAVAILABLE");
+        const value = Schema.decodeUnknownSync(AccessKeySet)(await r.json());
 
         return value;
       });

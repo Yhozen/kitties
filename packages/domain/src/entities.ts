@@ -260,7 +260,7 @@ export const ApprovalView = Schema.Struct({
 export interface ToolDefinition {
   name: string;
   description: string;
-  parameters: Record<string, unknown>;
+  parameters: Schema.JsonObject;
   connectionId: string;
   remoteName: string;
   readOnly: boolean;

@@ -1,4 +1,4 @@
-import { makeRecoveryGuard, guardedActivities } from "../recovery-guard.ts";
+import { RecoveryGuard, guardedActivities } from "../recovery-guard.ts";
 import * as Workflows from "alchemy/Workflows";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Effect from "effect/Effect";
@@ -13,11 +13,14 @@ import { sha256 } from "../kitty.ts";
 export const NotifyLive = Workflows.layer(
   Notify,
   Effect.gen(function* () {
-    const recovery = yield* makeRecoveryGuard;
+    const recovery = yield* RecoveryGuard;
     const fenced = (id: string) => guardedActivities(recovery(Notify._tag, id));
 
-    const homes = yield* HomeDO,
-      env = (yield* Cloudflare.WorkerEnvironment) as { KITTIES_KEK: string };
+    const homes = yield* HomeDO;
+
+    const env = Schema.decodeUnknownSync(Schema.Struct({ KITTIES_KEK: Schema.String }))(
+      yield* Cloudflare.WorkerEnvironment,
+    );
 
     return Effect.fn(function* ({ id }, executionId) {
       yield* recovery(Notify._tag, executionId);
@@ -28,7 +31,12 @@ export const NotifyLive = Workflows.layer(
         success: Schema.Number,
         error: Schema.String,
         execute: home.read("notification-batch", id).pipe(
-          Effect.map((body) => (body ? (JSON.parse(body) as { dueAt: number }).dueAt : 0)),
+          Effect.map((body) =>
+            body
+              ? Schema.decodeUnknownSync(Schema.Struct({ dueAt: Schema.Number }))(JSON.parse(body))
+                  .dueAt
+              : 0,
+          ),
           Effect.mapError(() => "STORAGE_UNAVAILABLE"),
         ),
       });
@@ -48,6 +56,7 @@ export const NotifyLive = Workflows.layer(
 
           if (!saved) return id;
 
+          // SAFETY: HomeDO.queueNotice writes the notification-batch status, title, url and count record.
           const batch = JSON.parse(saved) as {
             status: string;
             title: string;
@@ -80,6 +89,7 @@ export const NotifyLive = Workflows.layer(
             return id;
           }
 
+          // SAFETY: Notifications creates the VAPID key pair and seals its private key before storing settings:vapid.
           const keys = JSON.parse(keyBody) as { publicKey: string; secret: Envelope };
 
           const privateKey = yield* Effect.tryPromise({
@@ -91,6 +101,7 @@ export const NotifyLive = Workflows.layer(
             delivered = 0;
 
           for (const row of yield* home.list("push-subscription")) {
+            // SAFETY: Notifications validates the subscription and encrypts its JSON as an Envelope before persisting it.
             const subscription = yield* Effect.tryPromise({
               try: async () =>
                 JSON.parse(
@@ -164,7 +175,9 @@ export const NotifyLive = Workflows.layer(
 
           return id;
         }).pipe(
-          Effect.mapError((error) => (typeof error === "string" ? error : "STORAGE_UNAVAILABLE")),
+          Effect.mapError((error) =>
+            Schema.is(Schema.String)(error) ? error : "STORAGE_UNAVAILABLE",
+          ),
         ),
       });
 

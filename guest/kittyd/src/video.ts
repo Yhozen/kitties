@@ -1,4 +1,25 @@
+import * as Schema from "effect/Schema";
+import * as Option from "effect/Option";
+
 import { videoHeader } from "@kitties/protocol/video";
+
+const parseControlType = Schema.decodeUnknownSync(
+  Schema.Struct({ t: Schema.optional(Schema.String) }),
+);
+
+const parsePing = Schema.decodeUnknownOption(Schema.Struct({ s: Schema.Number }));
+
+const parseHello = Schema.decodeUnknownSync(
+  Schema.Struct({
+    readOnly: Schema.Boolean,
+    audio: Schema.optional(Schema.Boolean),
+    stripes: Schema.Array(Schema.Json),
+  }),
+);
+
+const parseKeyframe = Schema.decodeUnknownSync(
+  Schema.Struct({ type: Schema.optional(Schema.String) }),
+);
 
 /** Starts only with viewer demand. voxl is loopback-only, password protected and
  * read-only. The relay never forwards browser text or binary commands to it. */
@@ -95,12 +116,19 @@ export function startVideo(options: {
       if (stopped) return;
 
       try {
-        if (typeof event.data === "string") {
-          const body = JSON.parse(event.data);
+        if (!(event.data instanceof ArrayBuffer)) {
+          const payload = JSON.parse(Schema.decodeUnknownSync(Schema.String)(event.data));
+          const control = parseControlType(payload);
 
-          if (body.t === "ping" && typeof body.s === "number") socket.send(`po,${body.s}`);
+          if (control.t === "ping") {
+            const ping = parsePing(payload);
 
-          if (body.t === "hello") {
+            if (Option.isSome(ping)) socket.send(`po,${ping.value.s}`);
+          }
+
+          if (control.t === "hello") {
+            const body = parseHello(payload);
+
             if (remote || body.readOnly !== true || body.audio || body.stripes?.length !== 1)
               return stop();
             const upstream = new WebSocket(options.url, { headers: options.headers });
@@ -114,7 +142,7 @@ export function startVideo(options: {
 
               // No generic command proxy: only a validated keyframe request is allowed.
               try {
-                if (JSON.parse(String(message.data)).type === "keyframe") keyframe();
+                if (parseKeyframe(JSON.parse(String(message.data))).type === "keyframe") keyframe();
               } catch {
                 stop();
               }
@@ -127,7 +155,7 @@ export function startVideo(options: {
           return;
         }
 
-        const bytes = new Uint8Array(event.data as ArrayBuffer);
+        const bytes = new Uint8Array(event.data);
 
         if (bytes[0] !== 1) return; // Discard cursor, audio and clipboard channels.
         const packet = new Uint8Array(bytes.length + 4);

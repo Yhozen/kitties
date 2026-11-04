@@ -1,5 +1,7 @@
-import { liveFileLeases, newFileLease, validFileLease, type FileLease } from "./file-leases.ts";
-import { makeStorageAdmin } from "./storage-admin.ts";
+import { stored } from "./stored-records.ts";
+import { ComputerRecord, FileLeasesRecord, GrantRecord } from "./kitty-records.ts";
+import { liveFileLeases, newFileLease, validFileLease } from "./file-leases.ts";
+import { StorageAdmin } from "./storage-admin.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Effect from "effect/Effect";
 import type * as cf from "@cloudflare/workers-types";
@@ -38,6 +40,51 @@ interface Session {
   window?: number;
 }
 
+const GuestConfigRecord: Schema.Codec<GuestConfig> = Schema.Struct({
+  kittyId: Schema.String,
+  generation: Schema.Number,
+  remoteId: Schema.String,
+  epoch: Schema.Number,
+  tokenHash: Schema.String,
+  tokenVersion: Schema.Number,
+});
+
+const SessionRecord: Schema.Codec<Session> = Schema.Struct({
+  role: Schema.Literals([
+    "guest",
+    "guest-frames",
+    "guest-video",
+    "owner",
+    "viewer",
+    "video-viewer",
+  ]),
+  clientId: Schema.String,
+  epoch: Schema.Number,
+  outstanding: Schema.optional(Schema.Number),
+  video: Schema.optional(
+    Schema.Struct({
+      waitingKey: Schema.Boolean,
+      inflight: Schema.mutable(
+        Schema.Array(
+          Schema.Struct({ seq: Schema.Number, bytes: Schema.Number, at: Schema.Number }),
+        ),
+      ),
+      rttMs: Schema.optional(Schema.Number),
+      jitterMs: Schema.optional(Schema.Number),
+    }),
+  ),
+  keyframeAt: Schema.optional(Schema.Number),
+  count: Schema.optional(Schema.Number),
+  window: Schema.optional(Schema.Number),
+});
+
+const ChannelMessage = Schema.StructWithRest(Schema.Struct({ type: Schema.String }), [
+  Schema.Record(Schema.String, Schema.Json),
+]);
+
+// The Workers runtime supplies this WebSocket hibernation constructor globally.
+declare const WebSocketRequestResponsePair: typeof cf.WebSocketRequestResponsePair;
+
 interface Ledger {
   [key: string]: string | number | null;
   id: string;
@@ -62,37 +109,33 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
   Effect.gen(function* () {
     const state = yield* Cloudflare.DurableObjectState;
 
+    // SAFETY: Gateway deployment declares these named bindings in worker.ts; Cloudflare injects their declared values into every bound actor.
     const env = (yield* Cloudflare.WorkerEnvironment) as {
       BLOBS: cf.R2Bucket;
       KITTIES_KEK: string;
     };
 
-    return Effect.sync(() => {
-      const heartbeat = globalThis as unknown as {
-        WebSocketRequestResponsePair: new (
-          request: string,
-          response: string,
-        ) => Parameters<typeof state.raw.setWebSocketAutoResponse>[0];
-      };
+    const admin = yield* StorageAdmin.pipe(
+      Effect.provide(StorageAdmin.layer(["kitty_state", "effect_ledger"], env.KITTIES_KEK)),
+    );
 
-      state.raw.setWebSocketAutoResponse(
-        new heartbeat.WebSocketRequestResponsePair("ping", "pong"),
-      );
+    return Effect.sync(() => {
+      state.raw.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
       const sql = state.raw.storage.sql;
       sql.exec("CREATE TABLE IF NOT EXISTS kitty_state (key TEXT PRIMARY KEY, body TEXT NOT NULL)");
       sql.exec(
         "CREATE TABLE IF NOT EXISTS effect_ledger (id TEXT PRIMARY KEY,generation INTEGER NOT NULL,epoch INTEGER NOT NULL,source TEXT NOT NULL,client_id TEXT NOT NULL,status TEXT NOT NULL,result TEXT,body TEXT NOT NULL,created_at INTEGER NOT NULL)",
       );
 
-      const read = <A>(key: string): A | null => {
+      const read = <A>(key: string, schema: Schema.Codec<A>): A | null => {
         const row = sql
           .exec<{ body: string }>("SELECT body FROM kitty_state WHERE key=?", key)
           .toArray()[0];
 
-        return row ? (JSON.parse(row.body) as A) : null;
+        return row ? stored(Schema.NullOr(schema), row.body) : null;
       };
 
-      const write = (key: string, value: unknown) => {
+      const write = <Value>(key: string, value: Value) => {
         sql.exec(
           "INSERT INTO kitty_state VALUES (?,?) ON CONFLICT(key) DO UPDATE SET body=excluded.body",
           key,
@@ -100,11 +143,13 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
         );
       };
 
-      const fileLeases = () => liveFileLeases(read<FileLease[]>("file-leases") ?? [], Date.now());
-      const config = () => read<GuestConfig>("config");
+      const fileLeases = () =>
+        liveFileLeases(read("file-leases", FileLeasesRecord) ?? [], Date.now());
+
+      const config = () => read("config", GuestConfigRecord);
 
       const scheduleAt = (at: number) => {
-        const previous = read<number>("wake");
+        const previous = read("wake", Schema.Number);
 
         if (previous === null || at < previous) {
           write("wake", at);
@@ -117,10 +162,10 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
       const sockets = (role: string) =>
         state.raw.getWebSockets(role).filter((socket) => socket.readyState === 1);
 
-      const send = (socket: Cloudflare.RawWebSocket, body: unknown) =>
+      const send = <Message>(socket: Cloudflare.RawWebSocket, body: Message) =>
         socket.send(JSON.stringify(body));
 
-      const publish = (body: unknown) => {
+      const publish = <Message>(body: Message) => {
         for (const ws of sockets("owner"))
           try {
             send(ws, body);
@@ -200,7 +245,7 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
             ? { ...timings, doReceivedAt: row?.created_at, doAckAt: Date.now() }
             : undefined,
         });
-        const grant = read<Grant>("grant");
+        const grant = read("grant", GrantRecord);
 
         if (grant?.draining && pending("owner") === 0) revoke();
       };
@@ -222,7 +267,7 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
         clientId: string,
       ) => {
         const c = config();
-        const computer = read<ComputerState>("computer");
+        const computer = read("computer", ComputerRecord);
 
         if (
           computer &&
@@ -257,13 +302,14 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
           return { status: existing.status, result: existing.result };
         }
 
-        if (source === "agent" && (read<Grant>("grant") || pending("owner") > 0))
+        if (source === "agent" && (read("grant", GrantRecord) || pending("owner") > 0))
           return { status: "held", result: null };
 
         const guest = sockets("guest").find(
           (ws) =>
             ws.readyState === 1 &&
-            (ws.deserializeAttachment() as Session | null)?.epoch === c.epoch,
+            Schema.decodeUnknownSync(Schema.NullOr(SessionRecord))(ws.deserializeAttachment())
+              ?.epoch === c.epoch,
         );
 
         if (!guest) throw Error("GUEST_OFFLINE");
@@ -298,7 +344,7 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
         beginFileTransfer: () =>
           Effect.sync(() => {
             const leases = fileLeases();
-            const current = read<ComputerState>("computer");
+            const current = read("computer", ComputerRecord);
             const lease = newFileLease(current, leases, crypto.randomUUID(), Date.now());
             write("file-leases", [...leases, lease]);
             write("computer", { ...current!, lastActiveAt: Date.now() });
@@ -308,7 +354,7 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
         validFileTransfer: (id: string) =>
           Effect.sync(() =>
             validFileLease(
-              read<ComputerState>("computer"),
+              read("computer", ComputerRecord),
               fileLeases().find((lease) => lease.id === id),
               Date.now(),
             ),
@@ -320,18 +366,18 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
               fileLeases().filter((lease) => lease.id !== id),
             );
           }),
-        computer: () => Effect.sync(() => read<ComputerState>("computer")),
-        ...makeStorageAdmin(state, env.KITTIES_KEK, ["kitty_state", "effect_ledger"]),
+        computer: () => Effect.sync(() => read("computer", ComputerRecord)),
+        ...admin,
         beginComputer: (kittyId: string, id: string, kind: ComputerOperation["kind"]) =>
           Effect.sync(() => {
-            const current = read<ComputerState>("computer") ?? freshComputer(kittyId, Date.now());
+            const current = read("computer", ComputerRecord) ?? freshComputer(kittyId, Date.now());
 
             if (
               (kind === "sleep" || kind === "delete") &&
               ([...sockets("viewer"), ...sockets("video-viewer")].some(
                 (socket) => socket.readyState === 1,
               ) ||
-                read<Grant>("grant") ||
+                read("grant", GrantRecord) ||
                 pending() > 0)
             )
               throw Error("COMPUTER_IN_USE");
@@ -367,7 +413,7 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
         // stays fenced, because every update must still name the current operation id.
         abandonComputer: (operationId: string) =>
           Effect.sync(() => {
-            const current = read<ComputerState>("computer");
+            const current = read("computer", ComputerRecord);
 
             if (!current?.operation || current.operation.id !== operationId)
               throw Error("OPERATION_FENCED");
@@ -379,8 +425,8 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
           }),
         updateComputer: (operationId: string, body: string) =>
           Effect.sync(() => {
-            const current = read<ComputerState>("computer"),
-              next = JSON.parse(body) as ComputerState;
+            const current = read("computer", ComputerRecord),
+              next = stored(ComputerRecord, body);
 
             if (
               current?.operation?.id !== operationId ||
@@ -394,7 +440,7 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
           }),
         renewComputer: (remoteId: string, at: number) =>
           Effect.sync(() => {
-            const current = read<ComputerState>("computer");
+            const current = read("computer", ComputerRecord);
 
             if (current?.remoteId === remoteId) {
               current.lastRenewAt = at;
@@ -403,7 +449,7 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
           }),
         touchComputer: () =>
           Effect.sync(() => {
-            const current = read<ComputerState>("computer");
+            const current = read("computer", ComputerRecord);
 
             if (current) {
               current.lastActiveAt = Date.now();
@@ -447,7 +493,7 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
           }),
         recoveryFence: (epoch: number) =>
           Effect.sync(() => {
-            if ((read<number>("restoredEpoch") ?? 0) >= epoch) return;
+            if ((read("restoredEpoch", Schema.Number) ?? 0) >= epoch) return;
             write("restoredEpoch", epoch);
             const c = bump();
 
@@ -466,7 +512,7 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
               ...sockets("video-viewer"),
             ])
               ws.close(1012, "Recovery requires fresh credentials");
-            const computer = read<ComputerState>("computer");
+            const computer = read("computer", ComputerRecord);
 
             if (computer)
               write("computer", {
@@ -486,22 +532,25 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
             guestConnected: sockets("guest").some(
               (ws) =>
                 ws.readyState === 1 &&
-                (ws.deserializeAttachment() as Session | null)?.epoch === config()?.epoch,
+                Schema.decodeUnknownSync(Schema.NullOr(SessionRecord))(ws.deserializeAttachment())
+                  ?.epoch === config()?.epoch,
             ),
             guestConnections: sockets("guest").map((ws) => ({
               readyState: ws.readyState,
-              epoch: (ws.deserializeAttachment() as Session | null)?.epoch,
+              epoch: Schema.decodeUnknownSync(Schema.NullOr(SessionRecord))(
+                ws.deserializeAttachment(),
+              )?.epoch,
             })),
             viewers: sockets("viewer").length + sockets("video-viewer").length,
             videoViewers: sockets("video-viewer").length,
             fileTransfers: fileLeases().length,
-            grant: read<Grant>("grant"),
+            grant: read("grant", GrantRecord),
             pending: pending(),
           })),
         agentAction: (
           intentId: string,
           name: typeof Action.Type.action,
-          args: Record<string, unknown>,
+          args: typeof Action.Type.args,
         ) =>
           Effect.tryPromise({
             try: async () => {
@@ -510,7 +559,7 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
                 .toArray()[0];
 
               if (saved) {
-                const previous = JSON.parse(saved.body) as typeof Action.Type;
+                const previous = stored(Action, saved.body);
 
                 if (
                   saved.source !== "agent" ||
@@ -606,7 +655,7 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
               )
               .toArray()[0];
 
-            if (!intent || (JSON.parse(intent.body) as typeof Action.Type).action !== "screenshot")
+            if (!intent || stored(Action, intent.body).action !== "screenshot")
               return HttpServerResponse.empty({ status: 403 });
 
             const bytes = yield* Effect.tryPromise({
@@ -727,9 +776,9 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
             role,
             clientId: crypto.randomUUID(),
             epoch: admissionEpoch,
-            ...(role === "video-viewer" ? { video: freshVideoFlow() } : {}),
           };
 
+          if (role === "video-viewer") session.video = freshVideoFlow();
           ws.serializeAttachment(session);
 
           if (role === "guest")
@@ -788,7 +837,7 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
             if (session.role.startsWith("guest") && session.epoch !== c.epoch)
               return ws.close(1008, "Stale epoch");
 
-            if (typeof message !== "string") {
+            if (message instanceof ArrayBuffer) {
               if (session.role === "guest-video") {
                 const header = videoHeader(new Uint8Array(message));
 
@@ -798,7 +847,9 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
                 let needsKey = false;
 
                 for (const viewer of sockets("video-viewer")) {
-                  const attachment = viewer.deserializeAttachment() as Session;
+                  const attachment = Schema.decodeUnknownSync(SessionRecord)(
+                    viewer.deserializeAttachment(),
+                  );
 
                   if (attachment.epoch !== c.epoch) {
                     viewer.close(4001, "Video fence changed");
@@ -842,7 +893,9 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
               const seq = view.getUint32(4);
 
               for (const viewer of sockets("viewer")) {
-                const attachment = viewer.deserializeAttachment() as Session;
+                const attachment = Schema.decodeUnknownSync(SessionRecord)(
+                  viewer.deserializeAttachment(),
+                );
 
                 if (attachment.outstanding !== undefined) continue;
                 attachment.outstanding = seq;
@@ -870,13 +923,13 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
             ws.serializeAttachment(session);
 
             try {
-              const body = JSON.parse(message) as Record<string, unknown>;
+              const body = stored(ChannelMessage, message);
 
               if (session.role === "video-viewer") {
                 if (session.epoch !== c.epoch) return ws.close(1008, "Stale epoch");
                 const flow = (session.video ??= freshVideoFlow());
 
-                if (body.type === "video_ack" && typeof body.seq === "number") {
+                if (body.type === "video_ack" && Schema.is(Schema.Number)(body.seq)) {
                   if (acknowledgeVideo(flow, body.seq, now) && flow.waitingKey)
                     requestVideoKeyframe();
                 } else if (body.type === "keyframe" && now - (session.keyframeAt ?? 0) >= 500) {
@@ -961,7 +1014,7 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
               }
 
               if (body.type === "grant") {
-                if (!canGrant(pending(), read<Grant>("grant"), now))
+                if (!canGrant(pending(), read("grant", GrantRecord), now))
                   return send(ws, { type: "held" });
 
                 const grant: Grant = {
@@ -984,7 +1037,7 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
               }
 
               if (body.type === "release") {
-                const grant = read<Grant>("grant");
+                const grant = read("grant", GrantRecord);
 
                 if (!grant || grant.clientId !== session.clientId || grant.nonce !== body.nonce)
                   throw Error("INVALID_RECEIPT");
@@ -997,9 +1050,17 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
               }
 
               if (body.type === "input") {
-                const grant = read<Grant>("grant");
+                const grant = read("grant", GrantRecord);
 
-                if (!validGrant(grant, c, session.clientId, String(body.nonce), now))
+                if (
+                  !validGrant(
+                    grant,
+                    c,
+                    session.clientId,
+                    Schema.decodeUnknownSync(Schema.String)(body.nonce),
+                    now,
+                  )
+                )
                   throw Error("INVALID_RECEIPT");
                 const action = Schema.decodeUnknownSync(Action)({ ...body, type: "action" });
                 const result = dispatch(action, "owner", session.clientId);
@@ -1032,8 +1093,11 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
             // Receipts stay 'started' for reconnect reconciliation; stop waiting now.
             if (session.role === "guest") releaseWaiters();
 
-            if (session.role === "owner" && read<Grant>("grant")?.clientId === session.clientId) {
-              const grant = read<Grant>("grant")!;
+            if (
+              session.role === "owner" &&
+              read("grant", GrantRecord)?.clientId === session.clientId
+            ) {
+              const grant = read("grant", GrantRecord)!;
               grant.draining = true;
               write("grant", grant);
 
@@ -1058,7 +1122,7 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
               for (const row of sql
                 .exec<Ledger>("SELECT * FROM effect_ledger WHERE status='started'")
                 .toArray()) {
-                const deadline = (JSON.parse(row.body) as typeof Action.Type).deadline;
+                const deadline = stored(Action, row.body).deadline;
 
                 if (deadline <= now) {
                   finish(row.id, "unknown", null);
@@ -1066,12 +1130,12 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
                 } else next = Math.min(next, deadline);
               }
 
-              const grant = read<Grant>("grant");
+              const grant = read("grant", GrantRecord);
 
               if (grant && grant.expiresAt <= now) revoke();
               else if (grant) next = Math.min(next, grant.expiresAt);
 
-              if (!read<Grant>("grant") && pending() === 0) return;
+              if (!read("grant", GrantRecord) && pending() === 0) return;
             } catch {
               /* A storage failure must retain a future recovery wake. */
             }

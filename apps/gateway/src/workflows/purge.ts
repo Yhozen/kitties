@@ -2,6 +2,7 @@ import { guardedActivities } from "../recovery-guard.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Workflows from "alchemy/Workflows";
 import * as Effect from "effect/Effect";
+import * as Match from "effect/Match";
 import * as Schema from "effect/Schema";
 import { WorkflowEngine } from "effect/workflow";
 import { HomeDO, ChatDO, KittyDO } from "../actors.ts";
@@ -20,6 +21,7 @@ export const PurgeLive = Workflows.layer(
       kitties = yield* KittyDO,
       engine = yield* WorkflowEngine.WorkflowEngine;
 
+    // SAFETY: Gateway declares these bindings in worker.ts and Alchemy supplies them to workflows.
     const env = (yield* Cloudflare.WorkerEnvironment) as { KITTIES_KEK: string };
 
     return Effect.fn(function* ({ id, before }, executionId) {
@@ -36,6 +38,7 @@ export const PurgeLive = Workflows.layer(
           .pipe(Effect.mapError(() => "STORAGE_UNAVAILABLE")),
       });
 
+      // SAFETY: The registry activity below serializes RecoveryDO.objects, whose rows have kind and name.
       const objects = JSON.parse(
         yield* activity({
           name: "registry",
@@ -53,16 +56,16 @@ export const PurgeLive = Workflows.layer(
           name: `purge/${o.kind}/${o.name}`,
           error: Schema.String,
           execute: Effect.gen(function* () {
-            const actor =
-              o.kind === "workflow"
-                ? workflowActor(engine, o.name, env.KITTIES_KEK)
-                : o.kind === "home"
-                  ? homes.getByName(o.name)
-                  : o.kind === "kitty"
-                    ? kitties.getByName(o.name)
-                    : chats.getByName(o.name);
+            const actor = Match.value(o.kind).pipe(
+              Match.when("workflow", () => workflowActor(engine, o.name, env.KITTIES_KEK)),
+              Match.when("home", () => homes.getByName(o.name)),
+              Match.when("kitty", () => kitties.getByName(o.name)),
+              Match.orElse(() => chats.getByName(o.name)),
+            );
 
-            yield* actor.adminPurge(before).pipe(Effect.mapError(() => "PURGE_UNAVAILABLE"));
+            const purge: Effect.Effect<boolean | void, string> = actor.adminPurge(before);
+
+            yield* purge.pipe(Effect.mapError(() => "PURGE_UNAVAILABLE"));
           }),
         });
       }

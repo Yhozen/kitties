@@ -1,12 +1,12 @@
 import * as Cron from "effect/Cron";
 import * as DateTime from "effect/DateTime";
 
-const aliases: Record<string, string> = {
-  "@hourly": "0 * * * *",
-  "@daily": "0 9 * * *",
-  "@weekly": "0 9 * * 1",
-  "@monthly": "0 9 1 * *",
-};
+const aliases = new Map([
+  ["@hourly", "0 * * * *"],
+  ["@daily", "0 9 * * *"],
+  ["@weekly", "0 9 * * 1"],
+  ["@monthly", "0 9 1 * *"],
+]);
 
 function field(text: string, min: number, max: number) {
   if (!text) throw Error("INVALID_SCHEDULE");
@@ -38,7 +38,7 @@ function field(text: string, min: number, max: number) {
 }
 
 export function goalSchedule(expression: string, timezone: string) {
-  const parts = (aliases[expression.trim().toLowerCase()] ?? expression.trim()).split(/\s+/);
+  const parts = (aliases.get(expression.trim().toLowerCase()) ?? expression.trim()).split(/\s+/);
 
   if (parts.length !== 5) throw Error("INVALID_SCHEDULE");
 

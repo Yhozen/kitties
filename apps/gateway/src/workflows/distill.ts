@@ -1,4 +1,4 @@
-import { makeRecoveryGuard, guardedActivities } from "../recovery-guard.ts";
+import { RecoveryGuard, guardedActivities } from "../recovery-guard.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Workflows from "alchemy/Workflows";
 import * as Effect from "effect/Effect";
@@ -24,10 +24,11 @@ const Notes = Schema.Array(
 export const DistillLive = Workflows.layer(
   Distill,
   Effect.gen(function* () {
-    const recovery = yield* makeRecoveryGuard;
+    const recovery = yield* RecoveryGuard;
     const fenced = (id: string) => guardedActivities(recovery(Distill._tag, id));
     const homes = yield* HomeDO;
 
+    // SAFETY: Gateway declares these bindings in worker.ts and Alchemy supplies them to workflows.
     const env = (yield* Cloudflare.WorkerEnvironment) as {
       KITTIES_KEK: string;
       CHATGPT_ENABLED: string;
@@ -46,6 +47,7 @@ export const DistillLive = Workflows.layer(
           const saved = yield* home.read("kitty", payload.kittyId);
 
           if (!saved) return yield* Effect.fail("KITTY_NOT_FOUND");
+          // SAFETY: Application validates KittyInput before persisting kitty records and adding id/createdAt.
           const kitty = JSON.parse(saved) as KittyProfile;
 
           const providerBody = kitty.providerId
@@ -53,6 +55,7 @@ export const DistillLive = Workflows.layer(
             : null;
 
           if (!providerBody) return yield* Effect.fail("PROVIDER_KEY_REQUIRED");
+          // SAFETY: Application validates ProviderInput and seals its credential before storing provider records.
           const provider = JSON.parse(providerBody) as Provider;
 
           if (provider.kind !== "chatgpt" && !provider.secret)
@@ -112,7 +115,9 @@ export const DistillLive = Workflows.layer(
 
           return payload.kittyId;
         }).pipe(
-          Effect.mapError((error) => (typeof error === "string" ? error : "STORAGE_UNAVAILABLE")),
+          Effect.mapError((error) =>
+            Schema.is(Schema.String)(error) ? error : "STORAGE_UNAVAILABLE",
+          ),
         ),
       });
 
