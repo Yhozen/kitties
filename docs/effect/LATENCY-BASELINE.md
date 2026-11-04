@@ -86,3 +86,26 @@ network, model, and guest receipt path; do not compare it directly to the region
 Real semantic click, Unicode typing, state readback, stale refs after restart, and no replay passed.
 See [aggregate evidence](evidence/perception-persistent-local.json) and
 [reproducible probe](../../guest/kittyd/tests/perception-native.py).
+
+### voxl / WebCodecs viewer — 2026-11-04
+
+The real browser component drove the real guest daemon through local workerd. A synthetic
+1280×800 Ubuntu/Xvfb desktop changed a visible counter on each authenticated click; the browser
+measured from its click event to the canvas containing that changed counter. Each path received
+60 clicks, then the order was reversed in a second run.
+
+| Order | JPEG p50 / p95 | Video p50 / p95 | JPEG / video frame bytes |
+| --- | --- | --- | --- |
+| JPEG → video | 54.5 / 84.7 ms | 19.5 / 21.6 ms | 2,771,524 / 482,982 |
+| Video → JPEG | 52.2 / 90.9 ms | 21.8 / 34.3 ms | 2,797,954 / 512,764 |
+
+Video reduced p95 by **62–75%** and received frame bytes by **82–83%** on this fixture. These
+are same-host results, excluding public network and model time; they do not replace the regional
+Boat baseline. The fixture mostly changes small areas with occasional large solid-color updates;
+scrolling, video playback and physical mobile devices still need separate measurements.
+
+[Evidence, including second-run samples](evidence/desktop-video-local.json).
+Reproduce with `node guest/kittyd/probes/desktop-browser.mjs` and `--reverse`, as described in
+[the desktop test instructions](../../guest/kittyd/tests/README.md). Browser acceptance also decodes
+an actual voxl keyframe and checks JPEG fallback, generation/epoch fences, and delayed decode after
+closure. CI runs those checks on Chrome alongside native GTK/AT-SPI and voxl acceptance.

@@ -176,6 +176,8 @@ export default {
   "The desktop is busy. Try again.": "O desktop está ocupado. Tente novamente.",
   "Could not confirm the input.": "Não foi possível confirmar a entrada.",
   "Control was lost. You can take it again.": "O controle foi perdido. Você pode retomá-lo.",
+  "Live video": "Vídeo ao vivo",
+  "Compatibility view": "Visualização compatível",
   "Read clipboard": "Ler área de transferência",
   "Copy to desktop": "Copiar para o desktop"
 };

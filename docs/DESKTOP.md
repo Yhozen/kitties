@@ -45,3 +45,13 @@ The guest bundle includes voxl source, vendored Rust dependencies, build instruc
 The native test exercises actual capture/authentication/keyframe recovery. With local workerd
 running on ports 1337/1338, `bun guest/kittyd/probes/video-channel.ts` verifies slow-viewer isolation,
 video/input separation, grant release, epoch changes and rejection of stale guest connections.
+
+The browser prefers WebCodecs video, acknowledging frames only after they are drawn. Missing
+WebCodecs, an unsupported codec, a decoder failure, an unavailable capture service, or five seconds
+without an initial frame switches that view to JPEG. The panel labels this “Compatibility view.”
+Closing or reconnecting discards pending decoded frames; a stale generation/epoch never renders.
+Input grants, revocation, queue limits and receipts remain on the separate control socket.
+
+Local 60-click comparisons in both path orders measured video p95 21.6–34.3 ms versus JPEG
+84.7–90.9 ms, with 82–83% fewer received frame bytes. See the latency record for scope and raw
+samples. This is synthetic local acceptance, not a new public-network or physical-Mac baseline.

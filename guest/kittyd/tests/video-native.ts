@@ -1,6 +1,7 @@
 // Run under Xvfb in Ubuntu with the built voxl installed at /usr/local/lib/kittyd/voxl.
 // Exercises the real loopback capture and the actual guest relay; no desktop secrets.
 import { strict as assert } from "node:assert";
+import { writeFileSync } from "node:fs";
 import { startVideo } from "../src/video.ts";
 import { videoHeader } from "@kitties/protocol/video";
 
@@ -24,6 +25,7 @@ const server = Bun.serve({
       frames++;
       if (header.key) keys++;
       if (frames === 1) {
+        if (process.env.KITTYD_VIDEO_FIXTURE) writeFileSync(process.env.KITTYD_VIDEO_FIXTURE, data);
         assert(header.key, "first forwarded frame must be independently decodable");
         // Arbitrary commands are ignored rather than proxied to voxl.
         socket.send(JSON.stringify({ type: "input", action: "type", text: "not permitted" }));
