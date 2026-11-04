@@ -1,9 +1,23 @@
+import * as Schema from "effect/Schema";
+import * as Option from "effect/Option";
 import * as Effect from "effect/Effect";
 import * as McpClient from "effect/ai/McpClient";
 import type { Connection, ToolDefinition, ToolCall } from "./entities.ts";
 import { nativeTools, executeNative } from "./native-tools.ts";
 import { withMcp } from "./mcp.ts";
 import { allowedFetch, publicHttps } from "./outbound.ts";
+
+const RequestMethod = Schema.Struct({ method: Schema.optional(Schema.String) });
+
+const NotificationArguments = Schema.Struct({
+  message: Schema.String.check(Schema.isMaxLength(4000)),
+});
+
+const HttpArguments = Schema.Struct({
+  path: Schema.String,
+  method: Schema.Literals(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]),
+  body: Schema.optional(Schema.String.check(Schema.isMaxLength(32000))),
+});
 
 export const discoverTools = (
   connection: Connection,
@@ -21,10 +35,14 @@ export const discoverTools = (
         // resolved by the workflow, after the durable approval and effect ledger.
         yield* McpClient.toolkit(client, { prefix, trustAnnotations: false });
 
+        const parameters = yield* Effect.forEach(tools, (tool) =>
+          Schema.decodeUnknownEffect(Schema.JsonObject)(tool.inputSchema),
+        );
+
         return tools.map((tool, index) => ({
           name: `${prefix}${index}`,
           description: `${connection.name}: ${tool.name}. ${tool.description ?? ""}`.slice(0, 2000),
-          parameters: tool.inputSchema as Record<string, unknown>,
+          parameters: parameters[index]!,
           connectionId: connection.id,
           remoteName: tool.name,
           readOnly:
@@ -35,7 +53,7 @@ export const discoverTools = (
       }),
     );
 
-  return Effect.succeed([
+  return Effect.succeed<ToolDefinition[]>([
     {
       name: prefix + "request",
       connectionId: connection.id,
@@ -68,7 +86,11 @@ export const discoverTools = (
   ]);
 };
 
-export const needsApproval = (connection: Connection, tool: ToolDefinition, params: unknown) => {
+export const needsApproval = (
+  connection: Connection,
+  tool: ToolDefinition,
+  params: ToolCall["params"],
+) => {
   if (!connection.allowReads) return true;
 
   if (connection.kind === "mcp")
@@ -78,7 +100,10 @@ export const needsApproval = (connection: Connection, tool: ToolDefinition, para
     return !tool.readOnly || tool.destructive;
 
   if (connection.kind === "ntfy") return true;
-  const method = (params as { method?: unknown })?.method;
+  const decoded = Schema.decodeUnknownOption(RequestMethod)(params);
+
+  if (Option.isNone(decoded)) return true;
+  const method = decoded.value.method;
 
   return method !== "GET" && method !== "HEAD";
 };
@@ -143,9 +168,11 @@ export const executeTool = (
         )
           return yield* Effect.fail("TOOL_CHANGED");
 
+        const args = yield* Schema.decodeUnknownEffect(Schema.JsonObject)(call.params);
+
         const result = yield* client.callTool({
           tool: descriptor,
-          arguments: call.params as Record<string, unknown>,
+          arguments: args,
         });
 
         const body = JSON.stringify(result);
@@ -158,8 +185,6 @@ export const executeTool = (
 
   return Effect.tryPromise({
     try: async () => {
-      if (!call.params || typeof call.params !== "object") throw Error();
-      const params = call.params as Record<string, unknown>;
       const base = publicHttps(connection.url);
 
       let url = base,
@@ -167,28 +192,17 @@ export const executeTool = (
         body: string | undefined;
 
       if (connection.kind === "ntfy") {
-        if (typeof params.message !== "string" || params.message.length > 4000) throw Error();
+        const params = Schema.decodeUnknownSync(NotificationArguments)(call.params);
         body = params.message;
       } else {
-        if (
-          typeof params.path !== "string" ||
-          typeof params.method !== "string" ||
-          !["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"].includes(params.method)
-        )
-          throw Error();
+        const params = Schema.decodeUnknownSync(HttpArguments)(call.params);
         url = publicHttps(new URL(params.path, base).href);
 
         if (url.origin !== base.origin) throw Error();
         method = params.method;
 
         if (params.body !== undefined) {
-          if (
-            typeof params.body !== "string" ||
-            params.body.length > 32000 ||
-            method === "GET" ||
-            method === "HEAD"
-          )
-            throw Error();
+          if (method === "GET" || method === "HEAD") throw Error();
           body = params.body;
         }
       }

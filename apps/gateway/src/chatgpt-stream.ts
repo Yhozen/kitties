@@ -1,4 +1,18 @@
+import * as Schema from "effect/Schema";
 import { ChatgptProviderError, chatgptError, chatgptFailure } from "./chatgpt-errors.ts";
+
+const StreamEvent = Schema.Struct({
+  type: Schema.optional(Schema.String),
+  response: Schema.optional(
+    Schema.Struct({
+      status: Schema.optional(Schema.String),
+      error: Schema.optional(Schema.Json),
+    }),
+  ),
+  error: Schema.optional(Schema.Json),
+  code: Schema.optional(Schema.String),
+  param: Schema.optional(Schema.String),
+});
 
 // Bounded SSE parsing handles split UTF-8, CRLF and multiple data lines. No stream bytes
 // are written to diagnostics. A terminal completed event is the only success path.
@@ -28,13 +42,7 @@ export async function completedResponse(response: Response): Promise<void> {
 
     if (!data || data === "[DONE]") return;
 
-    const event = JSON.parse(data) as {
-      type?: string;
-      response?: { status?: string; error?: unknown };
-      error?: unknown;
-      code?: string;
-      param?: string;
-    };
+    const event = Schema.decodeUnknownSync(StreamEvent)(JSON.parse(data));
 
     if (completed) chatgptError("CHATGPT_EVENT_AFTER_COMPLETION", "interrupted");
 

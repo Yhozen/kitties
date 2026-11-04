@@ -1,3 +1,8 @@
+import * as Schema from "effect/Schema";
+import * as Option from "effect/Option";
+import * as Context from "effect/Context";
+import * as Layer from "effect/Layer";
+import { ChatgptAccountView, ChatgptLinkView } from "@kitties/domain/entities";
 import { createRemoteJWKSet, customFetch, jwtVerify } from "jose";
 import type { ChatgptAccount, ChatgptLink, ChatgptFailure } from "@kitties/domain/entities";
 import { chatgptConfig as config, loopbackRedirect } from "./chatgpt-config.ts";
@@ -12,11 +17,18 @@ import { randomSecret, pkceChallenge, jsonResponse, type OAuthStorage } from "./
 import { allowedFetch } from "./outbound.ts";
 import { seal, open, type Envelope } from "./secrets.ts";
 
-type Storage = OAuthStorage & { list(kind: string): { id: string; body: string }[] };
+export type ChatgptStorageInput = OAuthStorage & {
+  list(kind: string): { id: string; body: string }[];
+};
 
 export interface ChatgptContext {
   hostId: string;
   epoch: number;
+}
+
+interface ChatgptIdentity {
+  subject: string;
+  email?: string;
 }
 
 interface Tokens {
@@ -61,6 +73,76 @@ export interface ChatgptCallback {
   error?: string;
 }
 
+const tokenText = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(32768));
+
+const TokenResponse = Schema.Struct({
+  access_token: tokenText,
+  refresh_token: tokenText,
+  id_token: Schema.optional(Schema.NullOr(tokenText)),
+  token_type: Schema.String,
+  expires_in: Schema.Finite.check(Schema.isGreaterThan(0)),
+  scope: Schema.optional(Schema.String.check(Schema.isMaxLength(4096))),
+  earliest_refresh_at: Schema.optional(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
+});
+
+const TokenRecord = Schema.Struct({
+  accessToken: Schema.String,
+  refreshToken: Schema.String,
+  idToken: Schema.String,
+  expiresAt: Schema.Number,
+  scopes: Schema.mutable(Schema.Array(Schema.String)),
+  earliestRefreshAt: Schema.optional(Schema.Number),
+});
+
+const EnvelopeRecord = Schema.Struct({ kid: Schema.String, iv: Schema.String, ct: Schema.String });
+
+const AccountRecord = Schema.Struct({
+  account: ChatgptAccountView,
+  revision: Schema.String,
+  epoch: Schema.Number,
+  credentials: Schema.optional(EnvelopeRecord),
+  refreshing: Schema.optional(Schema.Boolean),
+});
+
+const LinkRecord = Schema.Struct({
+  view: ChatgptLinkView,
+  epoch: Schema.Number,
+  envelope: Schema.optional(EnvelopeRecord),
+  issuedClientId: Schema.optional(Schema.String),
+});
+
+const FlowRecord = Schema.Struct({
+  state: Schema.String,
+  verifier: Schema.String,
+  nonce: Schema.String,
+  redirectUri: Schema.String,
+  clientId: Schema.String,
+  subject: Schema.optional(Schema.String),
+  requestConsent: Schema.Boolean,
+});
+
+const IdentityClaims = Schema.Struct({
+  sub: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
+  iat: Schema.Number,
+  nonce: Schema.String,
+  aud: Schema.optional(Schema.Union([Schema.String, Schema.Array(Schema.Json)])),
+  azp: Schema.optional(Schema.Unknown),
+  email: Schema.optional(Schema.Unknown),
+});
+
+const identityEmail = Schema.String.check(Schema.isMaxLength(320));
+
+const Catalog = Schema.Struct({
+  models: Schema.Array(Schema.Json).check(Schema.isMaxLength(1000)),
+});
+
+const ListedModel = Schema.Struct({ visibility: Schema.Literal("list") });
+
+const CatalogModel = Schema.Struct({
+  slug: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
+  display_name: Schema.String.check(Schema.isMaxLength(200)),
+});
+
 const authFetch = (url: string, init?: RequestInit) =>
   allowedFetch(url, ["auth.openai.com"], {
     ...init,
@@ -81,23 +163,21 @@ export async function verifyChatgptIdentity(token: string, clientId: string, non
       clockTolerance: 5,
     });
 
+    const identity = Schema.decodeUnknownSync(IdentityClaims)(payload);
+
     if (
-      payload.nonce !== nonce ||
-      typeof payload.sub !== "string" ||
-      !payload.sub ||
-      payload.sub.length > 512 ||
-      typeof payload.iat !== "number" ||
-      payload.iat > Date.now() / 1000 + 5 ||
-      (Array.isArray(payload.aud) && payload.aud.length > 1 && payload.azp !== clientId)
+      identity.nonce !== nonce ||
+      identity.iat > Date.now() / 1000 + 5 ||
+      (Array.isArray(identity.aud) && identity.aud.length > 1 && identity.azp !== clientId)
     )
       chatgptError("CHATGPT_IDENTITY_INVALID");
 
-    return {
-      subject: payload.sub,
-      ...(typeof payload.email === "string" && payload.email.length <= 320
-        ? { email: payload.email }
-        : {}),
-    };
+    const result: ChatgptIdentity = { subject: identity.sub };
+    const email = Schema.decodeUnknownOption(identityEmail)(identity.email);
+
+    if (Option.isSome(email)) result.email = email.value;
+
+    return result;
   } catch {
     return chatgptError("CHATGPT_IDENTITY_INVALID");
   }
@@ -112,54 +192,43 @@ const terminalRefresh = new Set([
   "refresh_token_reused",
 ]);
 
-function parseTokens(raw: Record<string, unknown>, previous?: Tokens): Tokens {
-  const valid = (v: unknown): v is string =>
-    typeof v === "string" && v.length > 0 && v.length <= 32768;
+function parseTokens(input: Schema.JsonObject, previous?: Tokens): Tokens {
+  const decoded = Schema.decodeUnknownOption(TokenResponse)(input);
 
-  const refreshToken = raw.refresh_token,
-    idToken = raw.id_token ?? previous?.idToken;
+  if (Option.isNone(decoded)) chatgptError("CHATGPT_INVALID_TOKEN_RESPONSE");
+  const raw = decoded.value;
+  const idToken = raw.id_token ?? previous?.idToken;
 
   if (
-    !valid(raw.access_token) ||
-    !valid(refreshToken) ||
-    !valid(idToken) ||
-    typeof raw.token_type !== "string" ||
+    !idToken ||
     raw.token_type.toLowerCase() !== "bearer" ||
-    typeof raw.expires_in !== "number" ||
-    !Number.isFinite(raw.expires_in) ||
-    raw.expires_in <= 0 ||
-    (raw.scope !== undefined && (typeof raw.scope !== "string" || raw.scope.length > 4096)) ||
-    (!previous && typeof raw.scope !== "string")
-  )
-    chatgptError("CHATGPT_INVALID_TOKEN_RESPONSE");
-  // earliest_refresh_at is a Unix timestamp in seconds when supplied.
-  const earliest = raw.earliest_refresh_at;
-
-  if (
-    earliest !== undefined &&
-    (typeof earliest !== "number" || !Number.isFinite(earliest) || earliest < 0)
+    (!previous && raw.scope === undefined)
   )
     chatgptError("CHATGPT_INVALID_TOKEN_RESPONSE");
 
-  return {
+  const tokens: Tokens = {
     accessToken: raw.access_token,
-    refreshToken,
+    refreshToken: raw.refresh_token,
     idToken,
     expiresAt: Date.now() + raw.expires_in * 1000,
-    scopes:
-      typeof raw.scope === "string" ? raw.scope.split(/\s+/).filter(Boolean) : previous!.scopes,
-    ...(typeof earliest === "number" ? { earliestRefreshAt: earliest * 1000 } : {}),
+    scopes: raw.scope === undefined ? previous!.scopes : raw.scope.split(/\s+/).filter(Boolean),
   };
+
+  // earliest_refresh_at is a Unix timestamp in seconds when supplied.
+  if (raw.earliest_refresh_at !== undefined)
+    tokens.earliestRefreshAt = raw.earliest_refresh_at * 1000;
+
+  return tokens;
 }
 
-async function exchange(body: URLSearchParams): Promise<Record<string, unknown>> {
+async function exchange(body: URLSearchParams): Promise<Schema.JsonObject> {
   const response = await authFetch(config.tokenEndpoint, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
     body,
   });
 
-  let raw: Record<string, unknown>;
+  let raw: Schema.JsonObject;
 
   try {
     raw = await jsonResponse(new Response(response.body, { status: 200 }));
@@ -169,11 +238,11 @@ async function exchange(body: URLSearchParams): Promise<Record<string, unknown>>
   }
 
   if (!response.ok) {
-    const code = typeof raw.error === "string" ? raw.error : undefined;
+    const code = Schema.is(Schema.String)(raw.error) ? raw.error : undefined;
 
     const info = chatgptFailure(
       response.status,
-      typeof raw.error === "string" ? { error: { code } } : raw,
+      Schema.is(Schema.String)(raw.error) ? { error: { code } } : raw,
       response.headers.get("openai-request-id") ??
         response.headers.get("x-request-id") ??
         undefined,
@@ -187,7 +256,7 @@ async function exchange(body: URLSearchParams): Promise<Record<string, unknown>>
 
 // All credential handling and network calls live in HomeDO, outside workflow journals.
 export function makeChatgptStorage(
-  storage: Storage,
+  storage: ChatgptStorageInput,
   kek: string,
   context: () => Promise<ChatgptContext>,
 ) {
@@ -195,13 +264,13 @@ export function makeChatgptStorage(
 
   const refreshing = new Map<string, Promise<Access>>();
 
-  const get = <T>(kind: string, id: string): T | undefined => {
+  const get = <A>(kind: string, id: string, schema: Schema.Codec<A>): A | undefined => {
     const raw = storage.get(kind, id);
 
-    return raw ? (JSON.parse(raw) as T) : undefined;
+    return raw ? Schema.decodeUnknownSync(schema)(JSON.parse(raw)) : undefined;
   };
 
-  const put = (kind: string, id: string, value: unknown) =>
+  const put = (kind: string, id: string, value: AccountRow | LinkRow) =>
     storage.put(kind, id, JSON.stringify(value));
 
   const aad = (id: string) => `chatgpt:${id}:credentials`;
@@ -213,7 +282,7 @@ export function makeChatgptStorage(
   const save = (id: string, row: AccountRow) => put("chatgpt-account", id, row);
 
   const readAccount = (id: string, epoch: number): AccountRow => {
-    const row = get<AccountRow>("chatgpt-account", id);
+    const row: AccountRow | undefined = get("chatgpt-account", id, AccountRecord);
 
     if (!row) chatgptError("CHATGPT_ACCOUNT_NOT_FOUND");
 
@@ -238,16 +307,18 @@ export function makeChatgptStorage(
   const credentials = async (id: string, row: AccountRow): Promise<Tokens> => {
     if (!row.credentials) chatgptError("CHATGPT_REAUTHORIZE_REQUIRED");
 
-    return JSON.parse(await open(kek, aad(id), row.credentials)) as Tokens;
+    return Schema.decodeUnknownSync(TokenRecord)(
+      JSON.parse(await open(kek, aad(id), row.credentials)),
+    );
   };
 
   const checkRevision = (id: string, revision: string) => {
-    if (get<AccountRow>("chatgpt-account", id)?.revision !== revision)
+    if (get("chatgpt-account", id, AccountRecord)?.revision !== revision)
       chatgptError("CHATGPT_REVISION_CHANGED");
   };
 
   const readLink = (id: string, epoch: number): LinkRow => {
-    const row = get<LinkRow>("chatgpt-link", id);
+    const row: LinkRow | undefined = get("chatgpt-link", id, LinkRecord);
 
     if (!row) chatgptError("CHATGPT_LINK_NOT_FOUND");
 
@@ -413,7 +484,7 @@ export function makeChatgptStorage(
     checkRevision(id, revision);
 
     if (!response.ok) {
-      let body: unknown;
+      let body: Schema.JsonObject;
 
       try {
         body = await jsonResponse(new Response(response.body, { status: 200 }));
@@ -441,7 +512,7 @@ export function makeChatgptStorage(
 
     // Account catalogs include metadata beyond the fields we retain and can exceed
     // the smaller OAuth token-response bound. Never persist or log that metadata.
-    const body = await jsonResponse(response, 4 * 1024 * 1024).catch((error: unknown) => {
+    const body = await jsonResponse(response, 4 * 1024 * 1024).catch((cause: unknown) => {
       throw new ChatgptProviderError({
         ...chatgptFailure(
           response.status,
@@ -452,28 +523,23 @@ export function makeChatgptStorage(
         ),
         reason: "unsupported_request",
         code:
-          error instanceof Error && error.message === "OAUTH_RESPONSE_LIMIT"
+          cause instanceof Error && cause.message === "OAUTH_RESPONSE_LIMIT"
             ? "CHATGPT_CATALOG_TOO_LARGE"
             : "CHATGPT_INVALID_CATALOG",
       });
     });
 
-    if (!Array.isArray(body.models) || body.models.length > 1000)
-      chatgptError("CHATGPT_INVALID_CATALOG", "unsupported_request");
+    const catalog = Schema.decodeUnknownOption(Catalog)(body);
+
+    if (Option.isNone(catalog)) chatgptError("CHATGPT_INVALID_CATALOG", "unsupported_request");
     const result: { slug: string; displayName: string }[] = [];
 
-    for (const model of body.models) {
-      if (!model || typeof model !== "object" || model.visibility !== "list") continue;
+    for (const candidate of catalog.value.models) {
+      if (!Schema.is(ListedModel)(candidate)) continue;
+      const model = Schema.decodeUnknownOption(CatalogModel)(candidate);
 
-      if (
-        typeof model.slug !== "string" ||
-        !model.slug ||
-        model.slug.length > 200 ||
-        typeof model.display_name !== "string" ||
-        model.display_name.length > 200
-      )
-        chatgptError("CHATGPT_INVALID_CATALOG", "unsupported_request");
-      result.push({ slug: model.slug, displayName: model.display_name });
+      if (Option.isNone(model)) chatgptError("CHATGPT_INVALID_CATALOG", "unsupported_request");
+      result.push({ slug: model.value.slug, displayName: model.value.display_name });
     }
 
     await guard(epoch);
@@ -516,7 +582,7 @@ export function makeChatgptStorage(
 
       const selectedId =
         input.accountId ??
-        (retry && get<AccountRow>("chatgpt-account", retry.view.accountId!)
+        (retry && get("chatgpt-account", retry.view.accountId!, AccountRecord)
           ? retry.view.accountId
           : undefined);
 
@@ -536,7 +602,7 @@ export function makeChatgptStorage(
       }
 
       for (const item of storage.list("chatgpt-state"))
-        if (!get<LinkRow>("chatgpt-link", item.body)) storage.take("chatgpt-state", item.id);
+        if (!get("chatgpt-link", item.body, LinkRecord)) storage.take("chatgpt-state", item.id);
 
       if (pendingCount >= 16) chatgptError("CHATGPT_LINK_LIMIT", "unsupported_request");
 
@@ -577,10 +643,14 @@ export function makeChatgptStorage(
         link = ensureLink(id, epoch);
 
       if (link.view.status !== "pending" || !link.envelope) chatgptError("CHATGPT_LINK_EXPIRED");
-      const flow = JSON.parse(await open(kek, `chatgpt-link:${id}`, link.envelope)) as Flow;
+
+      const flow = Schema.decodeUnknownSync(FlowRecord)(
+        JSON.parse(await open(kek, `chatgpt-link:${id}`, link.envelope)),
+      );
+
       const url = new URL(config.authorizationEndpoint);
 
-      const params: Record<string, string> = {
+      const params = new URLSearchParams({
         client_id: flow.clientId,
         ext_agent_host_id: hostId,
         response_type: "code",
@@ -591,24 +661,24 @@ export function makeChatgptStorage(
         nonce: flow.nonce,
         code_challenge_method: "S256",
         code_challenge: await pkceChallenge(flow.verifier),
-      };
+      });
 
-      if (flow.clientId === config.clientId) params.agent_name_hint = "Kitties";
-      else if (get<AccountRow>("chatgpt-account", link.view.accountId!)) {
+      if (flow.clientId === config.clientId) params.set("agent_name_hint", "Kitties");
+      else if (get("chatgpt-account", link.view.accountId!, AccountRecord)) {
         const row = readAccount(link.view.accountId!, epoch);
 
         // A retained ID token goes only into a server redirect to OpenAI.
         if (row.credentials)
-          params.id_token_hint = (await credentials(link.view.accountId!, row)).idToken;
+          params.set("id_token_hint", (await credentials(link.view.accountId!, row)).idToken);
 
-        if (row.account.email) params.login_hint = row.account.email;
+        if (row.account.email) params.set("login_hint", row.account.email);
       }
 
-      if (flow.requestConsent) params.prompt = "consent";
+      if (flow.requestConsent) params.set("prompt", "consent");
       await guard(epoch);
       ensureLink(id, epoch);
 
-      for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+      for (const [key, value] of params) url.searchParams.set(key, value);
 
       return url.href;
     },
@@ -641,7 +711,9 @@ export function makeChatgptStorage(
       put("chatgpt-link", id, link);
 
       try {
-        const flow = JSON.parse(await open(kek, `chatgpt-link:${id}`, originalEnvelope)) as Flow;
+        const flow = Schema.decodeUnknownSync(FlowRecord)(
+          JSON.parse(await open(kek, `chatgpt-link:${id}`, originalEnvelope)),
+        );
 
         if (flow.state !== callback.state || (callback.issuer && callback.issuer !== config.issuer))
           chatgptError("CHATGPT_STATE_INVALID");
@@ -687,7 +759,7 @@ export function makeChatgptStorage(
           chatgptError("CHATGPT_ACCOUNT_MISMATCH");
 
         for (const existing of storage.list("chatgpt-account")) {
-          const other = JSON.parse(existing.body) as AccountRow;
+          const other = Schema.decodeUnknownSync(AccountRecord)(JSON.parse(existing.body));
 
           if (existing.id !== link.view.accountId && other.account.clientId === clientId)
             chatgptError("CHATGPT_REGISTRATION_EXISTS");
@@ -757,12 +829,15 @@ export function makeChatgptStorage(
       if (!old) return { revocationConfirmed: false };
 
       try {
-        const tokens = JSON.parse(await open(kek, aad(id), old)) as Tokens;
+        const tokens = Schema.decodeUnknownSync(TokenRecord)(
+          JSON.parse(await open(kek, aad(id), old)),
+        );
+
         const metadata = await jsonResponse(await authFetch(config.discoveryUri));
 
         if (
           metadata.issuer !== config.issuer ||
-          typeof metadata.revocation_endpoint !== "string" ||
+          !Schema.is(Schema.String)(metadata.revocation_endpoint) ||
           new URL(metadata.revocation_endpoint).origin !== config.issuer
         )
           return { revocationConfirmed: false };
@@ -836,7 +911,7 @@ export function makeChatgptStorage(
     },
     invalidate: () => {
       for (const { id, body } of storage.list("chatgpt-account")) {
-        const row = JSON.parse(body) as AccountRow;
+        const row: AccountRow = Schema.decodeUnknownSync(AccountRecord)(JSON.parse(body));
         delete row.credentials;
         delete row.refreshing;
         row.revision = randomSecret();
@@ -853,4 +928,15 @@ export function makeChatgptStorage(
         for (const { id } of storage.list(kind)) storage.take(kind, id);
     },
   };
+}
+
+export class ChatgptCredentials extends Context.Service<
+  ChatgptCredentials,
+  ReturnType<typeof makeChatgptStorage>
+>()("@kitties/gateway/chatgpt-core/ChatgptCredentials") {
+  static layer(storage: ChatgptStorageInput, kek: string, context: () => Promise<ChatgptContext>) {
+    return Layer.sync(ChatgptCredentials, () =>
+      ChatgptCredentials.of(makeChatgptStorage(storage, kek, context)),
+    );
+  }
 }

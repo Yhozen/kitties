@@ -13,11 +13,11 @@ export const withMcp = <A, E>(
     Effect.gen(function* () {
       publicHttps(url);
 
-      const transport = yield* McpClient.http({
-        url,
-        protocol: McpProtocol.v2025_11_25,
-        ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
-      });
+      const options = { url, protocol: McpProtocol.v2025_11_25 };
+
+      const transport = yield* token
+        ? McpClient.http({ ...options, headers: { Authorization: `Bearer ${token}` } })
+        : McpClient.http(options);
 
       const client = yield* McpClient.make({
         name: "kitties",

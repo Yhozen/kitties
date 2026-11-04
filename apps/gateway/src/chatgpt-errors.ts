@@ -1,4 +1,26 @@
+import * as Schema from "effect/Schema";
+import * as Option from "effect/Option";
 import type { ChatgptFailure } from "@kitties/domain/entities";
+
+const ProviderFailure = Schema.Struct({
+  error: Schema.optional(Schema.Unknown),
+  detail: Schema.optional(Schema.Unknown),
+});
+
+const ErrorDetails = Schema.Struct({
+  code: Schema.optional(Schema.Unknown),
+  param: Schema.optional(Schema.Unknown),
+});
+
+const diagnosticField = Schema.String.check(
+  Schema.isMaxLength(128),
+  Schema.isPattern(/^[a-zA-Z0-9_.[\]-]+$/),
+);
+
+const requestIdField = Schema.String.check(
+  Schema.isMaxLength(200),
+  Schema.isPattern(/^[a-zA-Z0-9_.[\]-]+$/),
+);
 
 export class ChatgptProviderError extends Error {
   constructor(readonly info: ChatgptFailure) {
@@ -6,18 +28,22 @@ export class ChatgptProviderError extends Error {
   }
 }
 
-const field = (value: unknown, max = 128) =>
-  typeof value === "string" && value.length <= max && /^[a-zA-Z0-9_.[\]-]+$/.test(value)
-    ? value
-    : undefined;
+export function chatgptFailure(
+  status: number,
+  body: typeof ProviderFailure.Type,
+  requestId?: string,
+): ChatgptFailure {
+  const raw = Schema.decodeUnknownSync(ProviderFailure)(body);
 
-export function chatgptFailure(status: number, body: unknown, requestId?: string): ChatgptFailure {
-  const raw = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  const error = Option.getOrElse(Schema.decodeUnknownOption(ErrorDetails)(raw.error), () => ({
+    code: undefined,
+    param: undefined,
+  }));
 
-  const error =
-    raw.error && typeof raw.error === "object" ? (raw.error as Record<string, unknown>) : {};
-
-  const code = field(error.code) ?? "CHATGPT_ADMISSION_FAILED";
+  const code = Option.getOrElse(
+    Schema.decodeUnknownOption(diagnosticField)(error.code),
+    () => "CHATGPT_ADMISSION_FAILED",
+  );
 
   const reason: ChatgptFailure["reason"] =
     code === "subscription_sharing_usage_limit_exceeded"
@@ -48,24 +74,37 @@ export function chatgptFailure(status: number, body: unknown, requestId?: string
                 ? "account_ineligible"
                 : "provider_unavailable";
 
+  const diagnostics: {
+    -readonly [K in keyof Pick<ChatgptFailure, "requestId" | "param">]: ChatgptFailure[K];
+  } = {};
+
+  const diagnosticRequestId = Option.getOrUndefined(
+    Schema.decodeUnknownOption(requestIdField)(requestId),
+  );
+
+  const param = Option.getOrUndefined(Schema.decodeUnknownOption(diagnosticField)(error.param));
+
+  if (diagnosticRequestId !== undefined) diagnostics.requestId = diagnosticRequestId;
+
+  if (param !== undefined) diagnostics.param = param;
+
+  // This serialized field belongs to the shared ChatgptFailure contract.
   return {
     reason,
     code,
     status,
-    ...(field(requestId, 200) ? { requestId } : {}),
-    ...(field(error.param) ? { param: field(error.param) } : {}),
-    bodyShape:
-      raw.error && typeof raw.error === "object"
-        ? "structured"
-        : typeof raw.detail === "string"
-          ? "detail"
-          : "other",
+    ...diagnostics,
+    ["bodyShape"]: Schema.is(Schema.ObjectKeyword)(raw.error)
+      ? "structured"
+      : Schema.is(Schema.String)(raw.detail)
+        ? "detail"
+        : "other",
   };
 }
 
-export const safeChatgptError = (error: unknown): ChatgptFailure =>
-  error instanceof ChatgptProviderError
-    ? error.info
+export const safeChatgptError = (cause: unknown): ChatgptFailure =>
+  cause instanceof ChatgptProviderError
+    ? cause.info
     : {
         reason: "provider_unavailable",
         code: "CHATGPT_UNAVAILABLE",
