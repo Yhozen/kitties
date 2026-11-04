@@ -1,4 +1,4 @@
-import { makeRecoveryGuard, guardedActivities } from "../recovery-guard.ts";
+import { RecoveryGuard, guardedActivities } from "../recovery-guard.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Workflows from "alchemy/Workflows";
 import * as Effect from "effect/Effect";
@@ -9,19 +9,21 @@ import { DesktopAttempt, DesktopDecision } from "../desktop-definition.ts";
 import { Action } from "@kitties/protocol";
 import { sha256 } from "../kitty.ts";
 import { open, type Envelope } from "../secrets.ts";
+import { receiptResult, failedReceipt } from "../receipt-result.ts";
 
 const storage = () => "STORAGE_UNAVAILABLE";
 
 export const DesktopAttemptLive = Workflows.layer(
   DesktopAttempt,
   Effect.gen(function* () {
-    const recovery = yield* makeRecoveryGuard;
+    const recovery = yield* RecoveryGuard;
     const fenced = (id: string) => guardedActivities(recovery(DesktopAttempt._tag, id));
 
     const homes = yield* HomeDO,
       kitties = yield* KittyDO,
       chats = yield* ChatDO;
 
+    // SAFETY: Gateway declares these bindings in worker.ts and Alchemy supplies them to workflows.
     const env = (yield* Cloudflare.WorkerEnvironment) as { KITTIES_KEK: string };
 
     return Effect.fn(function* (payload, executionId) {
@@ -39,11 +41,13 @@ export const DesktopAttemptLive = Workflows.layer(
 
         if (!saved) return yield* Effect.fail("TOOL_NOT_FOUND");
 
-        return JSON.parse(saved) as {
-          action: string;
-          args: Record<string, unknown>;
-          preparedAt?: number;
-        };
+        return Schema.decodeUnknownSync(
+          Schema.Struct({
+            action: Schema.String,
+            args: Schema.JsonObject,
+            preparedAt: Schema.optional(Schema.Number),
+          }),
+        )(JSON.parse(saved));
       });
 
       const initial = yield* fenced(executionId)({
@@ -78,17 +82,20 @@ export const DesktopAttemptLive = Workflows.layer(
             return "help";
           }
 
+          let args = job.args;
+
           const name = yield* Schema.decodeUnknownEffect(Action.fields.action)(job.action).pipe(
             Effect.mapError(() => "UNSUPPORTED_ACTION"),
           );
 
           if (name === "type_secret") {
-            const ref = typeof job.args.ref === "string" ? job.args.ref : "";
+            const ref = Schema.is(Schema.String)(job.args.ref) ? job.args.ref : "";
             const value = yield* home.read("vault", ref).pipe(Effect.mapError(storage));
 
             if (!value) return yield* Effect.fail("SECRET_NOT_FOUND");
+            // SAFETY: owner-data writes vault entries with a sealed Envelope after validating the input.
             const entry = JSON.parse(value) as { secret: Envelope };
-            job.args = {
+            args = {
               ref,
               value: yield* Effect.tryPromise({
                 try: () => open(env.KITTIES_KEK, `vault:${ref}:value`, entry.secret),
@@ -98,7 +105,7 @@ export const DesktopAttemptLive = Workflows.layer(
           }
 
           const result = yield* kitty
-            .agentAction(intentId, name, job.args)
+            .agentAction(intentId, name, args)
             .pipe(Effect.mapError(storage));
 
           return JSON.stringify({
@@ -108,6 +115,7 @@ export const DesktopAttemptLive = Workflows.layer(
         }),
       });
 
+      // SAFETY: dispatch above serializes this status/timing record; legacy activities return plain status.
       const dispatch = initial.startsWith("{")
         ? (JSON.parse(initial) as { status: string; timing: Record<string, number> })
         : { status: initial, timing: undefined };
@@ -133,14 +141,16 @@ export const DesktopAttemptLive = Workflows.layer(
 
             if (status === "held") {
               const job = yield* load;
+              let args = job.args;
 
               if (job.action === "type_secret") {
-                const ref = typeof job.args.ref === "string" ? job.args.ref : "",
+                const ref = Schema.is(Schema.String)(job.args.ref) ? job.args.ref : "",
                   value = yield* home.read("vault", ref).pipe(Effect.mapError(storage));
 
                 if (!value) return yield* Effect.fail("SECRET_NOT_FOUND");
+                // SAFETY: owner-data writes vault entries with a sealed Envelope after validating the input.
                 const entry = JSON.parse(value) as { secret: Envelope };
-                job.args = {
+                args = {
                   ref,
                   value: yield* Effect.tryPromise({
                     try: () => open(env.KITTIES_KEK, `vault:${ref}:value`, entry.secret),
@@ -153,9 +163,8 @@ export const DesktopAttemptLive = Workflows.layer(
                 Effect.mapError(() => "UNSUPPORTED_ACTION"),
               );
 
-              return (yield* kitty
-                .agentAction(intentId, name, job.args)
-                .pipe(Effect.mapError(storage))).status;
+              return (yield* kitty.agentAction(intentId, name, args).pipe(Effect.mapError(storage)))
+                .status;
             }
 
             const receipt = yield* kitty.receipt(intentId).pipe(Effect.mapError(storage));
@@ -225,15 +234,7 @@ export const DesktopAttemptLive = Workflows.layer(
 
           if (decision) status = decision === "accept" ? "completed" : "unknown";
           const receipt = yield* kitty.receipt(intentId).pipe(Effect.mapError(storage));
-          let result: unknown = { status };
-
-          if (receipt?.result) {
-            try {
-              result = JSON.parse(receipt.result);
-            } catch {
-              result = { text: receipt.result, status };
-            }
-          }
+          const result = receiptResult(receipt?.result, status);
 
           yield* Effect.all(
             [
@@ -242,7 +243,7 @@ export const DesktopAttemptLive = Workflows.layer(
                   payload.messageId,
                   payload.callId,
                   JSON.stringify({
-                    isFailure: status !== "completed" || (result as { ok?: boolean })?.ok === false,
+                    isFailure: status !== "completed" || failedReceipt(result),
                     result,
                     timing: dispatch.timing
                       ? { ...dispatch.timing, resultAt: Date.now() }

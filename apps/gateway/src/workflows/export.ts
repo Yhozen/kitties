@@ -4,6 +4,7 @@ import { WorkflowEngine } from "effect/workflow";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Workflows from "alchemy/Workflows";
 import * as Effect from "effect/Effect";
+import * as Match from "effect/Match";
 import * as Schema from "effect/Schema";
 import type * as cf from "@cloudflare/workers-types";
 import { DurableClock } from "effect/workflow";
@@ -32,19 +33,19 @@ export const ExportLive = Workflows.layer(
       chats = yield* ChatDO,
       kitties = yield* KittyDO;
 
+    // SAFETY: Gateway declares these bindings in worker.ts and Alchemy supplies them to workflows.
     const env = (yield* Cloudflare.WorkerEnvironment) as {
       EXPORTS: cf.R2Bucket;
       KITTIES_KEK: string;
     };
 
     const actor = (kind: string, name: string) =>
-      kind === "workflow"
-        ? workflowActor(engine, name, env.KITTIES_KEK)
-        : kind === "home"
-          ? homes.getByName(name, { locationHint: "weur" })
-          : kind === "kitty"
-            ? kitties.getByName(name, { locationHint: "weur" })
-            : chats.getByName(name, { locationHint: "weur" });
+      Match.value(kind).pipe(
+        Match.when("workflow", () => workflowActor(engine, name, env.KITTIES_KEK)),
+        Match.when("home", () => homes.getByName(name, { locationHint: "weur" })),
+        Match.when("kitty", () => kitties.getByName(name, { locationHint: "weur" })),
+        Match.orElse(() => chats.getByName(name, { locationHint: "weur" })),
+      );
 
     return Effect.fn(function* ({ id }, executionId) {
       const root = roots.getByName("control", { locationHint: "weur" }),
@@ -65,6 +66,7 @@ export const ExportLive = Workflows.layer(
           const snapshots: Snapshot[] = [];
 
           for (const o of yield* root.objects().pipe(Effect.mapError(storage))) {
+            // SAFETY: adminCapture serializes its typed tables metadata from the storage administration service.
             const a = actor(o.kind, o.name),
               capture = JSON.parse(yield* a.adminCapture(id).pipe(Effect.mapError(storage))) as {
                 tables: Snapshot["tables"];
@@ -81,6 +83,7 @@ export const ExportLive = Workflows.layer(
         }),
       });
 
+      // SAFETY: The capture activity above serializes this locally constructed Snapshot array.
       const snapshots = JSON.parse(captures) as Snapshot[];
       let parts = 0;
 

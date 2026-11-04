@@ -5,6 +5,7 @@ import { workflowActor } from "../workflow-admin.ts";
 import { DurableClock, WorkflowEngine } from "effect/workflow";
 import * as Workflows from "alchemy/Workflows";
 import * as Effect from "effect/Effect";
+import * as Match from "effect/Match";
 import * as Schema from "effect/Schema";
 import { HomeDO, ChatDO, KittyDO } from "../actors.ts";
 import { RecoveryDO } from "../recovery-store.ts";
@@ -23,6 +24,7 @@ export const RestoreLive = Workflows.layer(
       chats = yield* ChatDO,
       kitties = yield* KittyDO;
 
+    // SAFETY: Gateway declares these bindings in worker.ts and Alchemy supplies them to workflows.
     const env = (yield* Cloudflare.WorkerEnvironment) as { KITTIES_KEK: string };
 
     return Effect.fn(function* (payload, executionId) {
@@ -30,13 +32,12 @@ export const RestoreLive = Workflows.layer(
         home = homes.getByName("owner", { locationHint: "weur" });
 
       const actor = () =>
-        payload.kind === "workflow"
-          ? workflowActor(engine, payload.name, env.KITTIES_KEK)
-          : payload.kind === "home"
-            ? homes.getByName("owner", { locationHint: "weur" })
-            : payload.kind === "kitty"
-              ? kitties.getByName(payload.name, { locationHint: "weur" })
-              : chats.getByName(payload.name, { locationHint: "weur" });
+        Match.value(payload.kind).pipe(
+          Match.when("workflow", () => workflowActor(engine, payload.name, env.KITTIES_KEK)),
+          Match.when("home", () => homes.getByName("owner", { locationHint: "weur" })),
+          Match.when("kitty", () => kitties.getByName(payload.name, { locationHint: "weur" })),
+          Match.orElse(() => chats.getByName(payload.name, { locationHint: "weur" })),
+        );
 
       const epoch = yield* activity({
         name: "fence",
