@@ -5,7 +5,11 @@
   "scripts": {
     "build": "bun build src/index.ts --compile --target=bun-linux-x64-baseline --outfile dist/kittyd",
     "check": "tsc --noEmit -p tsconfig.json",
-    "release": "node scripts/release.mjs"
+    "release": "node scripts/release.mjs",
+    "build:voxl": "bash scripts/build-voxl.sh"
+  },
+  "dependencies": {
+    "@kitties/protocol": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "1.4.4"

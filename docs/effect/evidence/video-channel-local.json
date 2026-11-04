@@ -1,0 +1,13 @@
+{
+  "status": "passed",
+  "scope": "local workerd, synthetic H264 packets",
+  "checks": [
+    "slow viewer isolation",
+    "keyframe after dropped delta",
+    "video cannot grant or input",
+    "release rejects input",
+    "epoch change closes video peers",
+    "stale guest epoch rejected"
+  ],
+  "date": "2026-11-04"
+}

@@ -1,0 +1,7 @@
+{
+  "version": "0.3.2",
+  "url": "https://github.com/tembo/voxl/releases/download/v0.3.2/voxl-server-0.3.2.crate",
+  "sha256": "5a7563fe3f84d90ae29cd63772d057f7891aeb1073ccafdc1bc1c393791c5893",
+  "rust": "1.93.0",
+  "esbuild": "0.25.0"
+}

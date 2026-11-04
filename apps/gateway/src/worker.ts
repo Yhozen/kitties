@@ -279,7 +279,7 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
         const handled = yield* application(request);
         if (handled) return handled;
         const desktopRoute = url.pathname.match(
-          /^\/v1\/kitties\/([a-zA-Z0-9_-]{1,128})\/desktop(?:\/(control|frames))?$/,
+          /^\/v1\/kitties\/([a-zA-Z0-9_-]{1,128})\/desktop(?:\/(control|frames|video))?$/,
         );
         if (desktopRoute && request.method === "GET") {
           const kitty = kitties.getByName(desktopRoute[1]!, { locationHint: "weur" });

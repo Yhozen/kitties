@@ -57,6 +57,28 @@ try {
       ]);
     rmSync(archive);
   }
+  const videoBuild = JSON.parse(readFileSync("dist/voxl-build.json", "utf8"));
+  const videoPin = JSON.parse(readFileSync("voxl-version.json", "utf8"));
+  if (JSON.stringify(videoBuild.pin) !== JSON.stringify(videoPin))
+    throw Error("voxl build pin mismatch");
+  for (const [name, hash] of Object.entries(videoBuild.files)) {
+    if (
+      !["voxl", "voxl-source.tgz"].includes(name) ||
+      createHash("sha256")
+        .update(readFileSync(join("dist", name)))
+        .digest("hex") !== hash
+    )
+      throw Error("voxl build checksum mismatch");
+  }
+  for (const name of [
+    "voxl",
+    "voxl-build.json",
+    "voxl-source.tgz",
+    "voxl-LICENSE",
+    "voxl-COPYING-x264",
+    "voxl-x264-copyright",
+  ])
+    cpSync(join("dist", name), join(work, name));
   cpSync("dist/kittyd", join(work, "kittyd"));
   for (const name of ["install.sh", "kitty-grab.c", "kitty-quiesce.sh", "perception-helper.py"])
     cpSync(join("files", name), join(work, name));
