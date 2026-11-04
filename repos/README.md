@@ -11,6 +11,11 @@ installed in `apps/web`. Kitties imports the published npm packages. This
 directory is outside pnpm workspace membership, test discovery, coverage,
 formatting and linting; its tests are reference material, not our suite.
 
+Preserve the subtree tracking commits when merging imports and upgrades: use a
+merge commit rather than squashing the pull request. The full-history secret
+scan includes the imported root. Exact reviewed test-fixture fingerprints are
+documented in `.gitleaksignore`; the reference directory is not exempted.
+
 When upgrading Foldkit, update the package family together, then run:
 
 ```sh
