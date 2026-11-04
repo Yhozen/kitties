@@ -73,5 +73,5 @@ targets, not measurements.
 | 2026-11-01 | 4 | Regional DO to real guest acknowledgment | 90 ms | 155 ms | 200 inputs; excludes browser to European edge. [Evidence](evidence/channel-boat-eu.json) |
 | 2026-11-01 | 5 | First streamed fixture-model token | — | 1.872 s | 50 turns through deployed workflow and SSE; excludes paid-provider characteristics. [Evidence](evidence/chat-stream-cloud.json) |
 | 2026-11-01 | 4 | Continuous real stream | 30 min | no disconnects | Three viewers, including a constrained viewer. [Evidence](evidence/stream-soak.json) |
-
 | 2026-11-01 | 7/10 | Non-model overhead, real desktop action | 653 ms | 1,421 ms | 50 turns; original p95 < 1 s target unmet. Owner accepted cutover with this limitation documented. [Evidence](evidence/step-latency-cloud.json), [decision](evidence/latency-cutover-decision.json) |
+| 2026-11-02 | post-cutover | Non-model overhead, real desktop action | 222 ms | 525 ms | 50 turns on `next`; **p95 < 1 s target met**. Second run: 212 ms / 453 ms. [Run 1](evidence/step-latency-optimized-cloud.json), [run 2](evidence/step-latency-optimized-cloud-run2.json) |

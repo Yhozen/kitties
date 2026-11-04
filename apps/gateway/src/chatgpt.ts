@@ -1,66 +1,126 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Effect from "effect/Effect";
-import * as Schema from "effect/Schema";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
+import { ChatgptLinkInput, type ChatgptFailure } from "@kitties/domain/entities";
 import { HomeDO } from "./actors.ts";
-import { chatgptConfig } from "./chatgpt-config.ts";
 import { readBody } from "./request.ts";
+import { safeChatgptError } from "./chatgpt-errors.ts";
 const json = (body: unknown, status = 200) =>
   HttpServerResponse.fromWeb(
-    Response.json(body, { status, headers: { "Cache-Control": "no-store" } }),
+    Response.json(body, {
+      status,
+      headers: { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" },
+    }),
   );
+const failure = (error: unknown) => {
+  const info =
+    error && typeof error === "object" && "code" in error && "reason" in error
+      ? (error as ChatgptFailure)
+      : safeChatgptError(error);
+  return json(
+    { code: info.code, params: {}, error: info },
+    info.code.endsWith("_NOT_FOUND") ? 404 : info.reason === "provider_unavailable" ? 503 : 400,
+  );
+};
 export const makeChatgpt = Effect.gen(function* () {
   const homes = yield* HomeDO;
   const env = (yield* Cloudflare.WorkerEnvironment) as { CHATGPT_ENABLED: string };
+  const home = () => homes.getByName("owner", { locationHint: "weur" });
   return (request: Request) =>
     Effect.gen(function* () {
-      const path = new URL(request.url).pathname;
-      if (path === "/v1/features" && request.method === "GET")
+      const path = new URL(request.url).pathname,
+        method = request.method;
+      if (path === "/v1/features" && method === "GET")
         return json({ chatgpt: env.CHATGPT_ENABLED === "true" });
-      const route = path.match(/^\/v1\/providers\/([a-zA-Z0-9_-]{1,128})\/signin(?:\/(finish))?$/);
-      if (!route) return;
-      if (env.CHATGPT_ENABLED !== "true")
-        return json({ code: "FEATURE_DISABLED", params: {} }, 404);
-      const id = route[1]!,
-        home = homes.getByName("owner", { locationHint: "weur" }),
-        key = `chatgpt-${id}`;
-      const raw = yield* home.read("provider", id);
-      if (!raw || (JSON.parse(raw) as { kind: string }).kind !== "chatgpt")
-        return json({ code: "NOT_FOUND", params: {} }, 404);
-      if (request.method === "GET") return json({ status: yield* home.oauthStatus(key) });
-      if (request.method === "DELETE") {
-        yield* home.oauthDisconnect(key);
-        return HttpServerResponse.empty({ status: 204 });
+      // Linking and admission are available while inference remains disabled.
+      if (path === "/v1/chatgpt/accounts" && method === "GET")
+        return yield* home()
+          .chatgptAccounts()
+          .pipe(
+            Effect.map((value) => json(value)),
+            Effect.catch((error) => Effect.succeed(failure(error))),
+          );
+      if (path === "/v1/chatgpt/link-attempts" && method === "POST") {
+        const body = yield* readBody(request, ChatgptLinkInput);
+        return yield* home()
+          .chatgptBegin(body)
+          .pipe(
+            Effect.map((value) => json(value, 201)),
+            Effect.catch((error) => Effect.succeed(failure(error))),
+          );
       }
-      if (request.method !== "POST") return json({ code: "NOT_FOUND", params: {} }, 404);
-      if (route[2] === "finish") {
-        const body = yield* readBody(
-          request,
-          Schema.Struct({ url: Schema.String.check(Schema.isMaxLength(16384)) }),
-        );
-        const callback = yield* Effect.try({
-          try: () => new URL(body.url),
-          catch: () => "OAUTH_INVALID_CALLBACK",
-        });
-        if (
-          callback.origin + callback.pathname !== chatgptConfig.redirectUri ||
-          callback.hash ||
-          callback.searchParams.has("error")
-        )
-          return json({ code: "OAUTH_INVALID_CALLBACK", params: {} }, 400);
-        const result = yield* home.oauthFinish(
-          callback.searchParams.get("state") ?? "",
-          callback.searchParams.get("code") ?? "",
-          undefined,
-          key,
-        );
-        return json({ ok: result === key });
+      const account = path.match(
+        /^\/v1\/chatgpt\/accounts\/([a-zA-Z0-9_-]{1,128})(?:\/(models|probe))?$/,
+      );
+      if (account) {
+        const id = account[1]!;
+        if (!account[2] && method === "GET")
+          return yield* home()
+            .chatgptAccount(id)
+            .pipe(
+              Effect.map((value) => json(value)),
+              Effect.catch((error) => Effect.succeed(failure(error))),
+            );
+        if (!account[2] && method === "DELETE")
+          return yield* home()
+            .chatgptDisconnect(id)
+            .pipe(
+              Effect.map((value) => json(value)),
+              Effect.catch((error) => Effect.succeed(failure(error))),
+            );
+        if (account[2] === "models" && method === "GET")
+          return yield* home()
+            .chatgptModels(id)
+            .pipe(
+              Effect.map((value) => json(value)),
+              Effect.catch((error) => Effect.succeed(failure(error))),
+            );
+        if (account[2] === "probe" && method === "POST")
+          return yield* home()
+            .chatgptProbe(id)
+            .pipe(
+              Effect.map((value) => json(value)),
+              Effect.catch((error) => Effect.succeed(failure(error))),
+            );
       }
-      const started = yield* home.oauthBegin(key, chatgptConfig);
-      const url = new URL(started.url);
-      url.searchParams.set("id_token_add_organizations", "true");
-      url.searchParams.set("codex_cli_simplified_flow", "true");
-      url.searchParams.set("originator", "codex_cli_rs");
-      return json({ ...started, url: url.href });
+      const attempt = path.match(
+        /^\/v1\/chatgpt\/link-attempts\/([a-zA-Z0-9_-]{1,128})(?:\/(authorize))?$/,
+      );
+      if (attempt) {
+        const id = attempt[1]!;
+        if (attempt[2] === "authorize" && method === "GET")
+          return yield* home()
+            .chatgptAuthorize(id)
+            .pipe(
+              Effect.map((url) =>
+                HttpServerResponse.fromWeb(
+                  new Response(null, {
+                    status: 303,
+                    headers: {
+                      Location: url,
+                      "Cache-Control": "no-store",
+                      "Referrer-Policy": "no-referrer",
+                    },
+                  }),
+                ),
+              ),
+              Effect.catch((error) => Effect.succeed(failure(error))),
+            );
+        if (!attempt[2] && method === "GET")
+          return yield* home()
+            .chatgptAttempt(id)
+            .pipe(
+              Effect.map((value) => json(value)),
+              Effect.catch((error) => Effect.succeed(failure(error))),
+            );
+        if (!attempt[2] && method === "DELETE")
+          return yield* home()
+            .chatgptCancel(id)
+            .pipe(
+              Effect.map((value) => json(value)),
+              Effect.catch((error) => Effect.succeed(failure(error))),
+            );
+      }
+      if (path.startsWith("/v1/chatgpt/")) return json({ code: "NOT_FOUND", params: {} }, 404);
     });
 });

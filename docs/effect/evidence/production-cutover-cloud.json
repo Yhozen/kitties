@@ -1,0 +1,64 @@
+{
+  "date": "2026-11-01T19:28:17.936Z",
+  "status": "passed",
+  "at": "2026-11-01T19:22:44.628Z",
+  "hostname": "kitties.rccpr.tech",
+  "service": "kittiesnext-gateway-prod-ngmlf4varln5eane",
+  "previousWorker": "kitties-gateway-prod-qqaqe4nm4n2wdzo2",
+  "legacyWorkerRetained": true,
+  "application": "Effect/TypeScript Cloudflare Workers and SQLite Durable Objects",
+  "stage": "prod",
+  "identity": "gabriel@garox.org",
+  "authentication": "Actual owner Cloudflare Access session on Mac; same application audience across hostname change",
+  "health": {
+    "ok": true,
+    "version": "effect-2026.11.01",
+    "runtime": "boat",
+    "stage": "prod"
+  },
+  "authenticatedHtml200": true,
+  "sameOriginJavascriptAssets200": 2,
+  "candidateOwnerConfirmedAppAndHealth": true,
+  "productionRecovery": {
+    "operationId": "313ee14d-4bd9-48b5-a5b7-8378e6fb6446",
+    "executionId": "5ea42acd43585fcd26e0692f9526949b",
+    "kind": "chat",
+    "name": "f49d4334-a908-49eb-aa12-75789a38a40f",
+    "epoch": 1793561038521,
+    "preBookmarkMessageRetained": true,
+    "postBookmarkMessageRemoved": true,
+    "guestCredentialsFenced": true,
+    "upgradeReconnectedSameRemoteAndGeneration": true,
+    "tokenVersionBefore": 1,
+    "tokenVersionAfterUpgrade": 3,
+    "freshScreenshotCompleted": true,
+    "duplicateMessageReturnedDuplicate": true,
+    "replayFrames": 2,
+    "repeatedRestorePreservedExecutionAndEpoch": true
+  },
+  "acceptanceFixtureRemoved": true,
+  "acceptanceDesktop": "checkpointed and sleeping",
+  "legacyResources": {
+    "workerRetained": true,
+    "r2BucketsRetained": [
+      "kitties-state-prod-enfwxu7njxoaon5i",
+      "kitties-backups-prod-fq4h6qbjfkfhxbsp"
+    ],
+    "boatCheckpointsRetained": true
+  },
+  "performance": {
+    "samples": 50,
+    "p50Ms": 653,
+    "p95Ms": 1421,
+    "targetP95Ms": 1000,
+    "targetMet": false,
+    "cutoverAcceptedByOwner": true,
+    "source": "step-latency-cloud.json"
+  },
+  "limitations": [
+    "Original non-model p95 <1s target remains unmet and is accepted for cutover",
+    "Fresh desktop OS installation can take many minutes",
+    "Real vendor OAuth accounts require owner configuration",
+    "GitHub manual deploy workflow cannot dispatch until the workflow file reaches default branch; direct restricted-token publishing passed"
+  ]
+}

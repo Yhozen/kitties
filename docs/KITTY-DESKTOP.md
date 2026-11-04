@@ -1,3 +1,6 @@
+> Historical pre-Effect reference. Production now uses the [Effect architecture](ARCHITECTURE.md)
+> and [Cloudflare deployment](DEPLOY.md). Commands below describe the retired implementation.
+
 # The kitty's desktop: what it looks like and what it is made of
 
 Every kitty with a body has a Linux desktop: Docker and Lima use Debian 13, and

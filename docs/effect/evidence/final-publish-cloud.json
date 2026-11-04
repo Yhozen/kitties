@@ -1,0 +1,18 @@
+{
+  "date": "2026-11-01T19:29:16.291Z",
+  "status": "passed",
+  "publisher": "scripts/publish-app.mjs",
+  "scope": "Restricted application-only deployment to existing Alchemy resources; infrastructure and secret bindings preserved",
+  "stages": [
+    {
+      "stage": "prod",
+      "status": "passed",
+      "elapsedMs": 23728
+    },
+    {
+      "stage": "next",
+      "status": "passed",
+      "elapsedMs": 22183
+    }
+  ]
+}

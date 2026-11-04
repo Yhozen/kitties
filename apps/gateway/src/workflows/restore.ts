@@ -1,5 +1,5 @@
 import * as Schedule from "effect/Schedule";
-import { guardedActivities } from "../recovery-guard.ts";
+import { guardedActivities, permitCacheMs } from "../recovery-guard.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import { workflowActor } from "../workflow-admin.ts";
 import { DurableClock, WorkflowEngine } from "effect/workflow";
@@ -52,6 +52,13 @@ export const RestoreLive = Workflows.layer(
             .pipe(Effect.mapError(storage));
           return control.epoch;
         }),
+      });
+      // Recovery guards cache a granted permit for permitCacheMs. Wait it out so no run that
+      // was admitted before the fence can still start an activity once objects roll back.
+      yield* DurableClock.sleep({
+        name: "permit-drain",
+        duration: permitCacheMs + 1000,
+        inMemoryThreshold: 0,
       });
       yield* activity({
         name: "fence-desktops",
@@ -108,8 +115,7 @@ export const RestoreLive = Workflows.layer(
         execute: Effect.gen(function* () {
           for (const row of yield* home.list("connection").pipe(Effect.mapError(storage)))
             yield* home.oauthDisconnect(row.id).pipe(Effect.mapError(storage));
-          for (const row of yield* home.list("provider").pipe(Effect.mapError(storage)))
-            yield* home.oauthDisconnect(`chatgpt-${row.id}`).pipe(Effect.mapError(storage));
+          yield* home.chatgptInvalidate().pipe(Effect.mapError(storage));
           for (const o of yield* root.objects().pipe(Effect.mapError(storage)))
             if (o.kind === "kitty")
               yield* kitties

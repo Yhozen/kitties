@@ -1,3 +1,6 @@
+> Historical pre-Effect reference. Production now uses the [Effect architecture](ARCHITECTURE.md)
+> and [Cloudflare deployment](DEPLOY.md). Commands below describe the retired implementation.
+
 # What personal Kitties should borrow from Cua Spaces
 
 Research date: **27 October 2026**. Cua source inspected at [`c40ef077d1482e87bd3c570d08aed9fda465505c`](https://github.com/trycua/cua/tree/c40ef077d1482e87bd3c570d08aed9fda465505c); Kitties baseline inspected read-only at `235d26bea5609a3c36de0368579d015a71f6f58d`. The separate desktop-parity work in progress is outside this report's implementation scope. **Revised for the owner's clarified purpose: personal/private, owner-only Kitties, with no product sales or service offered to others.** This report contains no Cua integration. The owner subsequently authorized a separate code-improvement PR after visual parity.

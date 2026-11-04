@@ -1,8 +1,9 @@
 # Recovery operations
 
 The rewrite uses Cloudflare SQLite point-in-time recovery (30 days) and encrypted row exports.
-The Backups and recovery panel is under Health. The old Go buckets and Boat checkpoints are
-outside this system and must be retained.
+The Backups and recovery panel is under Health. The old Go buckets are outside this system and
+remain retained. The owner authorized deletion of old Boat checkpoints on 2026-11-02, so legacy
+desktop checkpoints are no longer available.
 
 ## Restore an object
 
@@ -18,8 +19,25 @@ OAuth credentials and writes the restored epoch to HomeDO. Reauthorize connectio
 desktop upgrade action to issue fresh guest credentials. A repeated operation ID must have the
 same payload. A suspended operation has a Continue action in the recovery panel.
 
+Workflow recovery permits are cached for up to five seconds. Restore waits six seconds after
+fencing before restoring the target so permits from the previous epoch have expired.
+
 Cloudflare bookmarks are opaque and only apply to the same object. Export manifests include
 bookmarks, but row captures across actors are not one global transaction.
+
+## Repair a desktop lifecycle operation
+
+Boat billing refusals (`credit_required`, `subscription_required`, `card_required` or HTTP 402)
+suspend lifecycle work as `BOAT_BILLING`. Resolve the billing or saved-snapshot allowance problem
+before resuming the operation through `POST /v1/kitties/:id/computer/resume`, with its original
+`operationId` in the JSON body.
+
+An older run may have journaled the refusal as a permanent failure and left the desktop in
+`archiving`. Use `POST /v1/kitties/:id/computer/repair` with a fresh `operationId` to replace that
+run with a new operation of the same kind. Repair requires the existing run's health record to
+be suspended; it refuses a live run. Updates from the replaced operation remain fenced by its
+operation ID. Check the returned `executionId` through `/v1/computer-runs/:executionId` and the
+desktop state through `/v1/kitties/:id/computer`.
 
 ## Exports and retention
 
@@ -59,4 +77,4 @@ The manual `effect-deploy.yml` Actions workflow needs the repository secret
 workflow has passed on GitHub. The manual deployment workflow becomes dispatchable after its
 file reaches the default branch; direct restricted-token publishing is already verified. ChatDO
 PITR, full encrypted export authentication, purge/tombstones and actual R2 error recovery passed.
-Production cutover and its smoke/recovery drill remain pending.
+Production cutover, authenticated Health/session, ChatDO PITR, guest fencing/rotation and a fresh desktop screenshot passed. See [production evidence](evidence/production-cutover-cloud.json). The old Worker and legacy storage remain retained; [rollback instructions](../DEPLOY.md#production-verification-and-rollback) use the tested custom-domain override.

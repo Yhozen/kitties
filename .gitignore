@@ -1,59 +1,25 @@
-# Build output
-/dist/
-/kitties
-/kitties.exe
-coverage.out
-coverage*.html
-
-# Local state and secrets
-/kitties.yaml
-/.kitties/
-*.local.yaml
-
-# Editors and systems
-.DS_Store
-.idea/
-.vscode/
-*.swp
-
-# The desktop app: installed packages, the built page (embedded at build time) and Wails output
-desktop/frontend/node_modules/
-desktop/frontend/dist/
-desktop/build/*
-!desktop/build/appicon.png
-!desktop/build/appicon.svg
-# a `go build` in desktop/ leaves the app's binary there
-/desktop/desktop
-/desktop/desktop.exe
-
-# The end-to-end run: its data, state and reports
-desktop/frontend/e2e/.data/
-desktop/frontend/e2e/.state.json
-desktop/frontend/e2e/test-results/
-desktop/frontend/e2e/report/
-
-# The web interface copied into the binary's embed folder by `make web`
-internal/web/dist/*
-!internal/web/dist/placeholder.txt
-desktop/frontend/e2e/.hooks.log
-desktop/frontend/test-results/
-desktop/frontend/e2e/.data-login/
-
-# Local API credentials
+# Local state, credentials and Conductor attachments
+.context/
 .env
 .env.*
 !.env.example
+.alchemy/
+.conductor/settings.local.toml
 
-# Effect workspace
+# Dependencies and build output
 node_modules/
 .pnpm-store/
 .vite/
 .vite-plus/
-.alchemy/
+dist/
 apps/*/dist/
 packages/*/dist/
-
+guest/*/dist/
 apps/web/test-results/
 apps/web/playwright-report/
 
-guest/*/dist/
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+*.swp

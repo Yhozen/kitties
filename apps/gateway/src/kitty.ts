@@ -120,9 +120,17 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
           write("config", c);
         }
         revoke();
+        releaseWaiters();
         return c;
       };
       const waiting = new Map<string, Set<() => void>>();
+      // Agent dispatch waits inline for the guest acknowledgement, bounded by the action deadline.
+      // Returning early forces the workflow onto durable alarm polling, which costs seconds.
+      const agentWaitMs = 25000;
+      const releaseWaiters = () => {
+        for (const set of waiting.values()) for (const resolve of Array.from(set)) resolve(); // resolve() mutates the set
+        waiting.clear();
+      };
       const safeAction = (action: typeof Action.Type) =>
         JSON.stringify(
           action.action === "type_secret" ? { ...action, args: { ref: action.args.ref } } : action,
@@ -252,6 +260,18 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
               for (const socket of [...sockets("guest"), ...sockets("guest-frames")])
                 socket.close(1012, "Lifecycle operation");
             }
+            return next;
+          }),
+        // Owner repair: release an operation whose workflow can no longer progress. Its old run
+        // stays fenced, because every update must still name the current operation id.
+        abandonComputer: (operationId: string) =>
+          Effect.sync(() => {
+            const current = read<ComputerState>("computer");
+            if (!current?.operation || current.operation.id !== operationId)
+              throw Error("OPERATION_FENCED");
+            const { operation: _released, ...rest } = current;
+            const next: ComputerState = { ...rest, failureCount: current.failureCount + 1 };
+            write("computer", next);
             return next;
           }),
         updateComputer: (operationId: string, body: string) =>
@@ -397,7 +417,7 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
                     waiting.get(intentId)?.delete(done);
                     resolve();
                   };
-                  const timer = setTimeout(done, 650);
+                  const timer = setTimeout(done, agentWaitMs);
                   if (!waiting.has(intentId)) waiting.set(intentId, new Set());
                   waiting.get(intentId)!.add(done);
                 });
@@ -692,6 +712,8 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
             const session = socket.deserializeAttachment<Session>();
             if (!session) return;
             if (session.role === "guest" && session.epoch === config()?.epoch) bump();
+            // Receipts stay 'started' for reconnect reconciliation; stop waiting now.
+            if (session.role === "guest") releaseWaiters();
             if (session.role === "owner" && read<Grant>("grant")?.clientId === session.clientId) {
               const grant = read<Grant>("grant")!;
               grant.draining = true;

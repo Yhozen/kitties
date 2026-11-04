@@ -1,3 +1,6 @@
+> Historical pre-Effect reference. Production now uses the [Effect architecture](ARCHITECTURE.md)
+> and [Cloudflare deployment](DEPLOY.md). Commands below describe the retired implementation.
+
 # Kitties with a computer per agent
 
 This proof of concept runs each kitty's desktop directly in a persistent Debian 13

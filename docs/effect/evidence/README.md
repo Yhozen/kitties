@@ -29,12 +29,25 @@ The purge/tombstone drill passed (`purge-cloud.json`). An actual R2 write refusa
 a guarded activity and resumed once after repair (`r2-error-cloud.json`). The final desktop
 crash/redeploy test passed again after the dispatch optimization (`desktop-cloud.json`).
 
-The final 50-action non-model run measured p50 653 ms / p95 1,421 ms. The original p95 < 1 s
-target remains unmet; the owner explicitly accepted cutover with this limitation documented
+The cutover 50-action non-model run measured p50 653 ms / p95 1,421 ms. The original p95 < 1 s
+target was unmet; the owner explicitly accepted cutover with this limitation documented
 (`latency-cutover-decision.json`). A newer PITR plus historical-operation retry passed
-(`recovery-history-cloud.json`). Production cutover and production smoke/recovery remain open. A source change or an implemented feature is not a passing acceptance result.
+(`recovery-history-cloud.json`). Production cutover and the authenticated production smoke/PITR/guest-reconnect drill passed (`production-cutover-cloud.json`). A source change or an implemented feature is not a passing acceptance result.
+
+After cutover, a dispatch and orchestration optimization was measured on `next` with the same
+harness: p50 222 ms / p95 525 ms and, in a second run, 212 ms / 453 ms. The p95 < 1 s target is met
+(`step-latency-optimized-cloud.json`, `step-latency-optimized-cloud-run2.json`).
+The optimized build and lifecycle billing/repair fix were published to production on 2026-11-02.
+Authenticated app/asset/Health checks and repair of the production desktop are recorded in
+`latency-production-rollout-cloud.json`. The latency measurements above remain from `next`.
 
 Earlier local probes remain available in `engine-local.json`, `engine-progress-local.json`,
 `engine-advanced-local.json`, `application-local.json`, `chat-local.json` and `channel-local.json`.
 The interrupted stream probe is retained as `stream-soak-interrupted.json`; the later completed soak
 is the acceptance result.
+
+Detached bootstrap duplicate-launch/reconnection acceptance passed (`bootstrap-service-cloud.json`).
+The candidate screenshot/dedupe/replay also passed before cutover (`candidate-desktop-cloud.json`).
+
+The final application was published to both production and next with the restricted token
+(`final-publish-cloud.json`). Local checks and removal scope are in `cutover-validation.json`.

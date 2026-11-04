@@ -8,13 +8,8 @@ export default defineConfig({
   lint: {
     options: { typeAware: true, typeCheck: true },
     ignorePatterns: [
-      "internal/**",
-      "desktop/**",
-      "android/**",
-      "deploy/**",
       "site/**",
       "docs/**",
-      "apps/web/e2e/**",
       "apps/web/src/**",
       "!apps/web/src/NextShell.tsx",
       "!apps/web/src/main.tsx",
@@ -22,24 +17,14 @@ export default defineConfig({
   },
   fmt: {
     ignorePatterns: [
-      "internal/**",
-      "desktop/**",
-      "android/**",
-      "deploy/**",
       "site/**",
       "docs/**",
-      "apps/web/e2e/**",
       "apps/web/src/**",
       "pnpm-lock.yaml",
-      "apps/web/e2e/**",
-      "apps/web/src/**",
       "README.md",
       "LICENSE",
       "SECURITY.md",
-      "souls/**",
-      "configs/**",
       "scripts/**",
-      "docker/**",
     ],
   },
   run: {

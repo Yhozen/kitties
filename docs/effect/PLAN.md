@@ -1,4 +1,8 @@
-<!-- Status: approved by the owner on 2026-11-01. Phase 1 documentation is complete; implementation is in progress. -->
+> ChatGPT update (2026-11-02): [CHATGPT.md](CHATGPT.md) supersedes the Codex public-client,
+> paste-back and backend-api details below. Use Kitties' dynamic registration, a one-time Mac
+> helper, Cloudflare renewal and the public Responses API. Keep usage disabled through admission.
+
+<!-- Status: approved by the owner on 2026-11-01. All ten phases are deployed; production cutover and recovery passed on 2026-11-01. -->
 <!-- File:line references point at commit 7f408a1 (codex/durable-state-recovery); permalinks are in CURRENT-SYSTEM.md. -->
 
 # Kitties on Effect: the plan
@@ -166,7 +170,7 @@ Vite Task caching). Pins:
   `-anthropic`, `-openrouter`, `-openai-compat`, `@effect/sql-sqlite-do`, `@effect/platform-bun`,
   `@effect/vitest`.
 - **Bump policy:** a pin changes only through a PR that re-runs the Phase 3 spike-1 suite.
-- `deploy/cloudflare` stays outside the workspace.
+- The legacy `deploy/cloudflare` stack was kept outside the workspace until cutover, then removed.
 
 ```
 apps/web/              PWA (copied in Phase 3 from desktop/frontend incl. e2e; desktop/ untouched until cutover)

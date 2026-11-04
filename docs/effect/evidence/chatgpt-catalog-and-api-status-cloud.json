@@ -1,0 +1,113 @@
+{
+  "date": "2026-11-02T04:13:39.845Z",
+  "diagnosis": {
+    "catalog": {
+      "source": "Cloudflare Workers trace of the live owner attempt before reset",
+      "endpoint": "https://api.openai.com/v1/models",
+      "status": 200,
+      "responseBytes": 655945,
+      "previousParserLimitBytes": 262144,
+      "result": "Catalog parsing failed before a successful Responses admission. Account was connected but had no admittedAt."
+    },
+    "browser": {
+      "source": "Owner screenshot and built-browser regression",
+      "method": "POST",
+      "path": "/v1/chats/:id/messages",
+      "gatewayStatus": 202,
+      "error": "Decode: undeclared status code",
+      "cause": "Typed client declared HTTP 200 for successful operations returning 201, 202 or 204."
+    }
+  },
+  "changes": {
+    "catalogLimitBytes": 4194304,
+    "oauthTokenLimitBytes": 262144,
+    "catalogErrors": [
+      "CHATGPT_CATALOG_TOO_LARGE",
+      "CHATGPT_INVALID_CATALOG"
+    ],
+    "diagnostics": "Sanitized status and provider request ID; catalog metadata is not persisted or logged.",
+    "api": "Declare actual success statuses for message sending, creation, deletion, computer operations, memory, notifications, goals and recovery.",
+    "manifest": "Send session credentials for the Cloudflare Access-protected manifest."
+  },
+  "validation": {
+    "check": "passed: formatting, lint and types",
+    "build": "passed",
+    "vitest": {
+      "tests": 73,
+      "status": "passed"
+    },
+    "helper": {
+      "tests": 3,
+      "status": "passed"
+    },
+    "nextBrowser": {
+      "cases": 10,
+      "status": "passed",
+      "projects": [
+        "desktop",
+        "mobile"
+      ],
+      "mode": "Built frontend, mocked API and cookie-protected manifest fixture",
+      "regressions": [
+        "Create kitty 201, create conversation 201, send message 202, delete conversation 204",
+        "Link-attempt creation 201 and helper navigation",
+        "Protected manifest credentials"
+      ]
+    },
+    "productionBrowser": {
+      "cases": 4,
+      "status": "passed",
+      "projects": [
+        "desktop",
+        "mobile"
+      ],
+      "mode": "Built from deployed production source plus API-status and manifest fixes, mocked API and cookie-protected manifest fixture"
+    },
+    "nextLiveApi": {
+      "status": "passed",
+      "emptyResources": [
+        "kitties",
+        "chats",
+        "providers",
+        "connections",
+        "chatgpt/accounts"
+      ],
+      "chatgptEnabled": false
+    }
+  },
+  "deployments": [
+    {
+      "stage": "next",
+      "worker": "kittiesnext-gateway-next-msfgaswrqee7k2am",
+      "versions": [
+        {
+          "version_id": "ac55a955-1785-473a-9302-ba22c4b02e70",
+          "percentage": 100
+        }
+      ],
+      "chatgptEnabled": false
+    },
+    {
+      "stage": "prod",
+      "worker": "kittiesnext-gateway-prod-ngmlf4varln5eane",
+      "versions": [
+        {
+          "version_id": "a8d372c4-d962-4f36-a028-fe694f45a26a",
+          "percentage": 100
+        }
+      ],
+      "chatgptEnabled": false,
+      "originalWorkerSourcePreserved": true,
+      "frontendSourceCommit": "781f2887d8ba594b3d77934381c9b919baaf6256",
+      "frontendChanges": [
+        "API success status declarations",
+        "manifest session credentials"
+      ]
+    }
+  ],
+  "admission": {
+    "status": "pending",
+    "enabled": false,
+    "reason": "Owner reset revoked and removed the linked account. Fresh consent, model discovery and an actual streamed Responses completion are required. Agent adapter and quota pauses remain gated."
+  }
+}

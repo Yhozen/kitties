@@ -14,39 +14,27 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: security-${{ github.event.pull_request.number || github.ref_name }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Go: the standard library and the modules the code really calls, for both modules.
-  govulncheck:
-    name: go · known vulnerabilities
+  pnpm-audit:
+    name: application dependencies
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: pnpm/action-setup@v4
         with:
-          go-version-file: go.mod
-      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
-      - name: the gateway and the CLI
-        run: govulncheck ./...
-      - name: the desktop app
-        run: cd desktop && govulncheck ./...
-
-  # The page's packages: what ships (dependencies) must have no high or critical flaw.
-  npm-audit:
-    name: page · known vulnerabilities
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+          version: 12.16.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
-          node-version: 24
-      - run: cd desktop/frontend && npm audit --omit=dev --audit-level=high
+          node-version: 26
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --prod --audit-level=high
 
   # A secret in the code or in its history is a secret for everyone who can read it.
   secrets:
@@ -63,6 +51,8 @@ jobs:
 
   # The code's own mistakes (injection, unsafe paths, weak crypto), with GitHub's CodeQL.
   codeql:
+    # Private repositories need a GitHub Code Security licence; opt in after enabling it.
+    if: github.event.repository.private == false || vars.ENABLE_CODEQL == 'true'
     name: codeql · ${{ matrix.language }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -72,70 +62,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [go, javascript-typescript]
+        language: [javascript-typescript]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: matrix.language == 'go'
-        with:
-          go-version-file: go.mod
       - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           languages: ${{ matrix.language }}
           queries: security-extended
-      - uses: github/codeql-action/autobuild@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
-        if: matrix.language == 'go'
       - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           category: /language:${{ matrix.language }}
 
-  # A pull request that adds a dependency with a known flaw or a licence that cannot ship.
-  dependency-review:
-    name: dependencies a pull request adds
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v4
-        with:
-          fail-on-severity: high
-
-  # The image's shell scripts, with their own linter.
+  # Guest shell scripts are shipped in the immutable Boat release.
   shellcheck:
     name: shell scripts
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: shellcheck --severity=warning docker/kitty-desktop/*.sh internal/guest/*.sh internal/guest/files/*.sh scripts/*.sh
-
-  # The images: the operating system packages and the libraries inside them. Trivy is fetched from
-  # its release and checked against a checksum kept here, not run through a third-party action. The
-  # base image is pulled anew every time, so the weekly run sees what was published since.
-  image-scan:
-    name: ${{ matrix.image }} image · known vulnerabilities
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - image: gateway
-            build: docker build --pull -f docker/gateway/Dockerfile -t scan:image .
-          - image: kitty-desktop
-            build: docker build --pull -t scan:image -f docker/kitty-desktop/Dockerfile .
-    env:
-      TRIVY_VERSION: "0.69.3"
-      TRIVY_SHA256: "1816b632dfe529869c740c0913e36bd1629cb7688bd5634f4a858c1d57c88b75"
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: install trivy
-        run: |
-          curl -fsSL -o trivy.tgz "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
-          echo "${TRIVY_SHA256}  trivy.tgz" | sha256sum -c -
-          tar -xzf trivy.tgz trivy
-      - name: build the image
-        run: ${{ matrix.build }}
-      - name: scan it
-        run: ./trivy image --skip-version-check --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 scan:image
+      - run: shellcheck --severity=warning guest/desktop/*.sh guest/desktop/files/*.sh guest/kittyd/files/*.sh

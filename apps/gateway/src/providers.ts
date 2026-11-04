@@ -2,9 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
 import * as Stream from "effect/Stream";
-import * as HttpClient from "effect/http/HttpClient";
-import * as HttpClientRequest from "effect/http/HttpClientRequest";
-import { chatgptConfig, chatgptAccount } from "./chatgpt-config.ts";
+import { chatgptConfig } from "./chatgpt-config.ts";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as LanguageModel from "effect/ai/LanguageModel";
 import type * as Prompt from "effect/ai/Prompt";
@@ -46,23 +44,8 @@ export const modelLayer = (
   const config = provider.temperature === undefined ? {} : { temperature: provider.temperature };
   switch (provider.kind) {
     case "chatgpt":
-      return OpenAiLanguageModel.layer({
-        model: provider.model,
-        config: { store: false, strictJsonSchema: false },
-      }).pipe(
-        Layer.provide(
-          OpenAiClient.layer({
-            ...options,
-            transformClient: (client) =>
-              client.pipe(
-                HttpClient.mapRequest(
-                  HttpClientRequest.setHeader("ChatGPT-Account-ID", chatgptAccount(secret)),
-                ),
-              ),
-          }),
-        ),
-        Layer.provide(FetchHttpClient.layer),
-      );
+      // The subscription adapter is admitted only after a real next Responses probe.
+      return Layer.effect(LanguageModel.LanguageModel, Effect.die("CHATGPT_ADAPTER_NOT_ADMITTED"));
     case "openai":
       return OpenAiLanguageModel.layer({
         model: provider.model,

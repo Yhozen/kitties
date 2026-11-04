@@ -95,7 +95,7 @@ export const makeApplication = Effect.gen(function* () {
       const notificationResponse = yield* notifications.route(request);
       if (notificationResponse) return notificationResponse;
       const computerRoute = path.match(
-        /^\/v1\/kitties\/([a-zA-Z0-9_-]{1,128})\/computer(?:\/(start|sleep|restore|delete|resume|upgrade))?$/,
+        /^\/v1\/kitties\/([a-zA-Z0-9_-]{1,128})\/computer(?:\/(start|sleep|restore|delete|resume|upgrade|repair))?$/,
       );
       if (computerRoute) {
         const id = computerRoute[1]!,
@@ -120,6 +120,34 @@ export const makeApplication = Effect.gen(function* () {
               Effect.provideService(WorkflowEngine.WorkflowEngine, engine),
             );
             return json({ executionId: record.executionId }, 202);
+          }
+          if (computerRoute[2] === "repair") {
+            // Only a suspended run may be replaced; a live run keeps its operation.
+            const state = yield* kitty.computer();
+            const stuck = state?.operation;
+            if (!stuck) return json({ code: "NOTHING_TO_REPAIR", params: {} }, 409);
+            const saved = yield* home().read("computer-run", stuck.id);
+            const runId = saved ? (JSON.parse(saved) as { executionId: string }).executionId : null;
+            const health = runId ? yield* home().read("run-health", runId) : null;
+            if (!health || (JSON.parse(health) as { status?: string }).status !== "suspended")
+              return json({ code: "RUN_NOT_SUSPENDED", params: {} }, 409);
+            yield* kitty
+              .abandonComputer(stuck.id)
+              .pipe(Effect.mapError(() => "COMPUTER_BUSY_OR_INVALID_STATE"));
+            yield* kitty
+              .beginComputer(id, body.operationId, stuck.kind)
+              .pipe(Effect.mapError(() => "COMPUTER_BUSY_OR_INVALID_STATE"));
+            const run = yield* computers.start({
+              kittyId: id,
+              operationId: body.operationId,
+              kind: stuck.kind,
+            });
+            yield* home().write(
+              "computer-run",
+              body.operationId,
+              JSON.stringify({ executionId: run.executionId, kittyId: id, kind: stuck.kind }),
+            );
+            return json({ executionId: run.executionId, replaced: stuck.id }, 202);
           }
           const kind = computerRoute[2] as "start" | "sleep" | "restore" | "delete" | "upgrade";
           // Claim synchronously: concurrent owner/idle requests must report busy
@@ -250,8 +278,7 @@ export const makeApplication = Effect.gen(function* () {
         const saved = yield* home().read("provider", id);
         if (method === "PUT" && !providerRoute[2]) {
           const body = yield* readBody(request, ProviderInput);
-          if (body.kind === "chatgpt" && env.CHATGPT_ENABLED !== "true")
-            return json({ code: "FEATURE_DISABLED", params: {} }, 404);
+          if (body.kind === "chatgpt") return json({ code: "FEATURE_DISABLED", params: {} }, 404);
           yield* Effect.try({ try: () => providerBaseUrl(body), catch: () => "HOST_DENIED" });
           const { apiKey, ...config } = body;
           const old = saved ? (JSON.parse(saved) as Provider) : null;
@@ -266,7 +293,6 @@ export const makeApplication = Effect.gen(function* () {
           return json(viewProvider(provider));
         }
         if (method === "DELETE" && !providerRoute[2]) {
-          yield* home().oauthDisconnect(`chatgpt-${id}`);
           yield* home().remove("provider", id);
           return HttpServerResponse.empty({ status: 204 });
         }
@@ -274,10 +300,7 @@ export const makeApplication = Effect.gen(function* () {
           if (!saved) return json({ code: "NOT_FOUND", params: {} }, 404);
           const provider = JSON.parse(saved) as Provider;
           if (provider.kind === "chatgpt")
-            return json({
-              ok: (yield* home().oauthStatus(`chatgpt-${id}`)) === "ready",
-              models: [provider.model],
-            });
+            return json({ code: "FEATURE_DISABLED", params: {} }, 404);
           if (!provider.secret) return json({ code: "PROVIDER_KEY_REQUIRED", params: {} }, 400);
           const secret = yield* Effect.tryPromise({
             try: () => open(env.KITTIES_KEK, `providers:${id}:api-key`, provider.secret!),

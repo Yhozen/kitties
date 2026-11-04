@@ -1,5 +1,7 @@
 import * as Schema from "effect/Schema";
 import { Id } from "./index.ts";
+import { ChatgptError } from "./chatgpt.ts";
+export * from "./chatgpt.ts";
 interface Envelope {
   kid: string;
   iv: string;
@@ -10,6 +12,7 @@ export const ProviderInput = Schema.Struct({
   name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80)),
   kind: Schema.Literals(["openai", "anthropic", "openrouter", "compat", "gemini", "chatgpt"]),
   model: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
+  chatgptAccountId: Schema.optional(Id),
   baseUrl: Schema.optional(Schema.String),
   apiKey: Schema.optional(Schema.String.check(Schema.isMaxLength(8192))),
   temperature: Schema.optional(Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 2 }))),
@@ -58,6 +61,7 @@ export const ProviderView = Schema.Struct({
   name: Schema.String,
   kind: ProviderInput.fields.kind,
   model: Schema.String,
+  chatgptAccountId: Schema.optional(Id),
   baseUrl: Schema.optional(Schema.String),
   temperature: Schema.optional(Schema.Number),
   hasKey: Schema.Boolean,
@@ -79,6 +83,7 @@ export const MessageView = Schema.Struct({
   payload: Schema.Struct({ ...MessageInput.fields, chatId: Id }),
   status: Schema.String,
   run_id: Schema.NullOr(Schema.String),
+  pauseReason: Schema.optional(ChatgptError),
   answer: Schema.String,
   at: Schema.Number,
 });
@@ -141,6 +146,7 @@ export const RunView = Schema.Struct({
   id: Schema.String,
   status: Schema.String,
   code: Schema.optional(Schema.String),
+  pauseReason: Schema.optional(ChatgptError),
   updatedAt: Schema.Number,
   chatId: Schema.optional(Id),
   messageId: Schema.optional(Id),

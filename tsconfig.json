@@ -15,5 +15,5 @@
     "jsxImportSource": "preact"
   },
   "include": ["apps/**/*.ts", "apps/**/*.tsx", "packages/**/*.ts", "vite.config.ts"],
-  "exclude": ["**/node_modules", "**/dist", "apps/web/e2e", "apps/web/e2e-next"]
+  "exclude": ["**/node_modules", "**/dist", "apps/web/e2e-next"]
 }

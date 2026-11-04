@@ -1,74 +1,25 @@
-# The API
+# API
 
-| Method and path                                                                                                                            | What it does                                                                                                                                                                                                           |
-| ------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /v1/health`                                                                                                                           | version, uptime, whether containers are available                                                                                                                                                                      |
-| `GET /v1/providers` · `GET /v1/connectors`                                                                                                 | what the kitties can think with and reach                                                                                                                                                                              |
-| `GET /v1/kitties` · `POST /v1/kitties`                                                                                                     | the fleet; create `{name, provider, soul, connectors, desktop, start}`                                                                                                                                                 |
-| `POST /v1/kitties/{ref}/start` · `/stop` · `DELETE /v1/kitties/{ref}`                                                                      | lifecycle, by id or name                                                                                                                                                                                               |
-| `POST /v1/kitties/{ref}/exec` `{argv}`                                                                                                     | run a command in its container                                                                                                                                                                                         |
-| `GET /v1/kitties/{ref}/screenshot`                                                                                                         | a PNG of its display                                                                                                                                                                                                   |
-| `POST /v1/kitties/{ref}/control` `{hold, control_id?}`                                                                                     | take its display over, or give it back                                                                                                                                                                                 |
-| `POST /v1/kitties/{ref}/input` `{control_id, action, args}`                                                                                | a click, drag, scroll, key or text of the person on it                                                                                                                                                                 |
-| `GET /v1/kitties/{ref}/stream`                                                                                                             | its display live, as motion JPEG (`?fps=1-30`)                                                                                                                                                                         |
-| `GET /v1/kitties/{ref}/rects`                                                                                                              | its display live as what changed on it, like VNC (`?fps=1-30`; `SCREEN`, `UPDATE`, `RECT` lines with JPEG bodies)                                                                                                      |
-| `GET/PUT /v1/kitties/{ref}/clipboard` `{text}`                                                                                             | its clipboard, both ways                                                                                                                                                                                               |
-| `POST /v1/scale/{name}` `{replicas}`                                                                                                       | run n replicas of a configured kitty                                                                                                                                                                                   |
-| `GET/POST /v1/chats`                                                                                                                       | threads; create `{title, members: [names]}`                                                                                                                                                                            |
-| `POST /v1/chats/{id}/members` · `DELETE /v1/chats/{id}/members/{ref}`                                                                      | who is in the group                                                                                                                                                                                                    |
-| `POST /v1/chats/{id}/messages` `{text}`                                                                                                    | send a message; returns the kitties' turns (a desktop task goes on in the background: poll the chat)                                                                                                                   |
-| `POST /v1/chats/{id}/cancel` · `GET /v1/chats/{id}/shots/{name}`                                                                           | stop a task; a step's screenshot                                                                                                                                                                                       |
-| `GET /v1/settings` · `PUT/DELETE /v1/settings/providers/{name}` · `POST …/test` · `PUT/DELETE /v1/settings/connectors/{name}`              | the models and the connectors (a connector that signs in needs its sign-in or a key; `?sign_in=1` saves it just before its sign-in); `POST …/connectors/{name}/test` checks its account with a request that only reads |
-| `GET /v1/local-token`                                                                                                                      | the token, handed only to a client on the same machine                                                                                                                                                                 |
-| `GET /v1/chats/{id}/events`                                                                                                                | server-sent events: `turn`, `update`, `done`, `deleted`                                                                                                                                                                |
-| `POST /v1/oauth/{connector}/start` · `GET /v1/oauth/callback`                                                                              | the OAuth sign-in of a connector                                                                                                                                                                                       |
-| `PATCH /v1/kitties/{ref}` `{avatar, soul}` · `GET /v1/avatars`                                                                             | change a kitty's looks; the breeds and coats                                                                                                                                                                           |
-| `GET/PUT/DELETE /v1/skills/{name}` · `POST …/accept`                                                                                       | the skills library and its proposals                                                                                                                                                                                   |
-| `GET/PUT/DELETE /v1/artifacts/{name}`                                                                                                      | the artifacts library (raw file bodies)                                                                                                                                                                                |
-| `GET /v1/approvals?status=pending` · `POST /v1/approvals/{id}/approve` `{always}` · `…/reject` `{reason}`                                  | the actions held for a yes, and the answer                                                                                                                                                                             |
-| `GET /v1/approvals/rules` · `POST /v1/approvals/rules` `{kitty, connector, action, mode}` · `DELETE /v1/approvals/rules/{id}`              | the action limits (ask, never, auto; an empty action is all of the connection's), and taking one away                                                                                                                  |
-| `GET/POST /v1/kitties/{ref}/memory` · `DELETE …/memory/{id}` · `PUT …/memory/profile` · `POST …/memory/distill`                            | a kitty's notes, its picture of you, and a distillation now                                                                                                                                                            |
-| `POST /v1/chats/{id}/turns/{index}/feedback` `{rating, note}`                                                                              | a thumb under an answer                                                                                                                                                                                                |
-| `PUT /v1/settings/notify` · `POST /v1/settings/notify/test` · `POST …/notify/digest`                                                       | where and when kitties tell you; a test; the daily summary now                                                                                                                                                         |
-| `GET /v1/chats/{id}/turns/{n}/replay.gif` · `POST …/turns/{n}/help` `{text, secret, enter, save}`                                          | a task as an animated GIF; the person's answer to a kitty that asked for help (a secret is typed on its desktop, not told)                                                                                             |
-| `GET /v1/vault` · `PUT/DELETE /v1/vault/{name}` `{value, kitties}`                                                                         | the secrets a kitty may type: names and who may use them, never values                                                                                                                                                 |
-| `GET /v1/kitties/{ref}/desktop` · `POST …/backup` · `POST …/update`                                                                        | its desktop's image and whether a newer one waits, the backup of its cookies, sessions and passwords, and moving it to the newest image                                                                                |
-| `GET /v1/update` (`?refresh=1`) · `POST /v1/update/apply`                                                                                  | the version of Kitties and whether a newer one is out; install it and restart                                                                                                                                          |
-| `POST /v1/settings/accounts/{kind}/login` · `GET/DELETE /v1/settings/logins/{id}` · `POST …/paste` · `DELETE /v1/settings/accounts/{kind}` | sign a model in with a subscription, follow it, paste the browser's address, sign out                                                                                                                                  |
+The owner API is served under `/v1` on [kitties.rccpr.tech](https://kitties.rccpr.tech).
+Requests require the configured owner's Cloudflare Access identity. Writes also require an Origin
+matching the production URL. Credentials stay in the browser; do not put them in command history.
 
-Every other call needs `Authorization: Bearer <token>`; `/` and `/v1/health` are open.
+The schema-derived client is in [packages/api](../packages/api/). Additional routes are in
+[gateway application](../apps/gateway/src/application.ts), with separate autonomy, OAuth,
+workspace, notification and recovery handlers. [Domain schemas](../packages/domain/) define inputs
+and stable error codes. Unknown routes return a typed `NOT_FOUND` response.
 
-## Human desktop controls
+| Route | Purpose |
+|---|---|
+| `GET /v1/health`, `GET /v1/session` | Version, stage and authenticated identity |
+| `/v1/kitties`, `/v1/chats` | Kitty/chat CRUD, messages, events and replay |
+| `/v1/kitties/{id}/computer` | Boat state; POST start/sleep/restore/upgrade with operationId |
+| `/v1/kitties/{id}/desktop` | Fenced live/control WebSockets |
+| `/v1/providers`, `/v1/connections`, `/v1/vault` | Encrypted configuration |
+| `/v1/approvals`, `/v1/help`, `/v1/goals` | Durable decisions, help and autonomy |
+| `/v1/recovery` | Registry, export/restore operations and status |
 
-Take control with `POST /v1/kitties/{ref}/control` and `{"hold": true}`. The
-response is `{"held": true, "control_id": "<opaque receipt>"}` after the desktop
-has been prepared. Include that receipt with every input request, for example
-`{"control_id": "…", "action": "key", "args": {"keys": "Return"}}`.
-The receipt is bound to that kitty, computer generation and gateway process. It
-supplements the normal authentication; it does not authorize other API routes.
-
-Release with `{"hold": false, "control_id": "…"}`. Releases are idempotent and an
-old receipt cannot release a newer grant. An absent, released, expired or obsolete
-input receipt returns HTTP 409 and requires explicit take-control again. Input
-never acquires control implicitly. Existing clients must adopt this contract;
-refresh the web UI after upgrading the gateway.
-
-Five minutes without input expires a hold. Stop, removal, recovery and gateway
-shutdown invalidate control. Release rejects further queued actions while an
-already-dispatched action drains; it cannot undo input already delivered. A
-transport error may follow a completed action, so clients must not replay it
-automatically. Send actions in order and cancel unsent work on release, viewer
-closure, kitty changes and connection errors. The bundled viewer bounds queued
-work to 32 actions and 16 KiB, preserving text-before-key ordering under pressure.
-
-Boat warm input revalidates the current owner, exact ID, generation, hydration and
-expiry for every action. It runs the guest readiness/workspace check and validated
-input in one SSH command without repeating provisioning or lifecycle writes.
-Ordinary agent execution and viewer startup retain their existing preparation
-path. This reduces repeated setup; it is not an authorization cache or a persistent
-SSH transport.
-
-The Cloudflare deployment additionally protects the public gateway with Cloudflare
-Access, including routes that are open on a standalone local gateway. The Worker
-supplies its private bearer after authenticating the owner; the browser does not
-receive that infrastructure token.
+Message POSTs carry a stable `messageId` and return 202; repeats return `{duplicate:true}`.
+Lifecycle and restore requests also use stable operation IDs. SSE supports event cursors for
+reconnection. Guest and signed webhook protocols use separate public ingress hosts, authenticated
+by scoped guest credentials or delivery signatures. Production does not expose test impersonation.

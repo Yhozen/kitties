@@ -1243,39 +1243,6 @@ html[data-motion="off"] .cat-spark {
   font-size: 0.75rem;
 }
 
-/* The top bars are the window's handle in the desktop app (Wails reads --wails-draggable), and
-   what is on them stays clickable. */
-.titlebar {
-  --wails-draggable: drag;
-  user-select: none;
-}
-.titlebar button,
-.titlebar a,
-.titlebar input,
-.titlebar select,
-.titlebar .state-pill {
-  --wails-draggable: no-drag;
-}
-
-/* macOS hides the title bar in the app and draws the red, yellow and green buttons over the
-   page's top-left corner (about 76px wide): the first bar keeps clear of them. */
-html.mac-inset aside .titlebar {
-  padding-left: 88px;
-  padding-top: 18px;
-  padding-bottom: 14px;
-}
-@media (max-width: 767px) {
-  html.mac-inset header.titlebar {
-    padding-left: 88px;
-  }
-}
-@media (min-width: 768px) {
-  html.mac-inset header.titlebar {
-    padding-top: 18px;
-    padding-bottom: 14px;
-  }
-}
-
 /* ─── Settings for people: cards, rows, chips, "more options" and callouts ────────────────── */
 .form-card {
   margin-top: 12px;

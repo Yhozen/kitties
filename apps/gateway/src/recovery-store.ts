@@ -27,6 +27,25 @@ export class RecoveryDO extends Cloudflare.DurableObject<RecoveryDO>()(
           .toArray()[0]!;
       return {
         status: () => Effect.sync(control),
+        chatgptContext: () =>
+          Effect.try({
+            try: () =>
+              state.raw.storage.transactionSync(() => {
+                const current = control();
+                if (current.mode !== "ready") throw Error("CHATGPT_RECOVERY_FENCED");
+                sql.exec(
+                  "INSERT OR IGNORE INTO recovery_records VALUES ('chatgpt-host','owner',?)",
+                  `urn:uuid:${crypto.randomUUID()}`,
+                );
+                const hostId = sql
+                  .exec<{ body: string }>(
+                    "SELECT body FROM recovery_records WHERE kind='chatgpt-host' AND id='owner'",
+                  )
+                  .toArray()[0]!.body;
+                return { epoch: current.epoch, hostId };
+              }),
+            catch: () => "CHATGPT_RECOVERY_FENCED",
+          }),
         objects: () =>
           Effect.sync(() =>
             sql

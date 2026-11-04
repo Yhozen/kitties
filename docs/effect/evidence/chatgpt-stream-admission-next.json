@@ -1,0 +1,69 @@
+{
+  "date": "2026-11-02T14:22:20.721Z",
+  "stage": "next",
+  "diagnosis": {
+    "error": "CHATGPT_INVALID_STREAM",
+    "httpStatus": 200,
+    "bodyPresent": true,
+    "contentType": null,
+    "traceId": "1cbaca80f60a32168c1dfbe875706aad",
+    "cause": "The Responses endpoint returned an SSE body without Content-Type; the parser rejected it before reading any events.",
+    "diagnostics": "A temporary diagnostic recorded only status, body availability and Content-Type. It was removed from the final deployment."
+  },
+  "fix": {
+    "absentContentType": "Parse bounded SSE and require response.completed.",
+    "explicitContentType": "Normalize case and media-type parameters, require text/event-stream, and cancel rejected bodies.",
+    "admissionGuard": "HTTP 200, JSON replies, partial text, failed/incomplete events, and streams without response.completed cannot pass."
+  },
+  "validation": {
+    "check": "passed: formatting, lint and types",
+    "build": "passed",
+    "applicationTests": 77,
+    "helperTests": 3,
+    "regressions": {
+      "before": "Missing and case-varied SSE media types failed with CHATGPT_INVALID_STREAM.",
+      "after": "Valid SSE succeeds; missing-header JSON and truncated streams fail; explicitly unsupported types fail and cancel their bodies."
+    },
+    "liveBrowser": {
+      "date": "2026-11-02T14:21:22.489Z",
+      "stage": "next",
+      "accountPreviouslyAdmitted": false,
+      "mode": "Built browser with actual next account and probe API responses through private verification RPC",
+      "probe": {
+        "ok": true,
+        "model": "gpt-6.1-sol",
+        "completedAt": 1793629289093
+      },
+      "persistedAdmission": true,
+      "lastErrorCleared": true,
+      "verifiedAfterReload": true,
+      "inferenceEnabled": false
+    }
+  },
+  "deployment": {
+    "versions": [
+      {
+        "version_id": "1c30712e-4d7c-4677-8d28-5f31b63752fd",
+        "percentage": 100
+      }
+    ],
+    "trace": {
+      "time": "2026-11-02T14:21:24.636Z",
+      "traceId": "f63cc5fa88a7fb2fa79508f20d74f9fe",
+      "versionId": "1c30712e-4d7c-4677-8d28-5f31b63752fd",
+      "method": "POST",
+      "status": 200
+    }
+  },
+  "admission": {
+    "status": "passed",
+    "model": "gpt-6.1-sol",
+    "completedAt": 1793629289093,
+    "persisted": true,
+    "lastErrorCleared": true,
+    "verifiedAfterBrowserReload": true
+  },
+  "inferenceEnabled": false,
+  "remaining": "Agent LanguageModel adapter, model selection, resumable quota handling, full tool/recovery acceptance and separate production admission.",
+  "documentation": "https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference"
+}

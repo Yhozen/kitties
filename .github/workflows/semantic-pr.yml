@@ -1,8 +1,6 @@
 name: semantic pr
 
-# A pull request's title is the commit a squash merge makes, and what the next version is read
-# from (scripts/next-version.sh): it has to be a semantic commit, like "feat(chat): …",
-# "fix: …" or "feat!: …" for a breaking change.
+# Use a conventional commit title for a readable squash-merge history.
 
 on:
   pull_request:
