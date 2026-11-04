@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   check:
-    name: Effect · check · build
+    name: Effect · check · test · build
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -27,4 +27,15 @@ jobs:
           bun-version: 1.4.4
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+      - run: pnpm test:coverage --reporter=default --reporter=junit --outputFile.junit=test-results/junit.xml
+      - name: Test reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: test-reports
+          path: |
+            coverage/
+            test-results/
+          retention-days: 14
       - run: pnpm build
+      - run: pnpm --filter @kitties/kittyd check

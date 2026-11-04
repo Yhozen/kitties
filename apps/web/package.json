@@ -7,14 +7,19 @@
     "build": "node scripts/icons.mjs && vp build"
   },
   "dependencies": {
+    "@effect/platform-browser": "4.1.1",
+    "@foldkit/ui": "0.170.0",
     "@kitties/api": "workspace:*",
     "@kitties/domain": "workspace:*",
     "@kitties/protocol": "workspace:*",
     "effect": "4.1.1",
+    "foldkit": "0.170.0",
     "preact": "11.0.0",
     "simple-icons": "16.35.0"
   },
   "devDependencies": {
+    "@foldkit/devtools-mcp": "0.26.0",
+    "@foldkit/vite-plugin": "0.29.0",
     "@preact/preset-vite": "2.9.0",
     "@tailwindcss/postcss": "4.3.3",
     "sharp": "0.34.5",

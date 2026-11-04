@@ -9,4 +9,5 @@ Makefile text eol=lf
 *.png binary
 
 repos/foldkit/** linguist-vendored
+.agents/skills/** linguist-vendored
 FOLDKIT.md linguist-vendored

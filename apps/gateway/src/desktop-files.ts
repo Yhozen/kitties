@@ -58,12 +58,15 @@ interface FileEnvironment {
   BLOBS: Pick<cf.R2Bucket, "get">;
 }
 
-interface FilePorts {
-  home: () => { read: (kind: string, id: string) => Effect.Effect<string | null, unknown> };
+interface FilePorts<ReadError, TransferError> {
+  home: () => { read: (kind: string, id: string) => Effect.Effect<string | null, ReadError> };
   kitty: (id: string) => {
-    beginFileTransfer: () => Effect.Effect<{ lease: FileLease; computer: ComputerState }, unknown>;
-    validFileTransfer: (id: string) => Effect.Effect<boolean, unknown>;
-    endFileTransfer: (id: string) => Effect.Effect<void, unknown>;
+    beginFileTransfer: () => Effect.Effect<
+      { lease: FileLease; computer: ComputerState },
+      TransferError
+    >;
+    validFileTransfer: (id: string) => Effect.Effect<boolean, TransferError>;
+    endFileTransfer: (id: string) => Effect.Effect<void, TransferError>;
   };
 }
 
@@ -80,7 +83,10 @@ const makeDesktopFiles = Effect.gen(function* () {
   });
 });
 
-export function desktopFileHandler(env: FileEnvironment, ports: FilePorts) {
+export function desktopFileHandler<ReadError, TransferError>(
+  env: FileEnvironment,
+  ports: FilePorts<ReadError, TransferError>,
+) {
   const boat = boatClient(env.BOAT_DEV_API_KEY);
 
   return (request: Request) =>
@@ -326,21 +332,24 @@ export function desktopFileHandler(env: FileEnvironment, ports: FilePorts) {
             if (!handedOff && !uncertainUpload) await release();
           }
         },
-        catch: (error) => error,
+        catch: (error) =>
+          error instanceof FileError
+            ? error
+            : new FileError(
+                error instanceof BoatError
+                  ? "FILE_SERVICE_UNAVAILABLE"
+                  : "FILE_TRANSFER_INTERRUPTED",
+                502,
+              ),
       }).pipe(
         Effect.catch((error) =>
           Effect.succeed(
             json(
               {
-                code:
-                  error instanceof FileError
-                    ? error.code
-                    : error instanceof BoatError
-                      ? "FILE_SERVICE_UNAVAILABLE"
-                      : "FILE_TRANSFER_INTERRUPTED",
+                code: error.code,
                 params: {},
               },
-              error instanceof FileError ? error.status : 502,
+              error.status,
             ),
           ),
         ),
