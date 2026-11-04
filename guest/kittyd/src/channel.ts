@@ -54,10 +54,12 @@ const parseViewers = Schema.decodeUnknownSync(Viewers);
 const parseAction = Schema.decodeUnknownSync(Action);
 const parseSession = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.String));
 
-const parseOutcome = Schema.decodeUnknownSync(PerceptionResult.mapFields((fields) => ({
-  ...fields,
-  result: Schema.String.check(Schema.isMaxLength(65536)),
-})));
+const parseOutcome = Schema.decodeUnknownSync(
+  PerceptionResult.mapFields((fields) => ({
+    ...fields,
+    result: Schema.String.check(Schema.isMaxLength(65536)),
+  })),
+);
 
 interface ReceiptAck {
   type: "ack";
@@ -78,13 +80,15 @@ interface Receipt {
   body: string;
 }
 
-const config = Schema.decodeUnknownSync(Config)(JSON.parse(
-  await readFile(
-    process.env.KITTYD_CONFIG ??
-      `${process.env.CREDENTIALS_DIRECTORY ?? "/etc/kittyd"}/config.json`,
-    "utf8",
+const config = Schema.decodeUnknownSync(Config)(
+  JSON.parse(
+    await readFile(
+      process.env.KITTYD_CONFIG ??
+        `${process.env.CREDENTIALS_DIRECTORY ?? "/etc/kittyd"}/config.json`,
+      "utf8",
+    ),
   ),
-));
+);
 
 if (!config.url.startsWith("wss://") && !config.url.startsWith("ws://localhost"))
   throw Error("Guest requires WSS");

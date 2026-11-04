@@ -63,7 +63,9 @@ export const PurgeLive = Workflows.layer(
               Match.orElse(() => chats.getByName(o.name)),
             );
 
-            yield* actor.adminPurge(before).pipe(Effect.mapError(() => "PURGE_UNAVAILABLE"));
+            const purge: Effect.Effect<boolean | void, string> = actor.adminPurge(before);
+
+            yield* purge.pipe(Effect.mapError(() => "PURGE_UNAVAILABLE"));
           }),
         });
       }

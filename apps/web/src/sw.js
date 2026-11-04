@@ -5,11 +5,14 @@ import * as Option from "effect/Option";
 const NotificationText = Schema.optional(Schema.String).pipe(
   Schema.catchDecoding(() => Effect.succeed(Option.none())),
 );
-const parsePushPayload = Schema.decodeUnknownSync(Schema.Struct({
-  url: NotificationText,
-  title: NotificationText,
-  tag: NotificationText,
-}));
+
+const parsePushPayload = Schema.decodeUnknownSync(
+  Schema.Struct({
+    url: NotificationText,
+    title: NotificationText,
+    tag: NotificationText,
+  }),
+);
 
 const CACHE = "kitties-shell-v2";
 
@@ -79,15 +82,12 @@ self.addEventListener("push", (event) => {
           ? data.url
           : "/";
 
-      await self.registration.showNotification(
-        data.title ?? "Puppies",
-        {
-          icon: "/icon-192.png",
-          badge: "/icon-192.png",
-          tag: data.tag ?? "kitties",
-          data: { url },
-        },
-      );
+      await self.registration.showNotification(data.title ?? "Puppies", {
+        icon: "/icon-192.png",
+        badge: "/icon-192.png",
+        tag: data.tag ?? "kitties",
+        data: { url },
+      });
     })(),
   );
 });

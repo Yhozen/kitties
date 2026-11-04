@@ -613,7 +613,7 @@ export const ComputerOpLive = Workflows.layer(
               encrypted = yield* home.read("guest-token", tokenId).pipe(Effect.mapError(storage));
             }
 
-            // SAFETY: prepareBootstrap seals and persists the channel token as an Envelope for this tokenId.
+            // SAFETY: the bootstrap activity above seals the channel token and persists its Envelope for this tokenId.
             const token = yield* Effect.tryPromise({
               try: () => open(env.KITTIES_KEK, aad, JSON.parse(encrypted!) as Envelope),
               catch: () => "KEY_UNAVAILABLE",

@@ -1,11 +1,13 @@
 import * as Schema from "effect/Schema";
 import { VIDEO_HEADER_BYTES, videoHeader } from "@kitties/protocol/video";
 
-const parseControl = Schema.decodeUnknownSync(Schema.Struct({
-  type: Schema.optional(Schema.String),
-  generation: Schema.optional(Schema.Number),
-  epoch: Schema.optional(Schema.Number),
-}));
+const parseControl = Schema.decodeUnknownSync(
+  Schema.Struct({
+    type: Schema.optional(Schema.String),
+    generation: Schema.optional(Schema.Number),
+    epoch: Schema.optional(Schema.Number),
+  }),
+);
 
 const parseText = Schema.decodeUnknownSync(Schema.String);
 

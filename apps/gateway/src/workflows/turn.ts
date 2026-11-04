@@ -165,7 +165,7 @@ export const TurnLive = Workflows.layer(
               );
 
               const contextLoadedAt = Date.now();
-              // SAFETY: HomeDO.roundContext serializes the kitty/provider/connection context as this record.
+              // SAFETY: HomeDO.turnContext serializes the kitty/provider/connection context as this record.
               const config = JSON.parse(context.body) as RunConfig;
 
               const limited =
@@ -544,15 +544,15 @@ export const TurnLive = Workflows.layer(
                   tool.remoteName,
                 ).pipe(Effect.mapError(() => "UNSUPPORTED_ACTION"));
 
+                const args = yield* Schema.decodeUnknownEffect(Schema.JsonObject)(call.params).pipe(
+                  Effect.mapError(() => "INVALID_ARGUMENTS"),
+                );
+
                 const dispatchStartedAt = Date.now();
 
                 const receipt = yield* kitties
                   .getByName(payload.kittyId, { locationHint: "weur" })
-                  .agentAction(
-                    intentId,
-                    action,
-                    Schema.decodeUnknownSync(Schema.JsonObject)(call.params),
-                  )
+                  .agentAction(intentId, action, args)
                   .pipe(Effect.mapError(storageError));
 
                 if (["completed", "failed"].includes(receipt.status)) {

@@ -3,16 +3,23 @@ import * as Option from "effect/Option";
 
 import { videoHeader } from "@kitties/protocol/video";
 
-const parseControlType = Schema.decodeUnknownSync(Schema.Struct({ t: Schema.optional(Schema.String) }));
+const parseControlType = Schema.decodeUnknownSync(
+  Schema.Struct({ t: Schema.optional(Schema.String) }),
+);
+
 const parsePing = Schema.decodeUnknownOption(Schema.Struct({ s: Schema.Number }));
 
-const parseHello = Schema.decodeUnknownSync(Schema.Struct({
-  readOnly: Schema.Boolean,
-  audio: Schema.optional(Schema.Boolean),
-  stripes: Schema.Array(Schema.Json),
-}));
+const parseHello = Schema.decodeUnknownSync(
+  Schema.Struct({
+    readOnly: Schema.Boolean,
+    audio: Schema.optional(Schema.Boolean),
+    stripes: Schema.Array(Schema.Json),
+  }),
+);
 
-const parseKeyframe = Schema.decodeUnknownSync(Schema.Struct({ type: Schema.optional(Schema.String) }));
+const parseKeyframe = Schema.decodeUnknownSync(
+  Schema.Struct({ type: Schema.optional(Schema.String) }),
+);
 
 /** Starts only with viewer demand. voxl is loopback-only, password protected and
  * read-only. The relay never forwards browser text or binary commands to it. */
