@@ -28,5 +28,5 @@ test("the protected manifest receives the Access session cookie", async ({
   const manifest = await client.send("Page.getAppManifest");
   expect(manifestCookie).toContain("CF_Authorization=test-access-session");
   expect(manifest.errors).toEqual([]);
-  expect(JSON.parse(manifest.data!)).toMatchObject({ name: "Kitties", start_url: "/" });
+  expect(JSON.parse(manifest.data!)).toMatchObject({ name: "Puppies", start_url: "/" });
 });

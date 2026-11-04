@@ -47,11 +47,11 @@ test("creating a kitty and conversation and sending a message accepts gateway su
     });
   });
   await page.goto("/?lang=en");
-  await page.getByRole("button", { name: "Create a kitty", exact: true }).click();
+  await page.getByRole("button", { name: "Create a puppy", exact: true }).click();
   await page.getByRole("textbox", { name: "Name", exact: true }).fill("Companion");
   await page
     .locator(".next-form form")
-    .getByRole("button", { name: "Create kitty", exact: true })
+    .getByRole("button", { name: "Create puppy", exact: true })
     .click();
   await expect(page.getByRole("heading", { name: "New conversation", exact: true })).toBeVisible();
   await page.getByRole("textbox", { name: "Title", exact: true }).fill("First task");

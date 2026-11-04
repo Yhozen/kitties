@@ -13,7 +13,7 @@
  *   and recoloring only change a few CSS transforms, and the browser's
  *   compositor does projection and occlusion.
  */
-import { parseHex, toHex } from './color.ts';
+import { parseHex, shade as darken, toHex } from './color.ts';
 import type { Rgb } from './color.ts';
 import { computePose, hashString } from './motion.ts';
 import type { Pose } from './motion.ts';
@@ -22,7 +22,8 @@ import { EYE_H, EYE_W, GAZE_X, GAZE_Y, HAPPY_ARC, analyzeBody, eyeCenters, gazeR
 import type { GazeRange } from './validate.ts';
 import { buildVolume } from './volume.ts';
 import type { Volume, VolumeSlice } from './volume.ts';
-import type { AvatarDefinition, RenderOptions } from './types.ts';
+import type { AvatarDefinition, AvatarSkin, RenderOptions, SkinDecal } from './types.ts';
+import type { VolumePart } from './volume.ts';
 
 export const DEFAULT_COLOR = '#ff6a1a';
 export const DEFAULT_EYE_COLOR = '#151515';
@@ -197,14 +198,77 @@ const pivotOf = (b: Bounds): Point => [(b.minX + b.maxX) / 2, (b.minY + b.maxY) 
  * viewer, minus z-slices hidden behind the core (they add nothing to the
  * silhouette or the paint). Their union is the silhouette on screen.
  */
-function drawnSlices(vol: Volume, v: ViewBasis, visit: (s: VolumeSlice, m: M, part: number, index: number) => void) {
+// ---------------------------------------------------------------------------
+// Skin (Puppies extension): per-part colors, rim shading and painted decals
+
+interface Paint {
+  fill: string;
+  decals: SkinDecal[];
+}
+
+/** Whether a skin changes how slices are painted (so none may be culled). */
+function skinned(skin: AvatarSkin | undefined): skin is AvatarSkin {
+  return !!skin && (!!skin.parts?.length || (skin.shade ?? 0) > 0 || !!skin.decals?.length || !!skin.offsets?.some((o) => !!o));
+}
+
+/** A part's shift along depth (skin offsets), 0 by default. */
+function offsetOf(skin: AvatarSkin | undefined, part: number): number {
+  const o = skin?.offsets?.[part];
+  return typeof o === 'number' && Number.isFinite(o) ? clamp(o, -50, 50) : 0;
+}
+
+/** How far a slice sits toward the rim of its part: 0 at the front (or side) apex, 1 at the outline. */
+function rimOf(part: VolumePart, s: VolumeSlice): number {
+  if (s.axis === 'z') return part.depth > 0 ? clamp(1 - Math.abs(s.at) / (part.depth / 2), 0, 1) : 1;
+  const half = (part.bounds.maxX - part.bounds.minX) / 2;
+  return half > 0 ? clamp(Math.abs(s.at - part.center[0]) / half, 0, 1) : 1;
+}
+
+const shadeHex = (hex: string | undefined, t: number, fallback: string): string => {
+  const c = parseHex(hex) ?? (parseHex(fallback) as Rgb);
+  return toHex(t > 0 ? darken(c, t) : c);
+};
+
+/** The fill of one slice and the decals painted into it, shaded alike. */
+function paintOf(skin: AvatarSkin, vol: Volume, color: string, part: number, s: VolumeSlice): Paint {
+  const t = clamp(skin.shade ?? 0, 0, 1) * rimOf(vol.parts[part], s) ** 1.6;
+  const fill = shadeHex(skin.parts?.[part], t, color);
+  const decals = s.axis === 'z' && part === vol.eyePart
+    ? (skin.decals ?? []).map((d) => ({
+        d: d.d,
+        fill: d.fill ? shadeHex(d.fill, t, color) : undefined,
+        stroke: d.stroke ? shadeHex(d.stroke, t, color) : undefined,
+        width: d.width,
+      }))
+    : [];
+  return { fill, decals };
+}
+
+function decalSvg(decals: SkinDecal[]): string {
+  return decals
+    .map((d) =>
+      d.stroke
+        ? `<path d="${esc(d.d)}" fill="${d.fill ?? 'none'}" stroke="${d.stroke}" stroke-width="${f(d.width ?? 1)}" stroke-linecap="round" stroke-linejoin="round"/>`
+        : `<path d="${esc(d.d)}" fill="${d.fill ?? 'none'}"/>`,
+    )
+    .join('');
+}
+
+function drawnSlices(vol: Volume, v: ViewBasis, visit: (s: VolumeSlice, m: M, part: number, index: number) => void, skin?: AvatarSkin) {
   const stack = activeStack(v);
   const pivot = pivotOf(vol.bounds);
-  const drawn = sliceCull(v);
+  const drawn = skin ? () => true : sliceCull(v);
   vol.parts.forEach((part, i) => {
+    const o = offsetOf(skin, i);
     (stack === 'z' ? part.zSlices : part.xSlices).forEach((s, j) => {
       if (!drawn(s)) return;
-      visit(s, stack === 'z' ? planeMatrix(v, s.at, pivot) : sidePlaneMatrix(v, s.at, pivot), i, j);
+      const m = stack === 'z' ? planeMatrix(v, s.at + o, pivot) : sidePlaneMatrix(v, s.at, pivot);
+      // A side plane moved along depth: the screen shift of a z translation (see planeMatrix).
+      if (stack === 'x' && o) {
+        m[4] += v.sY * o;
+        m[5] -= v.cY * v.sP * o;
+      }
+      visit(s, m, i, j);
     });
   });
 }
@@ -233,11 +297,17 @@ interface EyeState {
   open: number;
   shift: number;
   happy: boolean;
+  /** Stroke width of the happy arc: the contract eye's, however wide the skin draws the pill. */
+  stroke: number;
 }
 
-function eyeStates(p: Prepared, pose: Pose): [EyeState, EyeState] {
+/** Skin eye width multiplier (Puppies extension), 1 by default. */
+const eyeWidthOf = (options: { skin?: AvatarSkin }) => clamp(Number.isFinite(options.skin?.eyeWidth) ? (options.skin?.eyeWidth as number) : 1, 0.5, 2.5);
+
+function eyeStates(p: Prepared, pose: Pose, widen = 1): [EyeState, EyeState] {
   const s = p.vol.eyeScale;
-  const w = EYE_W * s, h = EYE_H * s;
+  const w = EYE_W * s * widen, h = EYE_H * s;
+  const stroke = EYE_W * s * HAPPY_ARC.stroke;
   const r = p.range;
   const dx = pose.gazeX * (pose.gazeX >= 0 ? r.right : r.left) * GAZE_X * s;
   const dy = pose.gazeY * (pose.gazeY >= 0 ? r.down : r.up) * GAZE_Y * s;
@@ -245,7 +315,7 @@ function eyeStates(p: Prepared, pose: Pose): [EyeState, EyeState] {
   return ([0, 1] as const).map((i) => {
     const squint = i === 0 ? pose.squintL : pose.squintR;
     const open = Math.max(h * Math.max(0.09, (1 - pose.blink) * (1 - squint * 0.4)), w * 0.55);
-    return { x: centers[i][0], y: centers[i][1], w, h, dx, dy, open, shift: (h - open) * 0.18, happy: pose.eyeShape === 'happy' };
+    return { x: centers[i][0], y: centers[i][1], w, h, dx, dy, open, shift: (h - open) * 0.18, happy: pose.eyeShape === 'happy', stroke };
   }) as [EyeState, EyeState];
 }
 
@@ -256,7 +326,7 @@ function happyArc(e: EyeState): string {
 }
 
 function eyeMark(e: EyeState): EyeMark {
-  if (e.happy) return { shape: 'arc', d: happyArc(e), strokeWidth: e.w * HAPPY_ARC.stroke };
+  if (e.happy) return { shape: 'arc', d: happyArc(e), strokeWidth: e.stroke };
   const cx = e.x + e.dx, cy = e.y + e.dy + e.shift;
   return { shape: 'pill', x: cx - e.w / 2, y: cy - e.open / 2, width: e.w, height: e.open, radius: Math.min(e.w, e.open) / 2 };
 }
@@ -287,8 +357,11 @@ export type FrameShape =
       /** Id of an entry in AvatarFrame.paths. */
       path: string;
       matrix: Matrix;
+      /** With a skin: this slice's own fill, and decals clipped to its path. */
+      fill?: string;
+      decals?: SkinDecal[];
     }
-  | { kind: 'eye'; key: 'eye-0' | 'eye-1'; matrix: Matrix; mark: EyeMark };
+  | { kind: 'eye'; key: 'eye-0' | 'eye-1'; matrix: Matrix; mark: EyeMark; shine?: string };
 
 /**
  * One frame of the avatar flattened onto the screen: every cross-section the
@@ -325,6 +398,7 @@ export function avatarFrame(definition: AvatarDefinition, options: RenderOptions
   // Only the cross-sections this view draws are listed; ids are stable across frames.
   const paths = new Map<string, { id: string; d: string; evenOdd: boolean }>();
   const items: { depth: number; shape: FrameShape }[] = [];
+  const skin = skinned(options.skin) ? options.skin : undefined;
   drawnSlices(vol, v, (s, m, i, j) => {
     let path = paths.get(s.d);
     if (!path) {
@@ -333,16 +407,27 @@ export function avatarFrame(definition: AvatarDefinition, options: RenderOptions
     }
     // Depth keys are taken under the eyes for the eye part, so only depth decides eye-vs-body order there.
     const [rx, ry] = i === vol.eyePart ? eyesMid : vol.parts[i].center;
-    const depth = stack === 'z' ? projectPoint(v, [rx, ry, s.at], pivot)[2] : projectPoint(v, [s.at, ry, 0], pivot)[2];
-    items.push({ depth, shape: { kind: 'slice', key: `${i}${stack}${j}`, path: path.id, matrix: m } });
-  });
+    const o = offsetOf(skin, i);
+    const depth = stack === 'z' ? projectPoint(v, [rx, ry, s.at + o], pivot)[2] : projectPoint(v, [s.at, ry, o], pivot)[2];
+    const paint = skin ? paintOf(skin, vol, color, i, s) : undefined;
+    items.push({
+      depth,
+      shape: {
+        kind: 'slice',
+        key: `${i}${stack}${j}`,
+        path: path.id,
+        matrix: m,
+        ...(paint ? { fill: paint.fill, ...(paint.decals.length ? { decals: paint.decals } : {}) } : {}),
+      },
+    });
+  }, skin);
   // Painted on the surface; each eye goes once the surface under it turns away.
-  eyeStates(p, pose).forEach((e, idx) => {
+  eyeStates(p, pose, eyeWidthOf(options)).forEach((e, idx) => {
     if (eyeVisible(vol, v, idx)) {
-      const z = vol.eyeZ[idx] + EYE_LIFT;
+      const z = vol.eyeZ[idx] + EYE_LIFT + offsetOf(skin, vol.eyePart);
       items.push({
         depth: projectPoint(v, [eyesMid[0], eyesMid[1], z], pivot)[2] + 1e-6,
-        shape: { kind: 'eye', key: idx === 0 ? 'eye-0' : 'eye-1', matrix: planeMatrix(v, z, pivot), mark: eyeMark(e) },
+        shape: { kind: 'eye', key: idx === 0 ? 'eye-0' : 'eye-1', matrix: planeMatrix(v, z, pivot), mark: eyeMark(e), shine: skin?.eyeShine },
       });
     }
   });
@@ -350,22 +435,41 @@ export function avatarFrame(definition: AvatarDefinition, options: RenderOptions
   return { name: p.def.name, color, ink, paths: [...paths.values()], root: rootMatrix(pose, b), shapes: items.map((it) => it.shape) };
 }
 
+/** Eye highlight (skin eyeShine): center and size as fractions of the pill. */
+const SHINE = { x: 0.66, y: 0.27, w: 0.32, h: 0.2 };
+
 // ---------------------------------------------------------------------------
 // Standalone SVG still
 
-function eyeSvg(mark: EyeMark, ink: string): string {
+function eyeSvg(mark: EyeMark, ink: string, shine?: string): string {
   if (mark.shape === 'arc') {
     return `<path d="${mark.d}" fill="none" stroke="${ink}" stroke-width="${f(mark.strokeWidth)}" stroke-linecap="round"/>`;
   }
-  return `<rect x="${f(mark.x)}" y="${f(mark.y)}" width="${f(mark.width)}" height="${f(mark.height)}" rx="${f(mark.radius)}" fill="${ink}"/>`;
+  const glint = shine && parseHex(shine)
+    ? `<ellipse cx="${f(mark.x + mark.width * SHINE.x)}" cy="${f(mark.y + mark.height * SHINE.y)}" rx="${f(mark.width * SHINE.w / 2)}" ry="${f(mark.height * SHINE.h / 2)}" fill="${toHex(parseHex(shine) as Rgb)}"/>`
+    : '';
+  return `<rect x="${f(mark.x)}" y="${f(mark.y)}" width="${f(mark.width)}" height="${f(mark.height)}" rx="${f(mark.radius)}" fill="${ink}"/>${glint}`;
 }
 
 /** Render a definition to a standalone SVG string. Throws if the definition is invalid. */
 export function renderAvatarSvg(definition: AvatarDefinition, options: RenderOptions = {}): string {
   const frame = avatarFrame(definition, options);
-  const defsMarkup = frame.paths.map((d) => `<path id="${d.id}" d="${d.d}"${d.evenOdd ? ' fill-rule="evenodd"' : ''}/>`).join('');
+  const clipped = new Set(frame.shapes.flatMap((s) => (s.kind === 'slice' && s.decals ? [s.path] : [])));
+  const defsMarkup = frame.paths
+    .map((d) => {
+      const rule = d.evenOdd ? ' fill-rule="evenodd"' : '';
+      const clip = clipped.has(d.id) ? `<mask id="${d.id}-clip" maskUnits="userSpaceOnUse" x="-20" y="-20" width="140" height="140"><path d="${d.d}"${rule} fill="#fff"/></mask>` : '';
+      return `<path id="${d.id}" d="${d.d}"${rule}/>${clip}`;
+    })
+    .join('');
+  const sliceSvg = (s: Extract<FrameShape, { kind: 'slice' }>) => {
+    const fill = s.fill ? ` fill="${s.fill}"` : '';
+    if (!s.decals) return `<use href="#${s.path}" transform="${mat(s.matrix)}"${fill}/>`;
+    // The fill and the paint are masked together so their shared edge is smoothed once.
+    return `<g transform="${mat(s.matrix)}"><g mask="url(#${s.path}-clip)"><rect x="-20" y="-20" width="140" height="140"${fill}/>${decalSvg(s.decals)}</g></g>`;
+  };
   const body = frame.shapes
-    .map((s) => (s.kind === 'slice' ? `<use href="#${s.path}" transform="${mat(s.matrix)}"/>` : `<g transform="${mat(s.matrix)}">${eyeSvg(s.mark, frame.ink)}</g>`))
+    .map((s) => (s.kind === 'slice' ? sliceSvg(s) : `<g transform="${mat(s.matrix)}">${eyeSvg(s.mark, frame.ink, s.shine)}</g>`))
     .join('');
   const size = Number.isFinite(options.size) && (options.size as number) > 0 ? f(clamp(options.size as number, 8, 4096)) : null;
   const dims = size ? ` width="${size}" height="${size}"` : '';
@@ -384,21 +488,30 @@ export function renderAvatarSvg(definition: AvatarDefinition, options: RenderOpt
 // ---------------------------------------------------------------------------
 // Live CSS 3D scene
 
+/** Counter for unique mask ids in skinned live scenes. */
+let sceneSeq = 0;
+
 /** 1 viewBox unit = 1% of the scene's (square) container width. */
 const u = (n: number) => `${f(n)}cqw`;
 const FILL = 'position:absolute;left:0;top:0;width:100%;height:100%;';
 
-function sliceMarkup(s: VolumeSlice): string {
+function sliceMarkup(s: VolumeSlice, paint?: Paint, clipId?: string, offset = 0): string {
   const pad = 0.3;
   const x = s.box.x - pad, y = s.box.y - pad, w = s.box.w + 2 * pad, h = s.box.h + 2 * pad;
   const rule = s.evenOdd ? ' fill-rule="evenodd"' : '';
   const place = s.axis === 'z'
-    ? `left:${u(x)};top:${u(y)};transform:translateZ(${u(s.at)})`
+    ? `left:${u(x)};top:${u(y)};transform:translateZ(${u(s.at + offset)})`
     : // The side plane's u = 0 line sits at x = s.at; turning it 90° about that line maps u to -z.
-      `left:${u(s.at + x)};top:${u(y)};transform-origin:${u(-x)} 50%;transform:rotateY(90deg)`;
+      `left:${u(s.at + x)};top:${u(y)};transform-origin:${u(-x)} 50%;transform:${offset ? `translateZ(${u(offset)}) ` : ''}rotateY(90deg)`;
   return (
     `<svg viewBox="${f(x)} ${f(y)} ${f(w)} ${f(h)}" style="position:absolute;width:${u(w)};height:${u(h)};overflow:visible;${place}" aria-hidden="true">` +
-    `<path d="${s.d}"${rule} fill="currentColor"/></svg>`
+    // With decals, the fill and the paint are masked together by the cross-section, so their shared
+    // edge is smoothed once. (clip-path leaves a hairline of the fill along every slice edge in Chrome.)
+    (paint?.decals.length && clipId
+      ? `<mask id="${clipId}" maskUnits="userSpaceOnUse" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(h)}"><path d="${s.d}"${rule} fill="#fff"/></mask>` +
+        `<g mask="url(#${clipId})"><rect x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(h)}" fill="${paint.fill}"/>${decalSvg(paint.decals)}</g>`
+      : `<path d="${s.d}"${rule} fill="${paint ? paint.fill : 'currentColor'}"/>`) +
+    `</svg>`
   );
 }
 
@@ -407,23 +520,37 @@ function sliceMarkup(s: VolumeSlice): string {
  * then apply `sceneFrame` every frame. Body color comes from CSS `color` on
  * an ancestor, eye ink from `--avatar-ink`.
  */
-export function renderAvatarScene(definition: AvatarDefinition, options: Pick<RenderOptions, 'depth'> = {}): string {
+export function renderAvatarScene(definition: AvatarDefinition, options: Pick<RenderOptions, 'depth' | 'skin' | 'color'> = {}): string {
   const p = prepare(definition, depthOption(options));
   const { vol } = p;
+  const skin = skinned(options.skin) ? options.skin : undefined;
+  const { color } = colors(options);
+  // Mask ids are unique per mounted scene: a url(#id) resolves to the first match in the document,
+  // which may sit in another avatar's slice that is hidden (display:none), and then masks nothing.
+  const skinId = skin ? `${hashString(JSON.stringify([skin, color])).toString(36)}-${(sceneSeq++).toString(36)}` : '';
   const b = vol.bounds;
   const [cx, cy] = pivotOf(b);
   const ink = `var(--avatar-ink,${DEFAULT_EYE_COLOR})`;
   const stack = (axis: 'z' | 'x') =>
     `<div data-stack="${axis}" style="${FILL}transform-style:preserve-3d">` +
-    vol.parts.map((part) => (axis === 'z' ? part.zSlices : part.xSlices).map(sliceMarkup).join('')).join('') +
+    vol.parts
+      .map((part, i) =>
+        (axis === 'z' ? part.zSlices : part.xSlices)
+          .map((s, j) => sliceMarkup(s, skin ? paintOf(skin, vol, color, i, s) : undefined, `${p.id}-${skinId}-${i}${axis}${j}`, offsetOf(skin, i)))
+          .join(''),
+      )
+      .join('') +
     `</div>`;
-  const eyes = eyeStates(p, poseOf(p, { reducedMotion: true })).map((e, i) => {
+  const shine = skin?.eyeShine && parseHex(skin.eyeShine)
+    ? `<b style="position:absolute;left:${(SHINE.x - SHINE.w / 2) * 100}%;top:${(SHINE.y - SHINE.h / 2) * 100}%;width:${SHINE.w * 100}%;height:${SHINE.h * 100}%;border-radius:50%;background:${toHex(parseHex(skin.eyeShine) as Rgb)}"></b>`
+    : '';
+  const eyes = eyeStates(p, poseOf(p, { reducedMotion: true }), eyeWidthOf(options)).map((e, i) => {
     const box = `left:${u(e.x - e.w / 2)};top:${u(e.y - e.h / 2)};width:${u(e.w)};height:${u(e.h)}`;
     return (
-      `<div data-eye="${i}" style="position:absolute;${box};backface-visibility:hidden;transform:translateZ(${u(vol.eyeZ[i] + EYE_LIFT)})">` +
-      `<i style="position:absolute;inset:0;border-radius:999px;background:${ink}"></i>` +
+      `<div data-eye="${i}" style="position:absolute;${box};backface-visibility:hidden;transform:translateZ(${u(vol.eyeZ[i] + EYE_LIFT + offsetOf(skin, vol.eyePart))})">` +
+      `<i style="position:absolute;inset:0;border-radius:999px;background:${ink}">${shine}</i>` +
       `<svg viewBox="${f(e.x - e.w / 2)} ${f(e.y - e.h / 2)} ${f(e.w)} ${f(e.h)}" style="${FILL}overflow:visible;display:none" aria-hidden="true">` +
-      `<path d="${happyArc(e)}" fill="none" stroke="${ink}" stroke-width="${f(e.w * HAPPY_ARC.stroke)}" stroke-linecap="round"/></svg>` +
+      `<path d="${happyArc(e)}" fill="none" stroke="${ink}" stroke-width="${f(e.stroke)}" stroke-linecap="round"/></svg>` +
       `</div>`
     );
   });
@@ -486,9 +613,9 @@ export function sceneFrame(definition: AvatarDefinition, options: RenderOptions 
   const p = prepare(definition, depthOption(options));
   const pose = poseOf(p, options);
   const v = viewBasis(pose.yaw, pose.pitch);
-  const states = eyeStates(p, pose);
+  const states = eyeStates(p, pose, eyeWidthOf(options));
   const stack = activeStack(v);
-  const drawn = sliceCull(v);
+  const drawn = skinned(options.skin) ? () => true : sliceCull(v);
   const kept = sliceDetail(p, stack, options.size);
   let k = 0;
   return {
@@ -500,7 +627,7 @@ export function sceneFrame(definition: AvatarDefinition, options: RenderOptions 
     eyes: states.map((e, i) => ({
       visible: eyeVisible(p.vol, v, i),
       happy: e.happy,
-      transform: `translateZ(${u(p.vol.eyeZ[i] + EYE_LIFT)}) translate(${u(e.dx)},${u(e.dy)})`,
+      transform: `translateZ(${u(p.vol.eyeZ[i] + EYE_LIFT + offsetOf(options.skin, p.vol.eyePart))}) translate(${u(e.dx)},${u(e.dy)})`,
       pill: `translateY(${u(e.shift)}) scaleY(${r4(e.open / e.h)})`,
     })),
   };

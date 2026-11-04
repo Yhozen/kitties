@@ -5,7 +5,7 @@ test("PWA shell loads the derived API and advertises installable icons", async (
   request,
 }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Kitties" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Puppies" })).toBeVisible();
   await expect(page.getByRole("status")).toHaveText("Tu espacio está listo.");
   const response = await request.get("/manifest.webmanifest");
   expect(response.ok()).toBeTruthy();

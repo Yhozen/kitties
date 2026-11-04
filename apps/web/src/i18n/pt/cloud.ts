@@ -35,16 +35,16 @@ const dict: Dictionary = {
     "Abra a área de trabalho para ver e controlar este computador.",
   "Permanently delete {name}'s saved recovery checkpoint? Recovery from this checkpoint will no longer be possible. Independent backups remain until their retention expires.":
     "Excluir permanentemente o ponto de recuperação salvo de {name}? Não será mais possível recuperar a partir dele. Os backups independentes permanecem até o prazo de retenção expirar.",
-  "Removing this kitty keeps its recovery checkpoint. Independent backups follow the configured retention.":
-    "Remover este kitty mantém seu ponto de recuperação. Os backups independentes seguem a retenção configurada.",
+  "Removing this puppy keeps its recovery checkpoint. Independent backups follow the configured retention.":
+    "Remover este cachorrinho mantém seu ponto de recuperação. Os backups independentes seguem a retenção configurada.",
   "Saving and stopping the computer…": "Salvando e parando o computador…",
   "Saving the computer before sleep…": "Salvando o computador antes de suspender…",
   Sleep: "Suspender",
   "Sleep saves this computer and lets tasks wake it. Stop keeps it off until you choose Start. Apps may restart when it wakes.":
     "Suspender salva este computador e permite que as tarefas o despertem. Parar o mantém desligado até você escolher Iniciar. Os aplicativos podem reiniciar ao despertar.",
   "Starting the computer…": "Iniciando o computador…",
-  "Stopped. Tasks will not wake this kitty until you choose Start.":
-    "Parado. As tarefas não despertarão este kitty até você escolher Iniciar.",
+  "Stopped. Tasks will not wake this puppy until you choose Start.":
+    "Parado. As tarefas não despertarão este cachorrinho até você escolher Iniciar.",
   "The cloud computer service is unavailable. Check the gateway's Boat configuration.":
     "O serviço de computadores na nuvem está indisponível. Verifique a configuração do Boat no gateway.",
   "The desktop will be available when this operation finishes.":
@@ -60,15 +60,15 @@ const dict: Dictionary = {
   "Manage retained recovery checkpoints in Settings → Preferences.":
     "Gerencie os pontos de recuperação mantidos em Configurações → Preferências.",
   "Recovery checkpoints": "Pontos de recuperação",
-  "Removing a cloud kitty keeps its saved computer here. Delete its checkpoint only when you no longer need that recovery copy.":
-    "Ao remover um kitty na nuvem, seu computador salvo é mantido aqui. Exclua o ponto de recuperação somente quando não precisar mais dessa cópia.",
+  "Removing a cloud puppy keeps its saved computer here. Delete its checkpoint only when you no longer need that recovery copy.":
+    "Ao remover um cachorrinho na nuvem, seu computador salvo é mantido aqui. Exclua o ponto de recuperação somente quando não precisar mais dessa cópia.",
   "No recovery checkpoints saved.": "Não há pontos de recuperação salvos.",
-  "Kitty removed": "Kitty removido",
+  "Puppy removed": "Cachorrinho removido",
   "Computer retained": "Computador mantido",
   "Recovery operation in progress": "Operação de recuperação em andamento",
   "Saved {when}.": "Salvo {when}.",
-  "Remove the kitty before deleting its recovery checkpoint.":
-    "Remova o kitty antes de excluir seu ponto de recuperação.",
+  "Remove the puppy before deleting its recovery checkpoint.":
+    "Remova o cachorrinho antes de excluir seu ponto de recuperação.",
   "Refresh checkpoints": "Atualizar pontos de recuperação",
 };
 

@@ -55,7 +55,7 @@ self.addEventListener("push", (event) => {
           ? data.url
           : "/";
       await self.registration.showNotification(
-        typeof data.title === "string" ? data.title : "Kitties",
+        typeof data.title === "string" ? data.title : "Puppies",
         {
           icon: "/icon-192.png",
           badge: "/icon-192.png",
