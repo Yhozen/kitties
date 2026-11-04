@@ -1,2 +1,43 @@
 # Public SHA-256 guest archive filename, not a credential. See guestRelease.sha256.
 e16b83937c9f6b6f852ee49b2cd29b7db0c3eaeb:docs/effect/evidence/desktop-startup-cloud.json:generic-api-key:80
+
+# Reviewed fixtures in Foldkit 0.170.0 and its Effect reference source.
+# Fingerprints are scoped to an exact commit, file, rule and line; new findings still fail.
+# Historical CLI test sets the literal from-the-environment-12345 in its isolated environment.
+0301a4294948c7e42c7861fff64d4dd862c128b0:cmd/kitties/server_test.go:generic-api-key:55
+# Historical test uses the public X OAuth 1.0 signing example, with its fixed nonce and timestamp.
+579e779fe89da3f0361cc40c7ebb2e3b852a76ad:internal/connector/x_test.go:generic-api-key:19
+# Historical test uses the public X OAuth 1.0 signing example, with its fixed nonce and timestamp.
+579e779fe89da3f0361cc40c7ebb2e3b852a76ad:internal/connector/x_test.go:generic-api-key:20
+# Pinned Foldkit/Effect WebSocket test uses the RFC 6455 sample nonce (the sample nonce).
+f3f5e528c80213d265af715397cbc2f3a11a1863:packages/vite-plugin-foldkit/test/relayListener.test.ts:generic-api-key:65
+# Pinned Effect HTTP API documentation sends the numeric example header to localhost.
+f3f5e528c80213d265af715397cbc2f3a11a1863:repos/effect/packages/effect/HTTPAPI.md:curl-auth-header:1047
+# Pinned Effect Config.Redacted documentation uses a numbered dummy API key.
+f3f5e528c80213d265af715397cbc2f3a11a1863:repos/effect/packages/effect/src/Config.ts:generic-api-key:1475
+# Pinned Effect AES-GCM specification test vectors (McGrew and Viega, cases 4 and 16).
+f3f5e528c80213d265af715397cbc2f3a11a1863:repos/effect/packages/effect/test/crypto/Aead.test.ts:generic-api-key:44
+# Pinned Effect AES-GCM specification test vectors (McGrew and Viega, cases 4 and 16).
+f3f5e528c80213d265af715397cbc2f3a11a1863:repos/effect/packages/effect/test/crypto/Aead.test.ts:generic-api-key:52
+# Pinned Effect NIST SP 800-38A public cipher test vectors, appendix F.2 and F.5.
+f3f5e528c80213d265af715397cbc2f3a11a1863:repos/effect/packages/effect/test/crypto/Cipher.test.ts:generic-api-key:12
+# Pinned Effect NIST SP 800-38A public cipher test vectors, appendix F.2 and F.5.
+f3f5e528c80213d265af715397cbc2f3a11a1863:repos/effect/packages/effect/test/crypto/Cipher.test.ts:generic-api-key:13
+# Pinned Effect RFC 3394 public key-wrap test vectors, sections 4.1 and 4.6.
+f3f5e528c80213d265af715397cbc2f3a11a1863:repos/effect/packages/effect/test/crypto/KeyWrap.test.ts:generic-api-key:24
+# Pinned Effect RFC 3394 public key-wrap test vectors, sections 4.1 and 4.6.
+f3f5e528c80213d265af715397cbc2f3a11a1863:repos/effect/packages/effect/test/crypto/KeyWrap.test.ts:generic-api-key:31
+# Pinned Effect test import identifiers (SigningDerivationLabelV1 and module path), not a secret.
+f3f5e528c80213d265af715397cbc2f3a11a1863:repos/effect/packages/effect/test/eventlog/EventLogIdentityDerivation.test.ts:generic-api-key:6
+# Pinned Foldkit/Effect WebSocket test uses the RFC 6455 sample nonce (the sample nonce).
+f3f5e528c80213d265af715397cbc2f3a11a1863:repos/effect/packages/platform/bun/test/BunHttpServer.test.ts:generic-api-key:117
+# Pinned Foldkit/Effect WebSocket test uses the RFC 6455 sample nonce (the sample nonce).
+f3f5e528c80213d265af715397cbc2f3a11a1863:repos/effect/packages/platform/bun/test/BunHttpServer.test.ts:generic-api-key:45
+# Pinned Effect localhost-only TLS fixture, paired with the checked-in test certificate.
+f3f5e528c80213d265af715397cbc2f3a11a1863:repos/effect/packages/platform/deno/test/fixtures/tls/key.pem:private-key:1
+# Pinned Foldkit/Effect WebSocket test uses the RFC 6455 sample nonce (the sample nonce).
+f3f5e528c80213d265af715397cbc2f3a11a1863:repos/effect/packages/platform/node/test/NodeHttpServer.test.ts:generic-api-key:1863
+# Pinned Foldkit/Effect WebSocket test uses the RFC 6455 sample nonce (the sample nonce).
+f3f5e528c80213d265af715397cbc2f3a11a1863:repos/effect/packages/platform/node/test/NodeHttpServer.test.ts:generic-api-key:1911
+# Pinned Effect localhost-only TLS fixture, paired with the checked-in test certificate.
+f3f5e528c80213d265af715397cbc2f3a11a1863:repos/effect/packages/platform/node/test/fixtures/tls/key.pem:private-key:1
