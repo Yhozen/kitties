@@ -29,15 +29,18 @@ jobs:
       - run: pnpm check
       - run: pnpm test
       - run: pnpm build
+      - run: bun guest/kittyd/tests/jpeg-startup.ts
+      - run: node guest/kittyd/tests/desktop-recovery-browser.mjs
       - name: Native desktop acceptance (Ubuntu / GTK / AT-SPI / voxl)
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq python3-gi gir1.2-gtk-3.0 at-spi2-core dbus-x11 xvfb openbox xdotool build-essential pkg-config clang libclang-dev libx264-dev libyuv-dev libopus-dev libpulse-dev libxcb1-dev
+          sudo apt-get install -y -qq python3-gi gir1.2-gtk-3.0 at-spi2-core dbus-x11 xvfb x11-xserver-utils openbox xdotool build-essential patch pkg-config clang libclang-dev libx264-dev libyuv-dev libopus-dev libpulse-dev libxcb1-dev
           rustup toolchain install 1.93.0 --profile minimal
           pnpm --filter @kitties/kittyd check
           pnpm --filter @kitties/kittyd build:voxl
           pnpm --filter @kitties/kittyd release
           sudo install -D guest/kittyd/dist/voxl /usr/local/lib/kittyd/voxl
+          bash guest/kittyd/tests/video-cross-user.sh
           mkdir -p .context
           KITTYD_VIDEO_FIXTURE="$PWD/.context/video-fixture.bin" xvfb-run -a -s '-screen 0 1280x800x24' bun guest/kittyd/tests/video-native.ts
           KITTYD_VIDEO_FIXTURE="$PWD/.context/video-fixture.bin" node guest/kittyd/tests/viewer-browser.mjs
