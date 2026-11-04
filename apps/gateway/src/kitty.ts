@@ -1,3 +1,4 @@
+import { liveFileLeases, newFileLease, validFileLease, type FileLease } from "./file-leases.ts";
 import { makeStorageAdmin } from "./storage-admin.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Effect from "effect/Effect";
@@ -6,6 +7,13 @@ import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import * as Schema from "effect/Schema";
 import { Action, Ack } from "@kitties/protocol";
+import {
+  videoHeader,
+  freshVideoFlow,
+  offerVideo,
+  acknowledgeVideo,
+  type VideoFlow,
+} from "@kitties/protocol/video";
 import { canGrant, validGrant, type Fence, type Grant } from "./control.ts";
 import {
   beginOperation,
@@ -19,10 +27,12 @@ export interface GuestConfig extends Fence {
   tokenVersion: number;
 }
 interface Session {
-  role: "guest" | "guest-frames" | "owner" | "viewer";
+  role: "guest" | "guest-frames" | "guest-video" | "owner" | "viewer" | "video-viewer";
   clientId: string;
   epoch: number;
   outstanding?: number;
+  video?: VideoFlow;
+  keyframeAt?: number;
   count?: number;
   window?: number;
 }
@@ -80,6 +90,7 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
           JSON.stringify(value),
         );
       };
+      const fileLeases = () => liveFileLeases(read<FileLease[]>("file-leases") ?? [], Date.now());
       const config = () => read<GuestConfig>("config");
       const scheduleAt = (at: number) => {
         const previous = read<number>("wake");
@@ -120,6 +131,8 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
           write("config", c);
         }
         revoke();
+        for (const socket of [...sockets("guest-video"), ...sockets("video-viewer")])
+          socket.close(4001, "Video fence changed");
         releaseWaiters();
         return c;
       };
@@ -165,7 +178,11 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
       };
       const peers = () => {
         const count = sockets("viewer").length;
-        for (const guest of sockets("guest")) send(guest, { type: "viewers", count });
+        for (const guest of sockets("guest"))
+          send(guest, { type: "viewers", count, videoCount: sockets("video-viewer").length });
+      };
+      const requestVideoKeyframe = () => {
+        for (const guest of sockets("guest-video")) send(guest, { type: "keyframe" });
       };
       const dispatch = (
         action: typeof Action.Type,
@@ -233,6 +250,30 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
         return { status: "started", result: null };
       };
       return {
+        beginFileTransfer: () =>
+          Effect.sync(() => {
+            const leases = fileLeases();
+            const current = read<ComputerState>("computer");
+            const lease = newFileLease(current, leases, crypto.randomUUID(), Date.now());
+            write("file-leases", [...leases, lease]);
+            write("computer", { ...current!, lastActiveAt: Date.now() });
+            return { lease, computer: current! };
+          }),
+        validFileTransfer: (id: string) =>
+          Effect.sync(() =>
+            validFileLease(
+              read<ComputerState>("computer"),
+              fileLeases().find((lease) => lease.id === id),
+              Date.now(),
+            ),
+          ),
+        endFileTransfer: (id: string) =>
+          Effect.sync(() => {
+            write(
+              "file-leases",
+              fileLeases().filter((lease) => lease.id !== id),
+            );
+          }),
         computer: () => Effect.sync(() => read<ComputerState>("computer")),
         ...makeStorageAdmin(state, env.KITTIES_KEK, ["kitty_state", "effect_ledger"]),
         beginComputer: (kittyId: string, id: string, kind: ComputerOperation["kind"]) =>
@@ -240,11 +281,14 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
             const current = read<ComputerState>("computer") ?? freshComputer(kittyId, Date.now());
             if (
               (kind === "sleep" || kind === "delete") &&
-              (sockets("viewer").some((socket) => socket.readyState === 1) ||
+              ([...sockets("viewer"), ...sockets("video-viewer")].some(
+                (socket) => socket.readyState === 1,
+              ) ||
                 read<Grant>("grant") ||
                 pending() > 0)
             )
               throw Error("COMPUTER_IN_USE");
+            if (fileLeases().length) throw Error("FILE_TRANSFERS_BUSY");
             const next = beginOperation(current, id, kind, Date.now());
             write("computer", next);
             if (
@@ -257,7 +301,12 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
                 c.tokenHash = "";
                 write("config", c);
               }
-              for (const socket of [...sockets("guest"), ...sockets("guest-frames")])
+              for (const socket of [
+                ...sockets("guest"),
+                ...sockets("guest-frames"),
+                ...sockets("guest-video"),
+                ...sockets("video-viewer"),
+              ])
                 socket.close(1012, "Lifecycle operation");
             }
             return next;
@@ -323,7 +372,12 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
               if (old && old.generation !== c.generation)
                 sql.exec("UPDATE effect_ledger SET status='unknown' WHERE status='started'");
             });
-            for (const ws of [...sockets("guest"), ...sockets("guest-frames")])
+            for (const ws of [
+              ...sockets("guest"),
+              ...sockets("guest-frames"),
+              ...sockets("guest-video"),
+              ...sockets("video-viewer"),
+            ])
               ws.close(1012, "Credentials rotated");
             publish({ type: "control_revoked" });
             return { epoch: c.epoch };
@@ -340,7 +394,12 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
               ).join("");
               write("config", c);
             }
-            for (const ws of [...sockets("guest"), ...sockets("guest-frames")])
+            for (const ws of [
+              ...sockets("guest"),
+              ...sockets("guest-frames"),
+              ...sockets("guest-video"),
+              ...sockets("video-viewer"),
+            ])
               ws.close(1012, "Recovery requires fresh credentials");
             const computer = read<ComputerState>("computer");
             if (computer)
@@ -367,7 +426,9 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
               readyState: ws.readyState,
               epoch: (ws.deserializeAttachment() as Session | null)?.epoch,
             })),
-            viewers: sockets("viewer").length,
+            viewers: sockets("viewer").length + sockets("video-viewer").length,
+            videoViewers: sockets("video-viewer").length,
+            fileTransfers: fileLeases().length,
             grant: read<Grant>("grant"),
             pending: pending(),
           })),
@@ -504,14 +565,19 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
             return HttpServerResponse.empty({ status: 404 });
           const c = config();
           if (!c) return HttpServerResponse.empty({ status: 409 });
+          const video = url.pathname.endsWith("/video");
           const frames = url.pathname.endsWith("/frames");
-          const role: Session["role"] = guest
-            ? frames
-              ? "guest-frames"
-              : "guest"
-            : frames
-              ? "viewer"
-              : "owner";
+          const role: Session["role"] = video
+            ? guest
+              ? "guest-video"
+              : "video-viewer"
+            : guest
+              ? frames
+                ? "guest-frames"
+                : "guest"
+              : frames
+                ? "viewer"
+                : "owner";
           if (guest) {
             const token = request.headers
               .get("Authorization")
@@ -524,17 +590,44 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
               request.headers.get("X-Kitty-Token-Version") !== String(c.tokenVersion)
             )
               return HttpServerResponse.empty({ status: 403 });
-            if (!frames) {
+            // Hash verification yields; reject credentials rotated while it was running.
+            const verified = config();
+            if (
+              !verified ||
+              verified.epoch !== c.epoch ||
+              verified.tokenHash !== c.tokenHash ||
+              verified.generation !== c.generation ||
+              verified.remoteId !== c.remoteId ||
+              verified.tokenVersion !== c.tokenVersion
+            )
+              return HttpServerResponse.empty({ status: 403 });
+            if (!frames && !video) {
               bump();
-              for (const old of [...sockets("guest"), ...sockets("guest-frames")])
+              for (const old of [
+                ...sockets("guest"),
+                ...sockets("guest-frames"),
+                ...sockets("guest-video"),
+                ...sockets("video-viewer"),
+              ])
                 old.close(1012, "New guest connection");
             } else if (request.headers.get("X-Kitty-Epoch") !== String(config()!.epoch))
               return HttpServerResponse.empty({ status: 403 });
           }
-          if (sockets(role).length >= (guest ? 2 : 4))
+          if (
+            sockets(role).length >= (role === "guest-video" ? 1 : guest ? 2 : 4) ||
+            (!guest &&
+              (role === "viewer" || role === "video-viewer") &&
+              sockets("viewer").length + sockets("video-viewer").length >= 4)
+          )
             return HttpServerResponse.empty({ status: 429 });
+          const admissionEpoch = config()!.epoch;
           const [response, ws] = yield* Cloudflare.upgrade({ tags: [role] });
-          const session: Session = { role, clientId: crypto.randomUUID(), epoch: config()!.epoch };
+          const session: Session = {
+            role,
+            clientId: crypto.randomUUID(),
+            epoch: admissionEpoch,
+            ...(role === "video-viewer" ? { video: freshVideoFlow() } : {}),
+          };
           ws.serializeAttachment(session);
           if (role === "guest")
             yield* ws.send(
@@ -544,6 +637,7 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
                 epoch: session.epoch,
                 generation: c.generation,
                 viewers: sockets("viewer").length,
+                videoViewers: sockets("video-viewer").length,
                 reconcile: sql
                   .exec<{ id: string }>(
                     "SELECT id FROM effect_ledger WHERE status='started' AND generation=? LIMIT 256",
@@ -562,7 +656,17 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
                 clientId: session.clientId,
               }),
             );
-          if (role === "viewer") peers();
+          if (role === "viewer" || role === "video-viewer") peers();
+          if (role === "video-viewer") {
+            yield* ws.send(
+              JSON.stringify({
+                type: "video_ready",
+                generation: c.generation,
+                epoch: session.epoch,
+              }),
+            );
+            requestVideoKeyframe();
+          }
           return response;
         }),
         webSocketMessage: (socket: Cloudflare.WebSocket, message: string | ArrayBuffer) =>
@@ -574,6 +678,38 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
             if (session.role.startsWith("guest") && session.epoch !== c.epoch)
               return ws.close(1008, "Stale epoch");
             if (typeof message !== "string") {
+              if (session.role === "guest-video") {
+                const header = videoHeader(new Uint8Array(message));
+                if (!header) return ws.close(1009, "Invalid video");
+                if (header.generation !== c.generation) return ws.close(1008, "Stale generation");
+                let needsKey = false;
+                for (const viewer of sockets("video-viewer")) {
+                  const attachment = viewer.deserializeAttachment() as Session;
+                  if (attachment.epoch !== c.epoch) {
+                    viewer.close(4001, "Video fence changed");
+                    continue;
+                  }
+                  const flow = (attachment.video ??= freshVideoFlow());
+                  const outcome = offerVideo(flow, header, message.byteLength, Date.now());
+                  viewer.serializeAttachment(attachment);
+                  if (outcome === "close") viewer.close(1008, "Video acknowledgement timed out");
+                  else if (outcome === "keyframe" && Date.now() - (session.keyframeAt ?? 0) >= 500)
+                    needsKey = true;
+                  else if (outcome === "send") {
+                    try {
+                      viewer.send(message);
+                    } catch {
+                      viewer.close(1011, "Video send failed");
+                    }
+                  }
+                }
+                if (needsKey) {
+                  session.keyframeAt = Date.now();
+                  ws.serializeAttachment(session);
+                  requestVideoKeyframe();
+                }
+                return;
+              }
               if (
                 session.role !== "guest-frames" ||
                 message.byteLength > 1024 * 1024 ||
@@ -606,6 +742,22 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
             ws.serializeAttachment(session);
             try {
               const body = JSON.parse(message) as Record<string, unknown>;
+              if (session.role === "video-viewer") {
+                if (session.epoch !== c.epoch) return ws.close(1008, "Stale epoch");
+                const flow = (session.video ??= freshVideoFlow());
+                if (body.type === "video_ack" && typeof body.seq === "number") {
+                  if (acknowledgeVideo(flow, body.seq, now) && flow.waitingKey)
+                    requestVideoKeyframe();
+                } else if (body.type === "keyframe" && now - (session.keyframeAt ?? 0) >= 500) {
+                  // A decoder reset drops queued pictures; discard their flow-control slots.
+                  session.video = freshVideoFlow(flow);
+                  session.keyframeAt = now;
+                  requestVideoKeyframe();
+                }
+                ws.serializeAttachment(session);
+                return;
+              }
+              if (session.role === "guest-video") return ws.close(1008, "Video capability denied");
               if (session.role === "viewer") {
                 if (body.type === "frame_ack" && body.seq === session.outstanding) {
                   delete session.outstanding;
@@ -720,7 +872,10 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
               write("grant", grant);
               if (pending("owner") === 0) revoke();
             }
-            if (session.role === "viewer") peers();
+            if (session.role === "guest-video" && session.epoch === config()?.epoch)
+              for (const viewer of sockets("video-viewer"))
+                viewer.close(1012, "Video stream ended");
+            if (session.role === "viewer" || session.role === "video-viewer") peers();
           }),
         webSocketError: () => Effect.sync(() => revoke()),
         alarm: () =>

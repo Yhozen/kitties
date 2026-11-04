@@ -1,6 +1,14 @@
 import { Database } from "bun:sqlite";
 import { mkdir, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { startVideo } from "./video.ts";
+import type { PerceptionResult } from "./perception-session.ts";
+
+class PerceptionFailure extends Error {
+  constructor(readonly outcome: PerceptionResult) {
+    super("PERCEPTION_FAILED");
+  }
+}
 
 interface Config {
   url: string;
@@ -53,6 +61,33 @@ let active: WebSocket | undefined,
   viewers = 0,
   sequence = 0,
   retry = 500;
+let videoViewers = 0;
+let stopVideo: (() => void) | undefined;
+let videoRetry: ReturnType<typeof setTimeout> | undefined;
+function videoDemand(count: number) {
+  videoViewers = count;
+  clearTimeout(videoRetry);
+  if (!count) {
+    stopVideo?.();
+    stopVideo = undefined;
+    return;
+  }
+  if (stopVideo || !active || !epoch) return;
+  try {
+    stopVideo = startVideo({
+      url: config.url.replace(/\/control$/, "/video"),
+      headers: headers(),
+      generation: config.generation,
+      env,
+      ended: () => {
+        stopVideo = undefined;
+        if (videoViewers) videoRetry = setTimeout(() => videoDemand(videoViewers), 1000);
+      },
+    });
+  } catch {
+    videoRetry = setTimeout(() => videoDemand(videoViewers), 1000);
+  }
+}
 let capture: ReturnType<typeof Bun.spawn> | undefined;
 let latest: Uint8Array | undefined;
 let queue = Promise.resolve();
@@ -184,15 +219,37 @@ async function execute(action: Action): Promise<string> {
     case "ui_read":
     case "ui_click":
     case "ui_type": {
-      const response = await fetch("http://localhost/action", {
-        unix: "/run/kitties-perception/control.sock",
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: action.action, ...args }),
-        signal: AbortSignal.timeout(25000),
-      });
-      if (!response.ok) throw Error("PERCEPTION_UNAVAILABLE");
-      return response.text();
+      try {
+        const response = await fetch("http://localhost/action", {
+          unix: "/run/kitties-perception/control.sock",
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...args, action: action.action }),
+          signal: AbortSignal.timeout(25000),
+        });
+        if (response.status === 400)
+          throw new PerceptionFailure({
+            status: "failed",
+            result: "INVALID_ARGUMENT",
+          });
+        if (!response.ok) throw Error("PERCEPTION_UNAVAILABLE");
+        const outcome = (await response.json()) as PerceptionResult;
+        if (
+          !outcome ||
+          !["completed", "failed", "unknown"].includes(outcome.status) ||
+          typeof outcome.result !== "string" ||
+          outcome.result.length > 65536
+        )
+          throw Error("PERCEPTION_UNAVAILABLE");
+        if (outcome.status !== "completed") throw new PerceptionFailure(outcome);
+        return outcome.result;
+      } catch (error) {
+        if (error instanceof PerceptionFailure) throw error;
+        throw new PerceptionFailure({
+          status: action.action === "ui_read" ? "failed" : "unknown",
+          result: "PERCEPTION_UNAVAILABLE",
+        });
+      }
     }
     case "quiesce":
       return run(["/usr/local/lib/kittyd/kitty-quiesce"]);
@@ -248,9 +305,9 @@ async function dispatch(action: Action, socket: WebSocket, receivedAt: number) {
     result: string;
   try {
     result = await execute(action);
-  } catch {
-    status = "failed";
-    result = "ACTION_FAILED";
+  } catch (error) {
+    status = error instanceof PerceptionFailure ? error.outcome.status : "failed";
+    result = error instanceof PerceptionFailure ? error.outcome.result : "ACTION_FAILED";
   }
   db.query("UPDATE intents SET status=?,result=? WHERE id=?").run(status, result, action.intentId);
   // A lost socket is harmless: the next welcome asks for the saved receipt.
@@ -369,6 +426,7 @@ function connect() {
         epoch = body.epoch;
         console.info("Guest connected", { generation: config.generation, epoch });
         viewers = body.viewers ?? 0;
+        videoDemand(body.videoViewers ?? 0);
         const receipts = (body.reconcile ?? []).map((id: string) => {
           const row = db
             .query<Receipt, [string]>(
@@ -390,6 +448,7 @@ function connect() {
       }
       if (body.type === "viewers") {
         viewers = body.count;
+        videoDemand(body.videoCount ?? 0);
         if (viewers > 0) {
           void startCapture();
           publishLatest();
@@ -413,6 +472,7 @@ function connect() {
     active = undefined;
     epoch = 0;
     viewers = 0;
+    videoDemand(0);
     stopCapture();
     setTimeout(connect, retry + Math.random() * 250);
     retry = Math.min(retry * 2, 10000);
@@ -421,6 +481,7 @@ function connect() {
 }
 process.on("SIGTERM", () => {
   active?.close();
+  videoDemand(0);
   stopCapture();
   db.close();
   process.exit(0);

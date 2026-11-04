@@ -20,12 +20,19 @@ fi
 if [ -f "$work/desktop/provision.py" ]; then python3 "$work/desktop/provision.py"; fi
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq gcc libx11-dev libxext-dev libjpeg-dev xclip x11-xserver-utils
+apt-get install -y -qq gcc libx11-dev libxext-dev libjpeg-dev xclip x11-xserver-utils libx264-164 libyuv0 libopus0 libpulse0
 id kittyd >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/kittyd --shell /usr/sbin/nologin kittyd
 install -d -m 0755 /usr/local/lib/kittyd
 install -m 0755 "$work/kittyd" /usr/local/lib/kittyd/kittyd
+install -m 0755 "$work/voxl" /usr/local/lib/kittyd/voxl
+for name in voxl-build.json voxl-source.tgz voxl-LICENSE voxl-COPYING-x264 voxl-x264-copyright; do
+  install -m 0644 "$work/$name" "/usr/local/lib/kittyd/$name"
+done
 for name in agent-desktop agent-desktop-linux-clipboard-owner; do install -m 0755 "$work/$name" "/usr/local/bin/$name"; done
 install -m 0755 "$work/agent-browser-linux-x64" /usr/local/bin/agent-browser
+install -m 0644 "$work/libagent_desktop_ffi.so" /usr/local/lib/kittyd/libagent_desktop_ffi.so
+install -m 0644 "$work/perception-helper.py" /usr/local/lib/kittyd/perception-helper.py
+install -m 0644 "$work/agent-desktop-LICENSE" /usr/local/lib/kittyd/agent-desktop-LICENSE
 gcc -O2 -march=x86-64 -mtune=generic -o /usr/local/lib/kittyd/kitty-grab "$work/kitty-grab.c" -lX11 -lXext -ljpeg
 install -m 0755 "$work/kitty-quiesce.sh" /usr/local/lib/kittyd/kitty-quiesce
 install -d -o root -g kittyd -m 0750 /etc/kittyd

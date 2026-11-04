@@ -10,6 +10,7 @@
   "dependencies": {
     "@kitties/api": "workspace:*",
     "@kitties/domain": "workspace:*",
+    "@kitties/protocol": "workspace:*",
     "effect": "4.1.1",
     "preact": "11.0.0",
     "simple-icons": "16.35.0"

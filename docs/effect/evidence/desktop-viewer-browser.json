@@ -1,0 +1,18 @@
+{
+  "status": "passed",
+  "browser": "Chrome",
+  "checks": [
+    "real voxl H264 decoded, drawn and acknowledged",
+    "decoder backlog resets and recovers on a real keyframe",
+    "missing-codec falls back to JPEG",
+    "decoder-error falls back to JPEG",
+    "startup-timeout falls back to JPEG",
+    "video-unavailable falls back to JPEG",
+    "generation fence disconnects before rendering",
+    "epoch fence disconnects before rendering",
+    "frame-generation fence disconnects before rendering",
+    "late JPEG decode cannot paint a closed viewer"
+  ],
+  "date": "2026-11-04",
+  "source": "Actual voxl keyframe captured from an empty synthetic Xvfb; mocked WebSocket transport exercises the production viewer module."
+}

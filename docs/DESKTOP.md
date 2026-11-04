@@ -14,4 +14,44 @@ unknown outcome needs an owner decision. A vault reference can type a secret wit
 plaintext into the model context. Never resend an unknown action without checking its outcome.
 
 Measured 200-input latency: ack p95 242.6 ms; click-to-visible p95 359.6 ms. Non-model agent step
-overhead remains above its 1 s target; see [latency](effect/LATENCY-BASELINE.md).
+overhead p95 is 525 ms (453 ms on a second run), below its 1 s target; see [latency](effect/LATENCY-BASELINE.md).
+
+Accessibility calls use a persistent agent-desktop 1.1.0 adapter through its pinned ABI 7 library.
+A separate helper runs as the desktop user with no channel credentials. Requests are bounded,
+serialized, and never queued beyond the active call. Native errors preserve delivery disposition;
+a crash or timeout during a mutation records an unknown outcome. A helper restart creates a new
+reference namespace, so an agent must take a fresh snapshot before acting.
+
+The guest release verifies both upstream CLI and FFI archive checksums and includes the Apache
+license. `guest/kittyd/tests/perception-native.py` exercises real GTK/AT-SPI and compares same-version
+CLI snapshots with persistent calls. The local fixture measured p95 14.24 ms → 11.89 ms; this excludes
+network and model time and does not predict a proportional end-to-end improvement.
+
+The video transport uses voxl 0.3.2 on a password-protected loopback listener, started only while
+video viewers are connected. The guest forwards only single-stripe H.264 video. Audio, microphone,
+clipboard, file transfer and resizing are disabled; all input still uses the existing control grant
+and intent ledger. `/video` uses the same owner identity/Origin and guest token/generation/epoch
+checks as the other desktop sockets. Credential rotation or epoch change closes video peers.
+
+Each viewer can have at most eight unacknowledged video frames and 2 MiB queued. A dropped delta
+puts only that viewer into keyframe recovery; a slow viewer cannot break the decode chain of a
+fast one. The existing `/frames` JPEG path stays available for compatibility. No encoded frames
+are retained in durable storage.
+
+Build the voxl artifact on Ubuntu 24.04 x86_64 using `pnpm --filter @kitties/kittyd build:voxl`
+before `pnpm --filter @kitties/kittyd release`; see the dependency list in the build script. The
+source archive hash, Rust/esbuild versions, Cargo lockfile, and native package versions are recorded.
+The guest bundle includes voxl source, vendored Rust dependencies, build instructions and licenses.
+The native test exercises actual capture/authentication/keyframe recovery. With local workerd
+running on ports 1337/1338, `bun guest/kittyd/probes/video-channel.ts` verifies slow-viewer isolation,
+video/input separation, grant release, epoch changes and rejection of stale guest connections.
+
+The browser prefers WebCodecs video, acknowledging frames only after they are drawn. Missing
+WebCodecs, an unsupported codec, a decoder failure, an unavailable capture service, or five seconds
+without an initial frame switches that view to JPEG. The panel labels this “Compatibility view.”
+Closing or reconnecting discards pending decoded frames; a stale generation/epoch never renders.
+Input grants, revocation, queue limits and receipts remain on the separate control socket.
+
+Local 60-click comparisons in both path orders measured video p95 21.6–34.3 ms versus JPEG
+84.7–90.9 ms, with 82–83% fewer received frame bytes. See the latency record for scope and raw
+samples. This is synthetic local acceptance, not a new public-network or physical-Mac baseline.

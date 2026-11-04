@@ -262,6 +262,9 @@ importers:
       '@kitties/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@kitties/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
       effect:
         specifier: 4.1.1
         version: 4.1.1
@@ -289,6 +292,10 @@ importers:
         version: 4.3.3
 
   guest/kittyd:
+    dependencies:
+      '@kitties/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
     devDependencies:
       '@types/bun':
         specifier: 1.4.4

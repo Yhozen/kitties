@@ -83,7 +83,11 @@ export const makeLifecycle = Effect.gen(function* () {
             return;
           }
           const channel = yield* kitty.status();
-          const busy = channel.viewers > 0 || !!channel.grant || channel.pending > 0;
+          const busy =
+            channel.viewers > 0 ||
+            !!channel.grant ||
+            channel.pending > 0 ||
+            channel.fileTransfers > 0;
           if (busy) yield* kitty.touchComputer();
           // Keep a draining or failed operation alive; TTL must never replace quiescence.
           if (Date.now() - state.lastRenewAt > 240000) {

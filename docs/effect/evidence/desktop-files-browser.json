@@ -1,0 +1,15 @@
+{
+  "date": "2026-11-04T04:15:49.254Z",
+  "status": "passed",
+  "scope": "Actual Preact component and headless Chrome; HTTP provider responses mocked",
+  "checks": [
+    "6 MiB binary upload with real XMLHttpRequest",
+    "byte-identical download with original filename",
+    "Library-to-desktop action carries generation",
+    "drag and drop upload",
+    "stale generation error persists through refresh; no replay",
+    "busy file drop reports that it was not uploaded",
+    "cancel stops client and explains uncertain delivery",
+    "mobile width without horizontal overflow"
+  ]
+}

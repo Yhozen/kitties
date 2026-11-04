@@ -75,3 +75,75 @@ targets, not measurements.
 | 2026-11-01 | 4 | Continuous real stream | 30 min | no disconnects | Three viewers, including a constrained viewer. [Evidence](evidence/stream-soak.json) |
 | 2026-11-01 | 7/10 | Non-model overhead, real desktop action | 653 ms | 1,421 ms | 50 turns; original p95 < 1 s target unmet. Owner accepted cutover with this limitation documented. [Evidence](evidence/step-latency-cloud.json), [decision](evidence/latency-cutover-decision.json) |
 | 2026-11-02 | post-cutover | Non-model overhead, real desktop action | 222 ms | 525 ms | 50 turns on `next`; **p95 < 1 s target met**. Second run: 212 ms / 453 ms. [Run 1](evidence/step-latency-optimized-cloud.json), [run 2](evidence/step-latency-optimized-cloud-run2.json) |
+
+
+### Persistent agent-desktop adapter — 2026-11-04
+
+A local Ubuntu 24.04 GTK3 fixture compared 30 alternating snapshots per path using agent-desktop
+1.1.0 on both sides. CLI p50/p95: **12.65/14.24 ms**; persistent FFI: **9.60/11.89 ms**. This removes
+process and adapter startup, a **16.5% p95 reduction (2.35 ms)** on this small tree. It excludes the
+network, model, and guest receipt path; do not compare it directly to the regional step timings.
+Real semantic click, Unicode typing, state readback, stale refs after restart, and no replay passed.
+See [aggregate evidence](evidence/perception-persistent-local.json) and
+[reproducible probe](../../guest/kittyd/tests/perception-native.py).
+
+### voxl / WebCodecs viewer — 2026-11-04
+
+The real browser component drove the real guest daemon through local workerd. A synthetic
+1280×800 Ubuntu/Xvfb desktop changed a visible counter on each authenticated click; the browser
+measured from its click event to the canvas containing that changed counter. Each path received
+60 clicks, then the order was reversed in a second run.
+
+| Order | JPEG p50 / p95 | Video p50 / p95 | JPEG / video frame bytes |
+| --- | --- | --- | --- |
+| JPEG → video | 54.5 / 84.7 ms | 19.5 / 21.6 ms | 2,771,524 / 482,982 |
+| Video → JPEG | 52.2 / 90.9 ms | 21.8 / 34.3 ms | 2,797,954 / 512,764 |
+
+Video reduced p95 by **62–75%** and received frame bytes by **82–83%** on this fixture. These
+are same-host results, excluding public network and model time; they do not replace the regional
+Boat baseline. The fixture mostly changes small areas with occasional large solid-color updates;
+scrolling, video playback and physical mobile devices still need separate measurements.
+
+[Evidence, including second-run samples](evidence/desktop-video-local.json).
+Reproduce with `node guest/kittyd/probes/desktop-browser.mjs` and `--reverse`, as described in
+[the desktop test instructions](../../guest/kittyd/tests/README.md). Browser acceptance also decodes
+an actual voxl keyframe and checks JPEG fallback, generation/epoch fences, and delayed decode after
+closure. CI runs those checks on Chrome alongside native GTK/AT-SPI and voxl acceptance.
+
+### Video acknowledgement delay — 2026-11-04
+
+The eight-frame limit caused repeated keyframe recovery when continuous updates had to cross a
+longer round trip. Video now learns each viewer's acknowledgement delay and variation, allowing
+8–32 outstanding frames. The 2 MiB byte ceiling and five-second acknowledgement deadline remain.
+Decoder resets retain the timing estimate while clearing outstanding frames and requiring a new
+keyframe. Tests cover slow viewers independently, invalid acknowledgements, hibernated state and
+the 2 KiB WebSocket attachment limit.
+
+The new probe drives real voxl, kittyd, local workerd and the Preact/WebCodecs viewer with a
+synthetic moving object and an encoded source timestamp. It delays video and acknowledgements
+equally. Each case warms up for 2.5 seconds and measures for eight seconds. Both implementations
+were tested with the cases in ascending order and again in descending order. The latter also
+samples **the age of the currently visible image every 16 ms**, including periods without a
+new frame; measuring only at frame arrival would omit freezes.
+
+| Added RTT | Fixed limit: fps → adaptive fps | Visible image age p95: fixed → adaptive | Update gap p95: fixed → adaptive |
+| --- | --- | --- | --- |
+| 0 ms | 61.3 → 61.3 | 24 → 26 ms | 18.3 → 18.9 ms |
+| 100 ms | 18.4 → 61.4 | 412 → 89 ms | 388.2 → 38.3 ms |
+| 200 ms | 16.0 → 61.4 | 483 → 139 ms | 391.8 → 39.2 ms |
+| 350 ms | 16.0 → 61.0 | 568 → 215 ms | 401.4 → 37.2 ms |
+
+At 100–350 ms added RTT, visible-image p95 age fell **62–78%** and frame bytes fell **80–82%**.
+The baseline generated 16 keyframes per measured eight-second window; the adaptive runs needed
+none after warmup. Without added delay the results are effectively unchanged. The source timer
+uses 16 ms ticks, so its nominal 60 fps stream can slightly exceed 60 fps.
+
+These are synthetic delay tests, with no bandwidth constraint, packet loss or model calls. The
+moving object is inexpensive to encode. They do not establish high-entropy video, congested-link,
+physical-device or public-deployment performance. The byte cap still limits larger frames.
+
+[All four runs](evidence/desktop-video-rtt-local.json). Reproduce with
+`KITTIES_MOTION_LABEL=adaptive node guest/kittyd/probes/desktop-motion.mjs` and `--reverse`, using
+the same dedicated container and local stage as the click probe. For the fixed-limit comparison,
+change only `offerVideo`'s frame-count guard to eight, wait for the local gateway rebuild, and
+restore it afterward. No production settings or user sandboxes are involved.

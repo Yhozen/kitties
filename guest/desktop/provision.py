@@ -8,6 +8,7 @@ env=dict(os.environ,KITTY_GUEST_KIND='boat',KITTY_PROVISION_MARKER=stamp)
 subprocess.run(['/bin/sh',str(root/'setup.sh')],env=env,check=True)
 if pathlib.Path(stamp).exists(): raise SystemExit(0)
 files={
+ 'kitty-shared.py':'/usr/local/lib/kitties/kitty-shared.py',
  'kitty-shot.sh':'/usr/local/bin/kitty-shot','kitty-ocr.sh':'/usr/local/bin/kitty-ocr',
  'kitty-open.py':'/usr/local/bin/kitty-open','kitty_browser.py':'/usr/local/lib/kitties/kitty_browser.py',
  'kitty-ready.sh':'/usr/local/bin/kitty-ready','kitty-quiesce.sh':'/usr/local/bin/kitty-quiesce',

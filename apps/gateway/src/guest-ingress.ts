@@ -35,7 +35,7 @@ export default {
         : new native.Response(null, { status: 404 });
     }
     const match = url.pathname.match(
-      /^\/guest\/([a-zA-Z0-9_-]{1,128})\/(control|frames|artifact\/[a-zA-Z0-9_-]{1,128})$/,
+      /^\/guest\/([a-zA-Z0-9_-]{1,128})\/(control|frames|video|artifact\/[a-zA-Z0-9_-]{1,128})$/,
     );
     if (
       url.origin !== env.PUBLIC_URL ||

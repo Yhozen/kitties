@@ -48,7 +48,7 @@ apt-get -o DPkg::Lock::Timeout=300 install -y -qq --no-install-recommends \
     xvfb x11-utils x11-xserver-utils xdotool scrot wmctrl xclip \
     openbox xterm pcmanfm dbus-x11 sudo playerctl gnome-themes-extra gtk2-engines-pixbuf \
     fonts-dejavu fonts-noto-color-emoji \
-    ca-certificates curl git jq python3 python3-xdg python3-websocket openssh-client \
+    acl ca-certificates curl git jq python3 python3-xdg python3-websocket openssh-client \
     libreoffice-writer libreoffice-calc libreoffice-impress libreoffice-gtk3 \
     inkscape imagemagick mtpaint mousepad numix-gtk-theme greybird-gtk-theme \
     tesseract-ocr tesseract-ocr-eng tesseract-ocr-spa \

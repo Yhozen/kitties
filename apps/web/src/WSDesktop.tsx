@@ -1,4 +1,6 @@
+import { DesktopFiles } from "./DesktopFiles";
 import { t } from "./i18n";
+import { createDesktopViewer } from "./desktop-viewer";
 import { useEffect, useRef, useState } from "preact/hooks";
 const namedKeys: Record<string,string> = {Enter:"Return",Backspace:"BackSpace",Tab:"Tab",Escape:"Escape",Delete:"Delete",ArrowUp:"Up",ArrowDown:"Down",ArrowLeft:"Left",ArrowRight:"Right",Home:"Home",End:"End",PageUp:"Prior",PageDown:"Next"};
 const xKeys=(event:KeyboardEvent) => {
@@ -11,10 +13,11 @@ const xKeys=(event:KeyboardEvent) => {
 interface Receipt { nonce: string; generation: number; epoch: number }
 
 export default function WSDesktop({ id, onClose }: { id: string; onClose: () => void }) {
+  const [showFiles, setShowFiles] = useState(false);
   const canvas = useRef<HTMLCanvasElement>(null);
   const socket = useRef<WebSocket | undefined>(undefined);
   const grant = useRef<Receipt | undefined>(undefined);
-  const alive = useRef(true);
+  const [viewMode, setViewMode] = useState("");
   const [status, setStatus] = useState(t("Connecting…"));
   const [controlling, setControlling] = useState(false);
   const [clipboard, setClipboard] = useState("");
@@ -52,19 +55,28 @@ export default function WSDesktop({ id, onClose }: { id: string; onClose: () => 
     reset();
   };
   useEffect(() => {
-    alive.current = true;
+    let disposed = false;
     let retry: ReturnType<typeof setTimeout>;
-    let frames: WebSocket | undefined;
+    let viewer: ReturnType<typeof createDesktopViewer> | undefined;
     const base = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/v1/kitties/${encodeURIComponent(id)}/desktop`;
     const connect = () => {
-      if (!alive.current) return;
+      if (disposed) return;
       reset();
       const control = new WebSocket(`${base}/control`);
       socket.current = control;
       control.onmessage = (event) => {
+        if (disposed || socket.current !== control) return;
         if(event.data==='pong')return;
         const body = JSON.parse(String(event.data));
-        if (body.type === "connected") { setStatus("Conectado"); setError(""); }
+        if (body.type === "connected") {
+          setStatus("Conectado"); setError(""); setViewMode("");
+          viewer?.close();
+          if (canvas.current) viewer = createDesktopViewer({
+            base, canvas: canvas.current, generation: body.generation, epoch: body.epoch,
+            onFrame: mode => setViewMode(mode === "video" ? t("Live video") : t("Compatibility view")),
+            onDisconnect: () => { if (socket.current === control) control.close(); },
+          });
+        }
         if (body.type === "grant") {
           grant.current = body.receipt;
           setControlling(true);
@@ -84,37 +96,18 @@ export default function WSDesktop({ id, onClose }: { id: string; onClose: () => 
         }
       };
       control.onclose = () => {
+        if (disposed || socket.current !== control) return;
         reset();
         setStatus(t("Reconnecting…"));
-        frames?.close();
-        if (alive.current) retry = setTimeout(connect, 1500);
+        viewer?.close();
+        if (!disposed) retry = setTimeout(connect, 1500);
       };
       control.onerror = () => control.close();
-      const viewer = new WebSocket(`${base}/frames`);
-      frames = viewer;
-      viewer.binaryType = "arraybuffer";
-      viewer.onclose=()=>{if(alive.current&&frames===viewer&&control.readyState===WebSocket.OPEN)control.close();};
-      viewer.onerror=()=>viewer.close();
-      viewer.onmessage = async (event) => {
-        if (!(event.data instanceof ArrayBuffer) || event.data.byteLength < 8) return;
-        const view = new DataView(event.data);
-        const seq = view.getUint32(4);
-        try {
-          const picture = await createImageBitmap(new Blob([event.data.slice(8)], { type: "image/jpeg" }));
-          if (alive.current && canvas.current) {
-            canvas.current.width = picture.width;
-            canvas.current.height = picture.height;
-            canvas.current.getContext("2d")?.drawImage(picture, 0, 0);
-          }
-          picture.close();
-        } finally {
-          if (viewer.readyState === WebSocket.OPEN) viewer.send(JSON.stringify({ type: "frame_ack", seq }));
-        }
-      };
+
     };
     connect();
-    const heartbeat=setInterval(()=>{for(const peer of [socket.current,frames])if(peer?.readyState===WebSocket.OPEN)peer.send('ping');},20000);
-    return () => { alive.current = false; clearTimeout(retry);clearInterval(heartbeat); release(); socket.current?.close(); frames?.close(); };
+    const heartbeat=setInterval(()=>{for(const peer of [socket.current])if(peer?.readyState===WebSocket.OPEN)peer.send('ping');},20000);
+    return () => { disposed = true; clearTimeout(retry);clearInterval(heartbeat); release(); socket.current?.close(); viewer?.close(); };
   }, [id]);
   const point = (event: MouseEvent) => {
     const el = canvas.current!, rect = el.getBoundingClientRect();
@@ -122,7 +115,7 @@ export default function WSDesktop({ id, onClose }: { id: string; onClose: () => 
       y: Math.min(el.height - 1, Math.max(0, Math.round((event.clientY - rect.top) * el.height / rect.height))) };
   };
   return <section class="ws-desktop" aria-label="Escritorio">
-    <header><strong>{status}</strong><span>{pending ? `${pending} entradas pendientes` : ""}</span>
+    <header><strong>{status}</strong><span>{viewMode}</span><span>{pending ? `${pending} entradas pendientes` : ""}</span>
       <button onClick={() => controlling ? release() : send({ type: "grant" })}>{controlling ? "Devolver control" : "Tomar control"}</button>
       <button onClick={onClose}>{t("Close")}</button></header>
     {error && <p role="alert">{error}</p>}
@@ -140,5 +133,6 @@ export default function WSDesktop({ id, onClose }: { id: string; onClose: () => 
     <footer><input aria-label="Portapapeles" value={clipboard} onInput={(e) => setClipboard(e.currentTarget.value)} />
       <button disabled={!controlling} onClick={() => input("clipboard_write", { text: clipboard })}>{t("Copy to desktop")}</button>
       <button disabled={!controlling} onClick={() => input("clipboard_read", {})}>{t("Read clipboard")}</button></footer>
+    <details class="desktop-files-toggle" onToggle={event => setShowFiles(event.currentTarget.open)}><summary>{t("Files")}</summary>{showFiles && <DesktopFiles key={id} id={id} />}</details>
   </section>;
 }

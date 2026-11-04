@@ -1,3 +1,4 @@
+import { makeDesktopFiles } from "./desktop-files.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Workflows from "alchemy/Workflows";
 import * as Effect from "effect/Effect";
@@ -58,6 +59,7 @@ export const makeApplication = Effect.gen(function* () {
   const engine = yield* WorkflowEngine.WorkflowEngine;
   const workspaceData = yield* makeWorkspaceData;
   const ownerData = yield* makeOwnerData;
+  const desktopFiles = yield* makeDesktopFiles;
   const autonomy = yield* makeAutonomy;
   const notifications = yield* makeNotifications;
   const oauth = yield* makeOAuth;
@@ -86,6 +88,14 @@ export const makeApplication = Effect.gen(function* () {
       if (signInResponse) return signInResponse;
       const oauthResponse = yield* oauth.route(request);
       if (oauthResponse) return oauthResponse;
+      if (
+        method === "GET" &&
+        /^\/v1\/kitties\/[^/]+\/files(?:\/|$)/.test(path) &&
+        !(yield* recovery.ready())
+      )
+        return json({ code: "RECOVERY_IN_PROGRESS", params: {} }, 503);
+      const filesResponse = yield* desktopFiles(request);
+      if (filesResponse) return filesResponse;
       const ownerResponse = yield* ownerData(request);
       if (ownerResponse) return ownerResponse;
       const workspaceResponse = yield* workspaceData(request);
