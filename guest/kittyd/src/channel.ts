@@ -338,8 +338,14 @@ async function startCapture() {
     stderr: "ignore",
   });
   capture = child;
-  frames = new WebSocket(config.url.replace(/\/control$/, "/frames"), { headers: headers() });
-  frames.onclose = () => {
+  const peer = new WebSocket(config.url.replace(/\/control$/, "/frames"), { headers: headers() });
+  frames = peer;
+  peer.onopen = () => {
+    // Capture often wins the network handshake. A still desktop produces no
+    // further JPEGs, so send the cached first picture as soon as the peer opens.
+    if (capture === child && frames === peer) publishLatest();
+  };
+  peer.onclose = () => {
     if (capture === child) {
       child.kill();
       capture = undefined;

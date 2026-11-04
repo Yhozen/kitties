@@ -160,7 +160,11 @@ export function createDesktopViewer(options: Options) {
     socket = peer;
     peer.binaryType = "arraybuffer";
     ready = false;
-    if (mode === "video") firstFrame = setTimeout(fallback, 5000);
+    firstFrame = setTimeout(() => {
+      if (socket !== peer || stopped) return;
+      if (mode === "video") fallback();
+      else disconnect();
+    }, 5000);
     peer.onclose = (event) => {
       if (stopped || socket !== peer) return;
       if (event.code === 4001) {

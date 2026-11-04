@@ -20,6 +20,14 @@ Only aggregates and fixture assertions are printed.
 
 ## Capture and browser recovery
 
+`bun guest/kittyd/tests/jpeg-startup.ts` runs the real guest channel against a delayed
+WebSocket handshake and a single static capture. It requires no display and prevents the
+first picture from being lost before the media socket opens.
+
+`node guest/kittyd/tests/desktop-recovery-browser.mjs` checks the actual component in Chrome:
+silent JPEG connections retry, connected status waits for a picture, and a lost input receipt
+clears the queue without replaying any action.
+
 Install the build dependencies listed in `scripts/build-voxl.sh` and the resulting `dist/voxl`
 at `/usr/local/lib/kittyd/voxl`. Chrome must be available at `/usr/bin/google-chrome` (or CHROME_BIN).
 

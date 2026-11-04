@@ -25,6 +25,7 @@ export default function WSDesktop({ id, onClose }: { id: string; onClose: () => 
   const [pending, setPending] = useState(0);
   const queue = useRef<{ action: string; args: Record<string, unknown> }[]>([]);
   const inFlight = useRef<string | undefined>(undefined);
+  const inputTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const send = (body: unknown) => {
     if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify(body));
   };
@@ -33,6 +34,13 @@ export default function WSDesktop({ id, onClose }: { id: string; onClose: () => 
     const action = queue.current.shift()!;
     inFlight.current = crypto.randomUUID();
     send({ type: "input", intentId: inFlight.current, ...grant.current, deadline: Date.now() + 10000, ...action });
+    inputTimeout.current = setTimeout(() => {
+      // The effect may have run even if its receipt was lost. Drop queued input
+      // and reconnect without replaying the uncertain action.
+      reset();
+      setError(t("Could not confirm the input."));
+      socket.current?.close();
+    }, 12000);
     setPending(queue.current.length + 1);
   };
   const input = (action: string, args: Record<string, unknown>) => {
@@ -42,6 +50,7 @@ export default function WSDesktop({ id, onClose }: { id: string; onClose: () => 
     drain();
   };
   const reset = () => {
+    clearTimeout(inputTimeout.current);
     grant.current = undefined;
     queue.current = [];
     inFlight.current = undefined;
@@ -69,11 +78,11 @@ export default function WSDesktop({ id, onClose }: { id: string; onClose: () => 
         if(event.data==='pong')return;
         const body = JSON.parse(String(event.data));
         if (body.type === "connected") {
-          setStatus("Conectado"); setError(""); setViewMode("");
+          setStatus(t("Connecting…")); setError(""); setViewMode("");
           viewer?.close();
           if (canvas.current) viewer = createDesktopViewer({
             base, canvas: canvas.current, generation: body.generation, epoch: body.epoch,
-            onFrame: mode => setViewMode(mode === "video" ? t("Live video") : t("Compatibility view")),
+            onFrame: mode => { setStatus("Conectado"); setViewMode(mode === "video" ? t("Live video") : t("Compatibility view")); },
             onDisconnect: () => { if (socket.current === control) control.close(); },
           });
         }
@@ -86,6 +95,7 @@ export default function WSDesktop({ id, onClose }: { id: string; onClose: () => 
         if (body.type === "control_revoked") reset();
         if (body.type === "error") { reset(); setError(t("Control was lost. You can take it again.")); }
         if (body.type === "ack" && body.intentId === inFlight.current) {
+          clearTimeout(inputTimeout.current);
           inFlight.current = undefined;
           if (body.status !== "completed") { reset(); setError(t("Could not confirm the input.")); }
           else {
