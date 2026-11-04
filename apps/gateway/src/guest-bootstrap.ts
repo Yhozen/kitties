@@ -15,8 +15,10 @@ try:
 finally:
     shutil.rmtree(work)
 `;
+
 export const prepareBootstrap =
   "sudo install -d -o user -g user -m 0700 /home/user/.config/kittyd-bootstrap && sudo touch /home/user/.config/kittyd-bootstrap/config.json /home/user/.config/kittyd-bootstrap/artifact.json /home/user/.config/kittyd-bootstrap/bootstrap.py && sudo chown user:user /home/user/.config/kittyd-bootstrap/config.json /home/user/.config/kittyd-bootstrap/artifact.json /home/user/.config/kittyd-bootstrap/bootstrap.py && sudo chmod 0600 /home/user/.config/kittyd-bootstrap/config.json /home/user/.config/kittyd-bootstrap/artifact.json /home/user/.config/kittyd-bootstrap/bootstrap.py";
+
 // The service outlives a lost Boat response or Worker redeploy. Durable guest
 // readiness polling observes completion without holding an activity for apt/builds.
 export const executeBootstrap = `sudo sh -c '

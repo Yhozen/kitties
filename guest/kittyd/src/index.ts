@@ -1,4 +1,5 @@
 export {};
+
 if (process.argv.includes("--perception")) {
   const { servePerception } = await import("./perception.ts");
   await servePerception();

@@ -378,4 +378,5 @@ export const Api = HttpApi.make("Kitties").add(
     }),
   ),
 );
+
 export const client = HttpApiClient.make(Api);

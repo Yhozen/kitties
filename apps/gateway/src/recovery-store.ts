@@ -1,9 +1,11 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Effect from "effect/Effect";
+
 export class RecoveryDO extends Cloudflare.DurableObject<RecoveryDO>()(
   "RecoveryDO",
   Effect.gen(function* () {
     const state = yield* Cloudflare.DurableObjectState;
+
     return Effect.sync(() => {
       const sql = state.raw.storage.sql;
       sql.exec(
@@ -19,12 +21,14 @@ export class RecoveryDO extends Cloudflare.DurableObject<RecoveryDO>()(
       sql.exec(
         "CREATE TABLE IF NOT EXISTS recovery_records (kind TEXT NOT NULL,id TEXT NOT NULL,body TEXT NOT NULL,PRIMARY KEY(kind,id))",
       );
+
       const control = () =>
         sql
           .exec<{ epoch: number; operation_id: string | null; mode: string }>(
             "SELECT * FROM recovery_control WHERE id=1",
           )
           .toArray()[0]!;
+
       return {
         status: () => Effect.sync(control),
         chatgptContext: () =>
@@ -32,16 +36,19 @@ export class RecoveryDO extends Cloudflare.DurableObject<RecoveryDO>()(
             try: () =>
               state.raw.storage.transactionSync(() => {
                 const current = control();
+
                 if (current.mode !== "ready") throw Error("CHATGPT_RECOVERY_FENCED");
                 sql.exec(
                   "INSERT OR IGNORE INTO recovery_records VALUES ('chatgpt-host','owner',?)",
                   `urn:uuid:${crypto.randomUUID()}`,
                 );
+
                 const hostId = sql
                   .exec<{ body: string }>(
                     "SELECT body FROM recovery_records WHERE kind='chatgpt-host' AND id='owner'",
                   )
                   .toArray()[0]!.body;
+
                 return { epoch: current.epoch, hostId };
               }),
             catch: () => "CHATGPT_RECOVERY_FENCED",
@@ -78,6 +85,7 @@ export class RecoveryDO extends Cloudflare.DurableObject<RecoveryDO>()(
         permit: (workflow: string, id: string, startedAt: number) =>
           Effect.sync(() => {
             const c = control();
+
             let row = sql
               .exec<{ epoch: number; review: number }>(
                 "SELECT epoch,review FROM recovery_runs WHERE workflow=? AND id=?",
@@ -85,6 +93,7 @@ export class RecoveryDO extends Cloudflare.DurableObject<RecoveryDO>()(
                 id,
               )
               .toArray()[0];
+
             // A known run needs a fresh fence read, not a write transaction on every
             // activity. Registration is atomic on its first check only.
             if (!row) {
@@ -103,16 +112,21 @@ export class RecoveryDO extends Cloudflare.DurableObject<RecoveryDO>()(
               });
               row = { epoch: c.epoch, review: 0 };
             }
+
             const allowed = c.mode === "ready" && row.epoch === c.epoch && startedAt >= c.epoch;
+
             if (!allowed && row.review !== 1)
               sql.exec("UPDATE recovery_runs SET review=1 WHERE workflow=? AND id=?", workflow, id);
+
             return allowed;
           }),
         begin: (id: string) =>
           Effect.sync(() =>
             state.raw.storage.transactionSync(() => {
               const c = control();
+
               if (c.operation_id === id) return c;
+
               if (c.mode !== "ready") throw Error("RECOVERY_BUSY");
               sql.exec(
                 "UPDATE recovery_control SET epoch=?,operation_id=?,mode='recovering' WHERE id=1",
@@ -120,6 +134,7 @@ export class RecoveryDO extends Cloudflare.DurableObject<RecoveryDO>()(
                 id,
               );
               sql.exec("UPDATE recovery_runs SET review=1 WHERE epoch<?", control().epoch);
+
               return control();
             }),
           ),
@@ -133,14 +148,17 @@ export class RecoveryDO extends Cloudflare.DurableObject<RecoveryDO>()(
                   id,
                 )
                 .toArray()[0];
+
               if (previous) return previous.body === body;
               sql.exec("INSERT INTO recovery_records VALUES (?,?,?)", kind, id, body);
+
               return true;
             }),
           ),
         complete: (id: string) =>
           Effect.sync(() => {
             sql.exec("UPDATE recovery_control SET mode='ready' WHERE id=1 AND operation_id=?", id);
+
             return control();
           }),
         reviews: () =>

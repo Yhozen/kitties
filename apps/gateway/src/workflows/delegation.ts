@@ -8,43 +8,56 @@ import { Delegation } from "../delegation-definition.ts";
 import { Turn } from "../turn-definition.ts";
 import { DelegateInput } from "../autonomy-tools.ts";
 import { sha256 } from "../kitty.ts";
+
 const storage = () => "STORAGE_UNAVAILABLE";
+
 export const DelegationLive = Workflows.layer(
   Delegation,
   Effect.gen(function* () {
     const recovery = yield* makeRecoveryGuard;
     const fenced = (id: string) => guardedActivities(recovery(Delegation._tag, id));
+
     const homes = yield* HomeDO,
       chats = yield* ChatDO;
+
     return Effect.fn(function* (payload, executionId) {
       yield* recovery(Delegation._tag, executionId);
+
       const home = homes.getByName("owner", { locationHint: "weur" }),
         parent = chats.getByName(payload.chatId, { locationHint: "weur" });
+
       const keys = yield* fenced(executionId)({
         name: "plan",
         success: Schema.Array(Schema.String),
         error: Schema.String,
         execute: Effect.gen(function* () {
           if (payload.depth >= 2) return yield* Effect.fail("DELEGATION_DEPTH");
+
           if (
             (yield* parent.run(payload.messageId).pipe(Effect.mapError(storage)))?.status ===
             "cancelled"
           )
             return [];
           const raw = yield* home.read("delegation-job", payload.id).pipe(Effect.mapError(storage));
+
           if (!raw) return yield* Effect.fail("DELEGATION_NOT_FOUND");
+
           const job = yield* Schema.decodeUnknownEffect(DelegateInput)(JSON.parse(raw)).pipe(
             Effect.mapError(() => "INVALID_ARGUMENTS"),
           );
+
           const keys: string[] = [];
+
           for (let index = 0; index < job.tasks.length; index++) {
             const task = job.tasks[index]!;
+
             if (
               task.kittyId === payload.kittyId ||
               !(yield* home.read("kitty", task.kittyId).pipe(Effect.mapError(storage)))
             )
               return yield* Effect.fail("DELEGATION_TARGET");
             const key = yield* Effect.promise(() => sha256(`${payload.id}:${index}`));
+
             const child = {
               chatId: `delegation-${key}`,
               messageId: key,
@@ -52,6 +65,7 @@ export const DelegationLive = Workflows.layer(
               text: task.instruction,
               depth: payload.depth + 1,
             };
+
             yield* home
               .insert(
                 "delegation-child",
@@ -79,15 +93,20 @@ export const DelegationLive = Workflows.layer(
               .pipe(Effect.mapError(storage));
             keys.push(key);
           }
+
           return keys;
         }),
       });
+
       const children: (typeof Turn.payloadSchema.Type)[] = [];
+
       for (const key of keys) {
         const raw = yield* home.read("delegation-child", key).pipe(Effect.mapError(storage));
+
         if (!raw) return yield* Effect.fail("DELEGATION_NOT_FOUND");
         children.push(JSON.parse(raw) as typeof Turn.payloadSchema.Type);
       }
+
       // Persist every start before joining any child. Replay never changes the fan-out set.
       const started = yield* Effect.all(
         children.map((child, index) =>
@@ -101,17 +120,21 @@ export const DelegationLive = Workflows.layer(
                 "cancelled"
               )
                 return "";
+
               const queued = yield* chats
                 .getByName(child.chatId, { locationHint: "weur" })
                 .enqueue(child, false)
                 .pipe(Effect.mapError(storage));
+
               if (queued.cancelled) return "";
+
               return yield* Turn.execute(child, { discard: true });
             }),
           }),
         ),
         { concurrency: "unbounded" },
       );
+
       for (let index = 0; index < children.length; index++)
         if (started[index]) yield* Turn.execute(children[index]!);
       yield* fenced(executionId)({
@@ -120,11 +143,13 @@ export const DelegationLive = Workflows.layer(
         error: Schema.String,
         execute: Effect.gen(function* () {
           const results = [];
+
           for (const child of children) {
             const row = yield* chats
               .getByName(child.chatId, { locationHint: "weur" })
               .run(child.messageId)
               .pipe(Effect.mapError(storage));
+
             results.push({
               kittyId: child.kittyId,
               chatId: child.chatId,
@@ -132,6 +157,7 @@ export const DelegationLive = Workflows.layer(
               status: row?.status ?? "unknown",
             });
           }
+
           yield* parent
             .saveToolResult(
               payload.messageId,
@@ -156,9 +182,11 @@ export const DelegationLive = Workflows.layer(
               }),
             )
             .pipe(Effect.mapError(storage));
+
           return payload.callId;
         }),
       });
+
       return payload.callId;
     });
   }),

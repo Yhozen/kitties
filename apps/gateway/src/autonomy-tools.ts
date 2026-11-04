@@ -1,5 +1,6 @@
 import * as Schema from "effect/Schema";
 import type { ToolDefinition } from "./entities.ts";
+
 export const DelegateInput = Schema.Struct({
   tasks: Schema.Array(
     Schema.Struct({
@@ -8,11 +9,13 @@ export const DelegateInput = Schema.Struct({
     }),
   ).check(Schema.isMinLength(1), Schema.isMaxLength(5)),
 });
+
 export const LimitToolInput = Schema.Struct({
   connectionId: Schema.String,
   action: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
   mode: Schema.Literals(["ask", "never", "none"]),
 });
+
 const make = (
   remoteName: string,
   description: string,
@@ -27,6 +30,7 @@ const make = (
   readOnly,
   destructive: false,
 });
+
 export const autonomyTools = (
   team: { id: string; name: string }[],
   kittyId: string,

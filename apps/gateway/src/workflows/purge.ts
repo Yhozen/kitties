@@ -8,7 +8,9 @@ import { HomeDO, ChatDO, KittyDO } from "../actors.ts";
 import { RecoveryDO } from "../recovery-store.ts";
 import { Purge } from "../recovery-definition.ts";
 import { workflowActor } from "../workflow-admin.ts";
+
 const activity = guardedActivities(Effect.void);
+
 export const PurgeLive = Workflows.layer(
   Purge,
   Effect.gen(function* () {
@@ -17,7 +19,9 @@ export const PurgeLive = Workflows.layer(
       chats = yield* ChatDO,
       kitties = yield* KittyDO,
       engine = yield* WorkflowEngine.WorkflowEngine;
+
     const env = (yield* Cloudflare.WorkerEnvironment) as { KITTIES_KEK: string };
+
     return Effect.fn(function* ({ id, before }, executionId) {
       const root = roots.getByName("control", { locationHint: "weur" });
       yield* activity({
@@ -31,6 +35,7 @@ export const PurgeLive = Workflows.layer(
           )
           .pipe(Effect.mapError(() => "STORAGE_UNAVAILABLE")),
       });
+
       const objects = JSON.parse(
         yield* activity({
           name: "registry",
@@ -42,6 +47,7 @@ export const PurgeLive = Workflows.layer(
           ),
         }),
       ) as { kind: string; name: string }[];
+
       for (const o of objects) {
         yield* activity({
           name: `purge/${o.kind}/${o.name}`,
@@ -55,10 +61,12 @@ export const PurgeLive = Workflows.layer(
                   : o.kind === "kitty"
                     ? kitties.getByName(o.name)
                     : chats.getByName(o.name);
+
             yield* actor.adminPurge(before).pipe(Effect.mapError(() => "PURGE_UNAVAILABLE"));
           }),
         });
       }
+
       yield* activity({
         name: "complete",
         error: Schema.String,
@@ -77,6 +85,7 @@ export const PurgeLive = Workflows.layer(
           )
           .pipe(Effect.mapError(() => "STORAGE_UNAVAILABLE")),
       });
+
       return objects.length;
     });
   }),

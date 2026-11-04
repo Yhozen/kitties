@@ -1,5 +1,6 @@
 import * as Schema from "effect/Schema";
 import { Workflow } from "effect/workflow";
+
 export const Delegation = Workflow.make("DelegationV1", {
   payload: {
     id: Schema.String,

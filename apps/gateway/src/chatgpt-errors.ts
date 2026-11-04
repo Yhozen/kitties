@@ -1,18 +1,24 @@
 import type { ChatgptFailure } from "@kitties/domain/entities";
+
 export class ChatgptProviderError extends Error {
   constructor(readonly info: ChatgptFailure) {
     super(info.code);
   }
 }
+
 const field = (value: unknown, max = 128) =>
   typeof value === "string" && value.length <= max && /^[a-zA-Z0-9_.[\]-]+$/.test(value)
     ? value
     : undefined;
+
 export function chatgptFailure(status: number, body: unknown, requestId?: string): ChatgptFailure {
   const raw = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+
   const error =
     raw.error && typeof raw.error === "object" ? (raw.error as Record<string, unknown>) : {};
+
   const code = field(error.code) ?? "CHATGPT_ADMISSION_FAILED";
+
   const reason: ChatgptFailure["reason"] =
     code === "subscription_sharing_usage_limit_exceeded"
       ? "usage_limit"
@@ -41,6 +47,7 @@ export function chatgptFailure(status: number, body: unknown, requestId?: string
               : status === 403
                 ? "account_ineligible"
                 : "provider_unavailable";
+
   return {
     reason,
     code,
@@ -55,6 +62,7 @@ export function chatgptFailure(status: number, body: unknown, requestId?: string
           : "other",
   };
 }
+
 export const safeChatgptError = (error: unknown): ChatgptFailure =>
   error instanceof ChatgptProviderError
     ? error.info
@@ -62,6 +70,7 @@ export const safeChatgptError = (error: unknown): ChatgptFailure =>
         reason: "provider_unavailable",
         code: "CHATGPT_UNAVAILABLE",
       };
+
 export function chatgptError(
   code: string,
   reason: ChatgptFailure["reason"] = "authorization_expired",

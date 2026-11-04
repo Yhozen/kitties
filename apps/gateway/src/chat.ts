@@ -26,11 +26,13 @@ interface Row {
   answer: string;
   at: number;
 }
+
 const makeChat = Effect.gen(function* () {
   const state = yield* Cloudflare.DurableObjectState;
   const engine = yield* WorkflowEngine.WorkflowEngine;
   const env = (yield* Cloudflare.WorkerEnvironment) as { KITTIES_KEK: string };
   const homes = yield* HomeDO;
+
   return Effect.sync(() => {
     const sql = state.raw.storage.sql;
     sql.exec(
@@ -51,6 +53,7 @@ const makeChat = Effect.gen(function* () {
       "CREATE TABLE IF NOT EXISTS tool_results (id TEXT NOT NULL,call_id TEXT NOT NULL,body TEXT NOT NULL,PRIMARY KEY(id,call_id))",
     );
     sql.exec("CREATE TABLE IF NOT EXISTS charge_outbox (id TEXT PRIMARY KEY,body TEXT NOT NULL)");
+
     const queueCharge = (charge: Charge | undefined) => {
       if (charge)
         sql.exec(
@@ -59,18 +62,24 @@ const makeChat = Effect.gen(function* () {
           JSON.stringify(charge),
         );
     };
+
     let flushing = false;
+
     const flushCharges: Effect.Effect<void> = Effect.gen(function* () {
       if (flushing) return;
       flushing = true;
+
       try {
         const home = homes.getByName("owner", { locationHint: "weur" });
+
         // Loop until empty: rows queued while a delivery is in flight are picked up here.
         for (;;) {
           const rows = sql
             .exec<{ id: string; body: string }>("SELECT id,body FROM charge_outbox LIMIT 64")
             .toArray();
+
           if (!rows.length) return;
+
           for (const row of rows) {
             const charge = JSON.parse(row.body) as Charge;
             yield* home.charge(charge.id, charge.day, charge.kitty, charge.tokens, charge.actions);
@@ -84,38 +93,47 @@ const makeChat = Effect.gen(function* () {
       Effect.catchCause(() =>
         Effect.promise(async () => {
           const next = await state.raw.storage.getAlarm();
+
           if (next === null || next > Date.now() + 5000)
             await state.raw.storage.setAlarm(Date.now() + 5000);
         }),
       ),
     );
+
     const deliverCharges = () => {
       // Not awaited: the caller's write is acknowledged now; the outbox row makes delivery durable.
       state.raw.waitUntil(Effect.runPromise(flushCharges));
     };
+
     const event = (body: unknown): void => {
       sql.exec("INSERT INTO events(body,at) VALUES (?,?)", JSON.stringify(body), Date.now());
     };
+
     const pump = Effect.gen(function* () {
       const row = sql
         .exec<Row>(
           "SELECT * FROM messages WHERE status IN ('queued','running') ORDER BY at,rowid LIMIT 1",
         )
         .toArray()[0];
+
       if (!row) return;
+
       const executionId = yield* Turn.execute(
         JSON.parse(row.payload) as typeof Turn.payloadSchema.Type,
         { discard: true },
       ).pipe(Effect.provideService(WorkflowEngine.WorkflowEngine, engine));
+
       sql.exec(
         "UPDATE messages SET status='running',run_id=? WHERE id=? AND status='queued'",
         executionId,
         row.id,
       );
     });
+
     const safePump = pump.pipe(
       Effect.catchCause(() => Effect.promise(() => state.raw.storage.setAlarm(Date.now() + 5000))),
     );
+
     return {
       ...makeStorageAdmin(state, env.KITTIES_KEK, [
         "messages",
@@ -135,11 +153,14 @@ const makeChat = Effect.gen(function* () {
           )
             return { conflict: false, duplicate: false, cancelled: true };
           const body = JSON.stringify(payload);
+
           const row = sql
             .exec<Row>("SELECT * FROM messages WHERE id=?", payload.messageId)
             .toArray()[0];
+
           if (row && row.payload !== body)
             return { conflict: true, duplicate: false, cancelled: false };
+
           if (!row) {
             state.raw.storage.transactionSync(() => {
               sql.exec(
@@ -156,6 +177,7 @@ const makeChat = Effect.gen(function* () {
               });
             });
           }
+
           // Delegation owns child starts so the workflow engine records the correct parent.
           if (!start) {
             const runId = yield* Turn.executionId(payload);
@@ -164,12 +186,15 @@ const makeChat = Effect.gen(function* () {
               runId,
               payload.messageId,
             );
+
             return { conflict: false, duplicate: !!row, cancelled: false };
           }
+
           // Durable wake precedes the acknowledgment: a lost HTTP response cannot lose a turn.
           yield* Effect.promise(() => state.raw.storage.setAlarm(Date.now() + 1));
           // The alarm is the recovery path; start the durable run immediately on a warm request.
           yield* safePump;
+
           return { conflict: false, duplicate: !!row, cancelled: false };
         }),
       messages: () => Effect.sync(() => readMessagePage(sql).messages),
@@ -214,6 +239,7 @@ const makeChat = Effect.gen(function* () {
                 round,
               )
               .toArray()[0];
+
             if (completed)
               return {
                 completed: true,
@@ -223,6 +249,7 @@ const makeChat = Effect.gen(function* () {
                 previous: null as { history: string; body: string } | null,
               };
             const row = sql.exec<Row>("SELECT * FROM messages WHERE id=?", id).toArray()[0];
+
             if (!row || row.status === "cancelled")
               return {
                 completed: false,
@@ -236,6 +263,7 @@ const makeChat = Effect.gen(function* () {
               id,
               round,
             );
+
             const attempt = sql
               .exec<{ attempt: number }>(
                 "SELECT attempt FROM rounds WHERE id=? AND round=?",
@@ -243,19 +271,23 @@ const makeChat = Effect.gen(function* () {
                 round,
               )
               .toArray()[0]!.attempt;
+
             sql.exec(
               "INSERT OR IGNORE INTO chat_state VALUES (?,?)",
               `answer:${id}:${round}`,
               row.answer,
             );
+
             const prefix = sql
               .exec<{ body: string }>(
                 "SELECT body FROM chat_state WHERE key=?",
                 `answer:${id}:${round}`,
               )
               .toArray()[0]!.body;
+
             sql.exec("UPDATE messages SET answer=? WHERE id=? AND status='running'", prefix, id);
             event({ type: "round_reset", messageId: id, round, attempt, prefix });
+
             const previous =
               round > 0
                 ? (sql
@@ -266,12 +298,14 @@ const makeChat = Effect.gen(function* () {
                     )
                     .toArray()[0] ?? null)
                 : null;
+
             const history =
               previous?.history ??
               sql
                 .exec<{ body: string }>("SELECT body FROM chat_state WHERE key='history'")
                 .toArray()[0]?.body ??
               null;
+
             return { completed: false, cancelled: false, attempt, history, previous };
           }),
         ),
@@ -289,6 +323,7 @@ const makeChat = Effect.gen(function* () {
       replay: () =>
         Effect.sync(() => {
           const result: { messageId: string; callId: string; screenshot: string }[] = [];
+
           for (const row of sql
             .exec<{ id: string; call_id: string; body: string }>(
               "SELECT id,call_id,body FROM tool_results ORDER BY rowid DESC LIMIT 1000",
@@ -296,6 +331,7 @@ const makeChat = Effect.gen(function* () {
             .toArray()
             .reverse()) {
             const value = JSON.parse(row.body) as { result?: { screenshot?: unknown } };
+
             if (
               typeof value.result?.screenshot === "string" &&
               /^screenshots\/[a-zA-Z0-9_-]+\/[0-9]+\/[a-zA-Z0-9_.-]+$/.test(value.result.screenshot)
@@ -306,6 +342,7 @@ const makeChat = Effect.gen(function* () {
                 screenshot: value.result.screenshot,
               });
           }
+
           return result;
         }),
       retire: () =>
@@ -314,11 +351,14 @@ const makeChat = Effect.gen(function* () {
             const rows = sql
               .exec<Row>("SELECT * FROM messages WHERE status IN ('queued','running')")
               .toArray();
+
             for (const row of rows) {
               sql.exec("INSERT OR IGNORE INTO chat_state VALUES (?, 'true')", `cancel:${row.id}`);
               event({ type: "cancelled", messageId: row.id });
             }
+
             sql.exec("UPDATE messages SET status='cancelled' WHERE status IN ('queued','running')");
+
             return rows.flatMap((row) => (row.run_id ? [row.run_id] : []));
           }),
         ),
@@ -341,6 +381,7 @@ const makeChat = Effect.gen(function* () {
             queueCharge(charge);
             event({ type: "tool_result", messageId: id, callId, result: JSON.parse(body) });
           });
+
           if (charge) deliverCharges();
         }),
       publish: (body: string) => Effect.sync(() => event(JSON.parse(body))),
@@ -351,6 +392,7 @@ const makeChat = Effect.gen(function* () {
             id,
             round,
           );
+
           const attempt = sql
             .exec<{ attempt: number }>(
               "SELECT attempt FROM rounds WHERE id=? AND round=?",
@@ -358,20 +400,24 @@ const makeChat = Effect.gen(function* () {
               round,
             )
             .toArray()[0]!.attempt;
+
           // Preserve text from earlier rounds; only the retried round is replaced.
           sql.exec(
             "INSERT OR IGNORE INTO chat_state VALUES (?,?)",
             `answer:${id}:${round}`,
             sql.exec<Row>("SELECT * FROM messages WHERE id=?", id).toArray()[0]?.answer ?? "",
           );
+
           const prefix = sql
             .exec<{ body: string }>(
               "SELECT body FROM chat_state WHERE key=?",
               `answer:${id}:${round}`,
             )
             .toArray()[0]!.body;
+
           sql.exec("UPDATE messages SET answer=? WHERE id=? AND status='running'", prefix, id);
           event({ type: "round_reset", messageId: id, round, attempt, prefix });
+
           return attempt;
         }),
       append: (id: string, text: string, round: number, attempt: number) =>
@@ -379,6 +425,7 @@ const makeChat = Effect.gen(function* () {
           const row = sql
             .exec<Row>("SELECT * FROM messages WHERE id=? AND status='running'", id)
             .toArray()[0];
+
           const current = sql
             .exec<{ attempt: number }>(
               "SELECT attempt FROM rounds WHERE id=? AND round=?",
@@ -386,7 +433,9 @@ const makeChat = Effect.gen(function* () {
               round,
             )
             .toArray()[0];
+
           if (!row || current?.attempt !== attempt) return;
+
           if (row.answer.length + text.length > 256000) throw Error("OUTPUT_LIMIT");
           sql.exec("UPDATE messages SET answer=answer||? WHERE id=?", text, id);
           event({ type: "delta", messageId: id, round, attempt, text });
@@ -405,6 +454,7 @@ const makeChat = Effect.gen(function* () {
             const active = sql
               .exec<Row>("SELECT * FROM messages WHERE id=? AND status='running'", id)
               .toArray()[0];
+
             const current = sql
               .exec<{ attempt: number }>(
                 "SELECT attempt FROM rounds WHERE id=? AND round=?",
@@ -412,6 +462,7 @@ const makeChat = Effect.gen(function* () {
                 round,
               )
               .toArray()[0];
+
             if (!active || current?.attempt !== attempt) return;
             sql.exec("UPDATE rounds SET history='complete' WHERE id=? AND round=?", id, round);
             sql.exec(
@@ -430,12 +481,15 @@ const makeChat = Effect.gen(function* () {
       ) =>
         Effect.sync(() => {
           if (history.length > 1500000 || body.length > 128000) throw Error("HISTORY_LIMIT");
+
           const saved = state.raw.storage.transactionSync(() => {
             // Tokens were spent whether or not this attempt still owns the round.
             queueCharge(charge);
+
             const row = sql
               .exec<Row>("SELECT * FROM messages WHERE id=? AND status='running'", id)
               .toArray()[0];
+
             const current = sql
               .exec<{ attempt: number }>(
                 "SELECT attempt FROM rounds WHERE id=? AND round=?",
@@ -443,6 +497,7 @@ const makeChat = Effect.gen(function* () {
                 round,
               )
               .toArray()[0];
+
             if (!row || current?.attempt !== attempt) return false;
             sql.exec(
               "INSERT OR IGNORE INTO model_rounds VALUES (?,?,?,?)",
@@ -451,12 +506,14 @@ const makeChat = Effect.gen(function* () {
               history,
               body,
             );
+
             const timing = JSON.parse(body) as {
               modelStartedAt?: number;
               modelFinishedAt?: number;
               preparationStartedAt?: number;
               contextLoadedAt?: number;
             };
+
             if (timing.modelStartedAt !== undefined && timing.modelFinishedAt !== undefined)
               event({
                 type: "model_timing",
@@ -469,17 +526,22 @@ const makeChat = Effect.gen(function* () {
                 contextLoadedAt: timing.contextLoadedAt,
               });
             sql.exec("UPDATE rounds SET history='complete' WHERE id=? AND round=?", id, round);
+
             return true;
           });
+
           if (charge) deliverCharges();
+
           return saved;
         }),
       commitHistory: (id: string, body: string) =>
         Effect.sync(() => {
           if (body.length > 1500000) throw Error("HISTORY_LIMIT");
+
           const row = sql
             .exec<Row>("SELECT * FROM messages WHERE id=? AND status='running'", id)
             .toArray()[0];
+
           if (row)
             sql.exec(
               "INSERT INTO chat_state VALUES ('history',?) ON CONFLICT(key) DO UPDATE SET body=excluded.body",
@@ -490,6 +552,7 @@ const makeChat = Effect.gen(function* () {
         Effect.gen(function* () {
           state.raw.storage.transactionSync(() => {
             const row = sql.exec<Row>("SELECT * FROM messages WHERE id=?", id).toArray()[0];
+
             if (!row || !["queued", "running"].includes(row.status)) return;
             sql.exec("UPDATE messages SET answer=?,status=? WHERE id=?", answer, status, id);
             event({ type: "round_reset", messageId: id, attempt: -1, prefix: answer });
@@ -503,6 +566,7 @@ const makeChat = Effect.gen(function* () {
             if (status === "cancelled")
               sql.exec("INSERT OR IGNORE INTO chat_state VALUES (?, 'true')", `cancel:${id}`);
             const row = sql.exec<Row>("SELECT * FROM messages WHERE id=?", id).toArray()[0];
+
             if (row?.status !== "running" && row?.status !== "queued") return;
             sql.exec("UPDATE messages SET status=? WHERE id=?", status, id);
             event({ type: status, messageId: id });
@@ -513,6 +577,9 @@ const makeChat = Effect.gen(function* () {
     };
   });
 });
+
 type ChatShape = Effect.Success<Effect.Success<typeof makeChat>>;
+
 export class ChatDO extends Cloudflare.DurableObject<ChatDO, ChatShape>()("ChatDO") {}
+
 export const ChatDOLive = ChatDO.make(makeChat);

@@ -3,10 +3,13 @@ import { cpSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:f
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
+
 const run = (command, args) => {
   const result = spawnSync(command, args, { stdio: "inherit" });
+
   if (result.status !== 0) process.exit(result.status ?? 1);
 };
+
 run("bun", [
   "build",
   "src/index.ts",
@@ -15,22 +18,29 @@ run("bun", [
   "--outfile",
   "dist/kittyd",
 ]);
+
 const work = mkdtempSync(join(tmpdir(), "kittyd-release-"));
+
 try {
   const versions = JSON.parse(readFileSync("perception-versions.json", "utf8"));
+
   for (const [name, spec] of Object.entries(versions)) {
     const response = await fetch(spec.url);
+
     if (!response.ok) throw Error("Perception download failed");
     const data = Buffer.from(await response.arrayBuffer());
+
     if (
       spec.integrity &&
       "sha512-" + createHash("sha512").update(data).digest("base64") !== spec.integrity
     )
       throw Error("Perception checksum mismatch");
+
     if (spec.sha256 && createHash("sha256").update(data).digest("hex") !== spec.sha256)
       throw Error("Perception checksum mismatch");
     const archive = join(work, name + ".tgz");
     writeFileSync(archive, data);
+
     if (name === "agentBrowser")
       run("tar", [
         "-xzf",
@@ -57,10 +67,13 @@ try {
       ]);
     rmSync(archive);
   }
+
   const videoBuild = JSON.parse(readFileSync("dist/voxl-build.json", "utf8"));
   const videoPin = JSON.parse(readFileSync("voxl-version.json", "utf8"));
+
   if (JSON.stringify(videoBuild.pin) !== JSON.stringify(videoPin))
     throw Error("voxl build pin mismatch");
+
   for (const [name, hash] of Object.entries(videoBuild.files)) {
     if (
       !["voxl", "voxl-source.tgz"].includes(name) ||
@@ -70,6 +83,7 @@ try {
     )
       throw Error("voxl build checksum mismatch");
   }
+
   for (const name of [
     "voxl",
     "voxl-build.json",
@@ -80,6 +94,7 @@ try {
   ])
     cpSync(join("dist", name), join(work, name));
   cpSync("dist/kittyd", join(work, "kittyd"));
+
   for (const name of ["install.sh", "kitty-grab.c", "kitty-quiesce.sh", "perception-helper.py"])
     cpSync(join("files", name), join(work, name));
   cpSync("../desktop", join(work, "desktop"), { recursive: true });

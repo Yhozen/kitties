@@ -18,6 +18,7 @@ export default Alchemy.Stack(
     yield* HookIngress;
     yield* OAuthIngress;
     const stage = yield* Stage;
+
     const ingress = yield* Cloudflare.Worker("GuestIngress", {
       main: new URL("./src/guest-ingress.ts", import.meta.url).pathname,
       dev: { port: 1338, strictPort: true },
@@ -35,6 +36,7 @@ export default Alchemy.Stack(
         KITTIES: Cloudflare.DurableObject<KittyDO>("KittyDO", { scriptName: worker.workerName }),
       },
     });
+
     return { url: worker.url, guestUrl: ingress.url, assetsBucket: assets.bucketName };
   }),
 );

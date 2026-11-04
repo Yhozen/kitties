@@ -1,5 +1,7 @@
 import * as Schema from "effect/Schema";
+
 export const RecoveryKind = Schema.Literals(["home", "kitty", "chat", "workflow"]);
+
 export const RecoveryView = Schema.Struct({
   control: Schema.Struct({
     epoch: Schema.Number,

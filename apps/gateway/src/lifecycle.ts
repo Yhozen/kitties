@@ -7,17 +7,22 @@ import { ComputerOp } from "./computer-definition.ts";
 import { boatClient, ownsSandbox } from "./boat.ts";
 import { DesktopAttempt, DesktopDecision } from "./desktop-definition.ts";
 import { retryHelpDecisions } from "./help-decisions.ts";
+
 export const makeLifecycle = Effect.gen(function* () {
   const homes = yield* HomeDO,
     kitties = yield* KittyDO,
     computers = yield* Workflows.RunWorkflow(ComputerOp),
     desktops = yield* Workflows.RunWorkflow(DesktopAttempt);
+
   const engine = yield* WorkflowEngine.WorkflowEngine;
+
   const env = (yield* Cloudflare.WorkerEnvironment) as {
     BOAT_DEV_API_KEY: string;
     KITTIES_DEPLOYMENT: string;
   };
+
   const boat = boatClient(env.BOAT_DEV_API_KEY);
+
   return Effect.gen(function* () {
     const home = homes.getByName("owner", { locationHint: "weur" });
     yield* retryHelpDecisions(home, (executionId, decision) =>
@@ -30,7 +35,9 @@ export const makeLifecycle = Effect.gen(function* () {
         Effect.gen(function* () {
           const kitty = kitties.getByName(record.id, { locationHint: "weur" });
           let state = yield* kitty.computer();
+
           if (!state) return;
+
           if (state.operation) {
             // Starting is idempotent and also repairs a crash between the actor
             // claiming an operation and the Worker publishing its run receipt.
@@ -39,6 +46,7 @@ export const makeLifecycle = Effect.gen(function* () {
               operationId: state.operation.id,
               kind: state.operation.kind,
             });
+
             yield* home.write(
               "computer-run",
               state.operation.id,
@@ -55,11 +63,14 @@ export const makeLifecycle = Effect.gen(function* () {
                 Effect.provideService(WorkflowEngine.WorkflowEngine, engine),
               );
             }
+
             // Resumption may have changed the phase or installed the first remote ID.
             state = yield* kitty.computer();
           }
+
           if (!state?.remoteId || ["absent", "sleeping", "deleted"].includes(state.phase)) return;
           const machine = yield* boat.get(state.remoteId);
+
           if (
             !ownsSandbox(
               machine,
@@ -70,6 +81,7 @@ export const makeLifecycle = Effect.gen(function* () {
             )
           )
             return;
+
           if (["archived", "archiving", "stopping", "stopped"].includes(machine.state)) {
             if (
               state.quiesced?.remoteId === state.remoteId &&
@@ -89,20 +101,26 @@ export const makeLifecycle = Effect.gen(function* () {
                 updatedAt: Date.now(),
               }),
             );
+
             return;
           }
+
           const channel = yield* kitty.status();
+
           const busy =
             channel.viewers > 0 ||
             !!channel.grant ||
             channel.pending > 0 ||
             channel.fileTransfers > 0;
+
           if (busy) yield* kitty.touchComputer();
+
           // Keep a draining or failed operation alive; TTL must never replace quiescence.
           if (Date.now() - state.lastRenewAt > 240000) {
             yield* boat.request("PATCH", "/sandboxes/" + state.remoteId, { ttlSeconds: 3600 });
             yield* kitty.renewComputer(state.remoteId, Date.now());
           }
+
           if (
             state.phase === "ready" &&
             !state.operation &&

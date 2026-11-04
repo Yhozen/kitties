@@ -19,13 +19,17 @@ export function DesktopFiles({ id }: { id: string }) {
     [progress, setProgress] = useState(0),
     [refresh, setRefresh] = useState(0),
     [artifacts, setArtifacts] = useState<readonly { id: string; name: string; size: number }[]>([]);
+
   const operation = useRef<AbortController | undefined>(undefined),
     fileInput = useRef<HTMLInputElement>(null);
+
   const base = fileEndpoint(id);
+
   const reload = () => {
     setListing(undefined);
     setRefresh((value) => value + 1);
   };
+
   useEffect(() => () => operation.current?.abort(), [id]);
   useEffect(() => {
     const abort = new AbortController();
@@ -44,8 +48,10 @@ export function DesktopFiles({ id }: { id: string }) {
         if (!abort.signal.aborted) setArtifacts(value);
       })
       .catch(() => {});
+
     return () => abort.abort();
   }, [base, path, refresh]);
+
   const run = async (label: string, task: (signal: AbortSignal) => Promise<void>) => {
     if (operation.current || !listing) return;
     const abort = new AbortController();
@@ -54,8 +60,10 @@ export function DesktopFiles({ id }: { id: string }) {
     setProgress(0);
     setStatus(label);
     setError("");
+
     try {
       await task(abort.signal);
+
       if (!abort.signal.aborted) setStatus(t("Transfer complete."));
     } catch (reason) {
       setStatus("");
@@ -74,23 +82,29 @@ export function DesktopFiles({ id }: { id: string }) {
       }
     }
   };
+
   const query = () => new URLSearchParams({ path, generation: String(listing!.generation) });
+
   const upload = (file?: File) => {
     if (!file) return;
+
     if (!listing || busy) {
       setError(
         busy
           ? t("A transfer is already running. Try this file again when it finishes.")
           : t("Files are not ready yet. Refresh the folder before uploading."),
       );
+
       return;
     }
+
     const params = query();
     params.set("name", file.name);
     void run(`${t("Uploading")} ${file.name}`, (signal) =>
       uploadFile(`${base}?${params}`, file, signal, setProgress),
     );
   };
+
   return (
     <section
       class="desktop-files"
@@ -101,10 +115,13 @@ export function DesktopFiles({ id }: { id: string }) {
       onDrop={(event) => {
         if (!event.dataTransfer?.files.length) return;
         event.preventDefault();
+
         if (event.dataTransfer.files.length !== 1) {
           setError(t("Choose one file at a time."));
+
           return;
         }
+
         upload(event.dataTransfer.files[0]);
       }}
     >
@@ -170,12 +187,15 @@ export function DesktopFiles({ id }: { id: string }) {
                 onClick={() => {
                   if (file.directory) {
                     setPath(file.path);
+
                     return;
                   }
+
                   const params = new URLSearchParams({
                     path: file.path,
                     generation: String(listing.generation),
                   });
+
                   void run(`${t("Downloading")} ${file.name}`, (signal) =>
                     downloadFile(`${base}/download?${params}`, file.name, signal, setProgress),
                   );

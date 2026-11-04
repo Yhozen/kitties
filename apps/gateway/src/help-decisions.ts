@@ -14,6 +14,7 @@ export const retryHelpDecisions = <E>(
       ({ body }) => {
         const row = JSON.parse(body) as HelpRecord;
         const decision = savedHelpDecision(row);
+
         return decision && row.status !== "completed"
           ? signal(row.executionId, decision).pipe(Effect.catchCause(() => Effect.void))
           : Effect.void;

@@ -11,6 +11,7 @@ export const ChatgptPauseReason = Schema.Literals([
   "incomplete",
   "interrupted",
 ]);
+
 export const ChatgptError = Schema.Struct({
   reason: ChatgptPauseReason,
   code: Schema.String,
@@ -19,7 +20,9 @@ export const ChatgptError = Schema.Struct({
   param: Schema.optional(Schema.String),
   bodyShape: Schema.optional(Schema.Literals(["structured", "detail", "other"])),
 });
+
 export type ChatgptFailure = typeof ChatgptError.Type;
+
 export const ChatgptAccountView = Schema.Struct({
   id: Id,
   label: Schema.String,
@@ -33,13 +36,16 @@ export const ChatgptAccountView = Schema.Struct({
   lastError: Schema.optional(ChatgptError),
   updatedAt: Schema.Number,
 });
+
 export type ChatgptAccount = typeof ChatgptAccountView.Type;
+
 export const ChatgptLinkInput = Schema.Struct({
   redirectUri: Schema.String.check(Schema.isMaxLength(200)),
   accountId: Schema.optional(Id),
   retryAttemptId: Schema.optional(Id),
   requestConsent: Schema.optional(Schema.Boolean),
 });
+
 export const ChatgptLinkView = Schema.Struct({
   id: Id,
   accountId: Schema.optional(Id),
@@ -56,8 +62,11 @@ export const ChatgptLinkView = Schema.Struct({
   error: Schema.optional(ChatgptError),
   canRetryRegistration: Schema.optional(Schema.Boolean),
 });
+
 export type ChatgptLink = typeof ChatgptLinkView.Type;
+
 export const ChatgptModelView = Schema.Struct({ slug: Schema.String, displayName: Schema.String });
+
 export const ChatgptProbeView = Schema.Struct({
   ok: Schema.Boolean,
   model: Schema.optional(Schema.String),
