@@ -72,9 +72,16 @@ Alchemy stage. It requires only Workers Scripts Write and Account Settings Read,
 bindings and checks the committed DO class manifest. A live publish of all four Workers passed;
 the same token received 403 when attempting a bucket-lock mutation.
 
+Merging to `main` does not deploy either stage: `effect-deploy.yml` runs only on manual dispatch.
+The application publisher also does not build, register, or install a guest release. For desktop
+changes, build `pnpm --filter @kitties/kittyd release`, upload its checksum-named archive to that
+stage's GuestAssets bucket, register `dist/release.json` through `PUT /v1/releases/kittyd`, and
+upgrade existing computers. Verify an actual picture and input receipt after installation;
+an open control socket alone does not establish that the desktop is working.
+
 The manual `effect-deploy.yml` Actions workflow needs the repository secret
 `CLOUDFLARE_WORKER_DEPLOY_TOKEN` and variable `CLOUDFLARE_ACCOUNT_ID`. Both were configured and verified using the owner’s Mac GitHub login. The Effect validation
-workflow has passed on GitHub. The manual deployment workflow becomes dispatchable after its
-file reaches the default branch; direct restricted-token publishing is already verified. ChatDO
+workflow has passed on GitHub. The deployment workflow is available on the default branch;
+direct restricted-token publishing is also verified. ChatDO
 PITR, full encrypted export authentication, purge/tombstones and actual R2 error recovery passed.
 Production cutover, authenticated Health/session, ChatDO PITR, guest fencing/rotation and a fresh desktop screenshot passed. See [production evidence](evidence/production-cutover-cloud.json). The old Worker and legacy storage remain retained; [rollback instructions](../DEPLOY.md#production-verification-and-rollback) use the tested custom-domain override.

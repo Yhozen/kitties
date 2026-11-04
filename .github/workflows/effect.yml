@@ -29,6 +29,8 @@ jobs:
       - run: pnpm check
       - run: pnpm test
       - run: pnpm build
+      - run: bun guest/kittyd/tests/jpeg-startup.ts
+      - run: node guest/kittyd/tests/desktop-recovery-browser.mjs
       - name: Native desktop acceptance (Ubuntu / GTK / AT-SPI / voxl)
         run: |
           sudo apt-get update -qq
