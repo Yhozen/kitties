@@ -1,13 +1,9 @@
 import type { ChatgptCallback } from "./chatgpt-core.ts";
 import { verifiedAccessIdentity } from "./access-jwt.ts";
-import { makeSecretAudit } from "./secret-audit.ts";
-import { workflowActor } from "./workflow-admin.ts";
 import { makeRecovery } from "./recovery.ts";
-import { Purge } from "./recovery-definition.ts";
 import { PurgeLive } from "./workflows/purge.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import { Stage } from "alchemy/Stage";
-import * as Workflows from "alchemy/Workflows";
 import * as Config from "effect/Config";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
@@ -17,9 +13,8 @@ import * as Schema from "effect/Schema";
 import { ExportLive } from "./workflows/export.ts";
 import { RestoreLive } from "./workflows/restore.ts";
 import { RetainedExports, GuestAssets } from "./resources.ts";
-import { WorkflowEngine } from "effect/workflow";
 import { Health, Session } from "@kitties/domain";
-import { HomeDO, KittyDO, ChatDO } from "./actors.ts";
+import { HomeDO, KittyDO } from "./actors.ts";
 import { ChatDOLive } from "./chat.ts";
 import { DesktopAttemptLive } from "./workflows/desktop.ts";
 import { ComputerOpLive } from "./workflows/computer.ts";
@@ -29,20 +24,14 @@ import { DelegationLive } from "./workflows/delegation.ts";
 import { GoalSlotLive } from "./workflows/goal.ts";
 import { makeAutonomy } from "./autonomy.ts";
 import { makeWebhooks } from "./webhooks.ts";
-import { TimerProbe, TimerProbeLive } from "./workflows/timer-probe.ts";
 import { NotifyLive } from "./workflows/notify.ts";
 import { makeNotifications } from "./notifications.ts";
 import { ApprovalLive } from "./workflows/approval.ts";
 import { makeLifecycle } from "./lifecycle.ts";
-import { chatEvents } from "./chat-stream.ts";
-import * as Stream from "effect/Stream";
 import { makeOAuth } from "./oauth.ts";
 import { makeApplication } from "./application.ts";
 import { ownerError } from "./security.ts";
-import type { GuestConfig } from "./kitty.ts";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
-import { AdvancedProbe, AdvancedProbeLive, CallbackProbeDO } from "./workflows/advanced-probe.ts";
-import { ContinueProbe, Probe, ProbeLive } from "./workflows/probe.ts";
 
 const props = Effect.gen(function* () {
   const stage = yield* Stage;
@@ -50,7 +39,7 @@ const props = Effect.gen(function* () {
     Config.withDefault(
       stage === "prod"
         ? "kitties.rccpr.tech"
-        : `${stage === "next" ? "next" : stage === "e2e" ? "e2e" : "dev"}.kitties.rccpr.tech`,
+        : `${stage === "next" ? "next" : "dev"}.kitties.rccpr.tech`,
     ),
   );
   const email = yield* Config.String("KITTIES_ACCESS_EMAIL").pipe(
@@ -113,7 +102,6 @@ const props = Effect.gen(function* () {
     },
   };
 });
-const ProbePayload = Probe.payloadSchema;
 
 export default class Gateway extends Cloudflare.Worker<Gateway>()(
   "Gateway",
@@ -123,15 +111,8 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
     ),
   ),
   Effect.gen(function* () {
-    const engine = yield* WorkflowEngine.WorkflowEngine;
     const homes = yield* HomeDO;
     const kitties = yield* KittyDO;
-    const chats = yield* ChatDO;
-    const probes = yield* Workflows.RunWorkflow(Probe);
-    const purges = yield* Workflows.RunWorkflow(Purge);
-    const advanced = yield* Workflows.RunWorkflow(AdvancedProbe);
-    const timers = yield* Workflows.RunWorkflow(TimerProbe);
-    const callbacks = yield* CallbackProbeDO;
     const application = yield* makeApplication;
     const oauth = yield* makeOAuth;
     const lifecycle = yield* makeLifecycle;
@@ -140,7 +121,6 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
     const receiveWebhook = yield* makeWebhooks;
     const notifications = yield* makeNotifications;
     const recovery = yield* makeRecovery;
-    const auditSecret = yield* makeSecretAudit;
     yield* Cloudflare.Workers.cron("* * * * *", () =>
       lifecycle.pipe(
         Effect.andThen(autonomy.tick),
@@ -162,106 +142,11 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
         Response.json(body, { status, headers: { "Cache-Control": "no-store" } }),
       );
     return {
-      verifyBoatFault: (
-        operationId: string,
-        mode: "5xx" | "lost-create" | "5xx-lost-create" | "read",
-      ) =>
-        env.STAGE === "next" || env.STAGE === "e2e"
-          ? mode === "read"
-            ? homes.getByName("owner", { locationHint: "weur" }).read("boat-fault", operationId)
-            : homes
-                .getByName("owner", { locationHint: "weur" })
-                .write(
-                  "boat-fault",
-                  operationId,
-                  JSON.stringify({
-                    mode,
-                    remaining: mode === "5xx-lost-create" ? 3 : mode === "5xx" ? 2 : 1,
-                    injected: 0,
-                  }),
-                )
-                .pipe(Effect.as(null))
-          : Effect.succeed(null),
-      verifyWorkflowSummary: (name: string) =>
-        env.STAGE === "next" || env.STAGE === "e2e"
-          ? workflowActor(engine, name, env.KITTIES_KEK).adminSummary()
-          : Effect.succeed(null),
-      verifySecretAudit: (needle: string, chatId: string, messages: readonly string[]) =>
-        env.STAGE === "next" || env.STAGE === "e2e"
-          ? auditSecret(needle, chatId, messages, env.KITTIES_KEK)
-          : Effect.succeed(null),
-      verifyPurge: (id: string, before: number) =>
-        env.STAGE === "next" || env.STAGE === "e2e"
-          ? purges.start({ id, before }).pipe(Effect.map((run) => run.executionId))
-          : Effect.succeed(null),
       receiveWebhook,
       finishChatgpt: (callback: ChatgptCallback) =>
         homes.getByName("owner", { locationHint: "weur" }).chatgptFinish(callback),
       finishOAuth: (state: string, code: string, issuer?: string) =>
         oauth.callback(state, code, issuer),
-      timerStart: (id: string) => timers.start({ id }).pipe(Effect.map((run) => run.executionId)),
-      timerStatus: (id: string) => timers.get(id).status,
-      verifyChatStream: (id: string) =>
-        chatEvents((after) => chats.getByName(id, { locationHint: "weur" }).events(after), 0).pipe(
-          Stream.filter(() => env.STAGE === "next" || env.STAGE === "e2e"),
-        ),
-      verifyApplication: (method: string, path: string, body: string | null) =>
-        Effect.gen(function* () {
-          if (env.STAGE !== "next" && env.STAGE !== "e2e") return { status: 404, body: "" };
-          if (
-            !/^\/v1\/(recovery|features|chatgpt|kitties|chats|providers|connections|approvals|runs|computer-runs|releases|vault|help|artifacts|skills|goals|hooks|approval-rules|notifications)(?:\/|$)/.test(
-              path,
-            )
-          )
-            return { status: 404, body: "" };
-          const response = yield* application(
-            new Request(env.PUBLIC_URL + path, {
-              method,
-              headers: { "Content-Type": "application/json" },
-              ...(body ? { body } : {}),
-            }),
-          );
-          if (!response) return { status: 404, body: "" };
-          if (path.includes("/events")) return { status: 400, body: "" };
-          const native = HttpServerResponse.toWeb(response);
-          return { status: native.status, body: yield* Effect.promise(() => native.text()) };
-        }),
-      desktopConfigure: (id: string, config: Omit<GuestConfig, "epoch">) =>
-        kitties.getByName(id, { locationHint: "weur" }).configure(config),
-      desktopStatus: (id: string) => kitties.getByName(id, { locationHint: "weur" }).status(),
-      desktopReceipt: (id: string, intentId: string) =>
-        kitties.getByName(id, { locationHint: "weur" }).receipt(intentId),
-      advancedStart: (payload: typeof AdvancedProbe.payloadSchema.Type) =>
-        advanced.start(payload).pipe(Effect.map((run) => run.executionId)),
-      advancedStatus: (id: string) => advanced.get(id).status,
-      advancedR2Failure: (id: string) =>
-        env.STAGE === "next" || env.STAGE === "e2e"
-          ? homes.getByName("owner", { locationHint: "weur" }).read("probe-r2-error", id)
-          : Effect.succeed(null),
-      advancedRepair: (id: string, executionId: string) =>
-        homes
-          .getByName("owner")
-          .write("probe-repair", id, "ready")
-          .pipe(
-            Effect.andThen(
-              AdvancedProbe.resume(executionId).pipe(
-                Effect.provideService(WorkflowEngine.WorkflowEngine, engine),
-              ),
-            ),
-          ),
-      callbackStart: (id: string) => callbacks.getByName(id).start(),
-      callbackStatus: (id: string) => callbacks.getByName(id).status(),
-      probeSaveReport: (report: string) =>
-        homes
-          .getByName("owner", { locationHint: "weur" })
-          .write("evidence", "engine-cloud", report),
-      probeReport: () =>
-        homes.getByName("owner", { locationHint: "weur" }).read("evidence", "engine-cloud"),
-      probeStart: (payload: typeof ProbePayload.Type) =>
-        probes.start(payload).pipe(Effect.map((run) => run.executionId)),
-      probeStatus: (id: string) => probes.get(id).status,
-      probeSignal: (id: string) => probes.get(id).signal(ContinueProbe, true),
-      probeCalls: (id: string) => homes.getByName("owner", { locationHint: "weur" }).probeCalls(id),
       fetch: Effect.gen(function* () {
         const request = yield* Cloudflare.Request;
         const access = yield* Cloudflare.Access.Context;
@@ -290,58 +175,6 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
           }
           return json(yield* kitty.status());
         }
-        if (
-          (env.STAGE === "local" || env.STAGE === "e2e") &&
-          url.pathname === "/v1/operator/desktop" &&
-          request.method === "POST"
-        ) {
-          const body = (yield* Effect.tryPromise(() => request.json())) as Omit<
-            GuestConfig,
-            "epoch"
-          >;
-          return json(
-            yield* kitties.getByName(body.kittyId, { locationHint: "weur" }).configure(body),
-          );
-        }
-
-        if (
-          env.STAGE !== "prod" &&
-          url.pathname === "/v1/operator/advanced" &&
-          request.method === "POST"
-        ) {
-          const body = yield* Effect.tryPromise(() => request.json());
-          const payload = yield* Schema.decodeUnknownEffect(AdvancedProbe.payloadSchema)(body);
-          return json({ executionId: (yield* advanced.start(payload)).executionId }, 202);
-        }
-        const advancedRoute = url.pathname.match(
-          /^\/v1\/operator\/advanced\/([a-zA-Z0-9_-]+)(?:\/(repair))?$/,
-        );
-        if (env.STAGE !== "prod" && advancedRoute) {
-          if (request.method === "GET") return json(yield* advanced.get(advancedRoute[1]!).status);
-          if (request.method === "POST" && advancedRoute[2] === "repair") {
-            yield* homes
-              .getByName("owner")
-              .write("probe-repair", url.searchParams.get("id") ?? "", "ready");
-            yield* AdvancedProbe.resume(advancedRoute[1]!).pipe(
-              Effect.provideService(WorkflowEngine.WorkflowEngine, engine),
-            );
-            return json({ ok: true });
-          }
-        }
-        if (env.STAGE !== "prod" && url.pathname === "/v1/operator/callback") {
-          const stub = callbacks.getByName(url.searchParams.get("id") ?? "parking-v1");
-          if (request.method === "POST") {
-            yield* stub.start();
-            return json({ ok: true });
-          }
-          return json((yield* stub.status()) ?? null);
-        }
-        if (request.method === "GET" && url.pathname === "/v1/operator/evidence") {
-          const report = yield* homes
-            .getByName("owner", { locationHint: "weur" })
-            .read("evidence", "engine-cloud");
-          return json({ engine: report ? JSON.parse(report) : { status: "pending" } });
-        }
         if (request.method === "GET" && url.pathname === "/v1/health")
           return json(
             Schema.decodeUnknownSync(Health)({
@@ -359,50 +192,6 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
               logout_url: "/cdn-cgi/access/logout",
             }),
           );
-        if (
-          env.STAGE !== "prod" &&
-          url.pathname === "/v1/operator/probes" &&
-          request.method === "POST"
-        ) {
-          const body = yield* Effect.tryPromise(() => request.json()).pipe(
-            Effect.catch(() => Effect.succeed(null)),
-          );
-          const payload = yield* Schema.decodeUnknownEffect(ProbePayload)(body).pipe(
-            Effect.catch(() => Effect.succeed(undefined)),
-          );
-          if (
-            !payload ||
-            payload.steps < 1 ||
-            payload.steps > 500 ||
-            !Number.isInteger(payload.steps) ||
-            payload.delayMs < 0 ||
-            payload.delayMs > 900000
-          )
-            return json({ code: "INVALID_REQUEST", params: {} }, 400);
-          const run = yield* probes.start(payload);
-          return json({ executionId: run.executionId }, 202);
-        }
-        const probeRoute = url.pathname.match(
-          /^\/v1\/operator\/probes\/([a-zA-Z0-9_-]+)(?:\/(signal|calls|interrupt))?$/,
-        );
-        if (env.STAGE !== "prod" && probeRoute) {
-          const run = probes.get(probeRoute[1]!);
-          if (request.method === "GET" && !probeRoute[2]) return json(yield* run.status);
-          if (request.method === "GET" && probeRoute[2] === "calls")
-            return json(
-              yield* homes
-                .getByName("owner", { locationHint: "weur" })
-                .probeCalls(url.searchParams.get("id") ?? probeRoute[1]!),
-            );
-          if (request.method === "POST" && probeRoute[2] === "signal") {
-            yield* run.signal(ContinueProbe, true);
-            return json({ ok: true });
-          }
-          if (request.method === "POST" && probeRoute[2] === "interrupt") {
-            yield* run.interrupt;
-            return json({ ok: true });
-          }
-        }
         if (
           url.pathname.startsWith("/v1/") ||
           url.pathname.startsWith("/guest/") ||
@@ -422,8 +211,6 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
     Effect.provide(Cloudflare.Workers.CronEventSourceLive),
     Effect.provide(
       Layer.mergeAll(
-        ProbeLive,
-        AdvancedProbeLive,
         ExportLive,
         PurgeLive,
         RestoreLive,
@@ -431,7 +218,6 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
         DistillLive,
         GoalSlotLive,
         DelegationLive,
-        TimerProbeLive,
         NotifyLive,
         ApprovalLive,
         ComputerOpLive,
@@ -443,5 +229,3 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
     ),
   ),
 ) {}
-
-// Workerd restart acceptance revision 1.

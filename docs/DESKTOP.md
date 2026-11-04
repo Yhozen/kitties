@@ -23,8 +23,8 @@ a crash or timeout during a mutation records an unknown outcome. A helper restar
 reference namespace, so an agent must take a fresh snapshot before acting.
 
 The guest release verifies both upstream CLI and FFI archive checksums and includes the Apache
-license. `guest/kittyd/tests/perception-native.py` exercises real GTK/AT-SPI and compares same-version
-CLI snapshots with persistent calls. The local fixture measured p95 14.24 ms → 11.89 ms; this excludes
+license. Historical GTK/AT-SPI validation compared same-version CLI snapshots with persistent
+calls. The local fixture measured p95 14.24 ms → 11.89 ms; this excludes
 network and model time and does not predict a proportional end-to-end improvement.
 
 The video transport uses voxl 0.3.2 on a password-protected loopback listener, started only while
@@ -42,9 +42,9 @@ Build the voxl artifact on Ubuntu 24.04 x86_64 using `pnpm --filter @kitties/kit
 before `pnpm --filter @kitties/kittyd release`; see the dependency list in the build script. The
 source archive hash, Rust/esbuild versions, Cargo lockfile, and native package versions are recorded.
 The guest bundle includes voxl source, vendored Rust dependencies, build instructions and licenses.
-The native test exercises actual capture/authentication/keyframe recovery. With local workerd
-running on ports 1337/1338, `bun guest/kittyd/probes/video-channel.ts` verifies slow-viewer isolation,
-video/input separation, grant release, epoch changes and rejection of stale guest connections.
+Historical native and channel validation covered capture/authentication/keyframe recovery,
+slow-viewer isolation, video/input separation, grant release, epoch changes and stale connections.
+The automated tests and probes have been removed.
 
 The browser prefers WebCodecs video, acknowledging frames only after they are drawn. Missing
 WebCodecs, an unsupported codec, a decoder failure, an unavailable capture service, or five seconds

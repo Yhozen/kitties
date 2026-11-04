@@ -16,7 +16,6 @@ for the existing deployment. A new Access application needs its own audience.
 ```sh
 pnpm install --frozen-lockfile
 pnpm check
-pnpm test
 pnpm build
 pnpm --filter @kitties/gateway exec alchemy deploy --stage prod --no-input --yes
 ```

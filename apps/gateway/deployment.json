@@ -3,9 +3,7 @@
     "main": "apps/gateway/src/worker.ts",
     "kind": "effect",
     "classes": [
-      "AdvancedProbeV1Workflow",
       "ApprovalV2Workflow",
-      "CallbackProbeDO",
       "ChatDO",
       "ComputerOpV2Workflow",
       "DelegationV1Workflow",
@@ -16,11 +14,9 @@
       "HomeDO",
       "KittyDO",
       "NotifyV1Workflow",
-      "ProbeV1Workflow",
       "PurgeV1Workflow",
       "RecoveryDO",
       "RestoreV1Workflow",
-      "TimerProbeV1Workflow",
       "TurnV5Workflow"
     ],
     "assets": "apps/web/dist"

@@ -14,7 +14,7 @@
 import { createAnimator } from '../animator.ts';
 import { pointerGaze } from '../follow.ts';
 import { DEFAULT_COLOR, DEFAULT_EYE_COLOR, renderAvatarScene, renderAvatarSvg, sceneFrame, type SceneFrame } from '../render.ts';
-import type { AvatarDefinition, AvatarMotion, RenderOptions } from '../types.ts';
+import type { AvatarDefinition, AvatarMotion, AvatarSkin, RenderOptions } from '../types.ts';
 import { requestFrame, subscribeFrames } from './clock.ts';
 import { trackPointer } from './pointer.ts';
 import { prefersReducedMotion } from './reduced.ts';
@@ -42,6 +42,8 @@ export interface AvatarOptions {
   still?: boolean;
   /** Accessible name; defaults to the definition's name. "" marks the avatar decorative. */
   label?: string;
+  /** Puppies extension: per-part colors, shading and decals (see AvatarSkin). */
+  skin?: AvatarSkin;
 }
 
 export interface MountedAvatar {
@@ -62,13 +64,13 @@ interface Scene {
   last: Record<string, string>;
 }
 
-function mountScene(el: HTMLElement, definition: AvatarDefinition, depth: number | undefined): Scene {
-  el.innerHTML = renderAvatarScene(definition, { depth });
+function mountScene(el: HTMLElement, definition: AvatarDefinition, depth: number | undefined, skin?: AvatarSkin, color?: string): Scene {
+  el.innerHTML = renderAvatarScene(definition, { depth, skin, color });
   const q = (s: string) => el.querySelector(s) as HTMLElement;
   const stacks = { z: q('[data-stack="z"]'), x: q('[data-stack="x"]') };
   return {
     key: q('[data-avatar-scene]').dataset.avatarScene ?? '',
-    geometry: geometryKey(definition),
+    geometry: geometryKey(definition, skin, color),
     motion: q('[data-motion]'),
     view: q('[data-view]'),
     stacks,
@@ -107,14 +109,14 @@ function apply(m: Scene, frame: SceneFrame) {
 }
 
 const keys = new WeakMap<object, string>();
-/** Everything in a definition the static scene markup depends on. */
-function geometryKey(definition: AvatarDefinition): string {
+/** Everything in a definition (and a skin, which bakes in the colors) the static scene markup depends on. */
+function geometryKey(definition: AvatarDefinition, skin?: AvatarSkin, color?: string): string {
   let key = keys.get(definition);
   if (key === undefined) {
     key = JSON.stringify([definition?.id, definition?.name, definition?.body?.path, definition?.eyes]);
     keys.set(definition, key);
   }
-  return key;
+  return skin ? `${key}|${JSON.stringify(skin)}|${color ?? ''}` : key;
 }
 
 /** Midpoint between the eyes as a fraction of the (square, 100-unit) box: the look starts there. */
@@ -194,6 +196,7 @@ export function mountAvatar(host: HTMLElement, initial: AvatarOptions): MountedA
           view: p.view,
           gaze: p.lookAt ?? undefined,
           reducedMotion: true,
+          skin: p.skin,
         });
         // The engine derives SVG ids from geometry, so repeated avatars can share them safely.
         if (svg !== lastStill) {
@@ -220,10 +223,11 @@ export function mountAvatar(host: HTMLElement, initial: AvatarOptions): MountedA
         gaze: step.gaze,
         view: p.view,
         reducedMotion,
+        skin: p.skin,
       };
       const frame = sceneFrame(p.definition, options);
-      if (!scene || scene.key !== frame.scene || scene.geometry !== geometryKey(p.definition) || !host.contains(scene.view)) {
-        scene = mountScene(host, p.definition, p.depth);
+      if (!scene || scene.key !== frame.scene || scene.geometry !== geometryKey(p.definition, p.skin, p.color) || !host.contains(scene.view)) {
+        scene = mountScene(host, p.definition, p.depth, p.skin, p.color);
       }
       apply(scene, frame);
       failed = false;

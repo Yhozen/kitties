@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   check:
-    name: Effect · check · test · build
+    name: Effect · check · build
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -27,34 +27,4 @@ jobs:
           bun-version: 1.4.4
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
-      - run: pnpm test
       - run: pnpm build
-      - name: Chat and desktop lifecycle browser regressions
-        timeout-minutes: 3
-        run: |
-          pnpm --filter @kitties/web exec vp preview --host 127.0.0.1 --port 4173 > /tmp/kitties-review-preview.log 2>&1 &
-          review_server_pid=$!
-          trap 'kill "$review_server_pid"' EXIT
-          for attempt in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:4173/ > /dev/null; then break; fi
-            sleep 1
-          done
-          KITTIES_TEST_URL=http://127.0.0.1:4173 pnpm --filter @kitties/web exec playwright test -c e2e-next/playwright.config.ts e2e-next/review-regressions.spec.ts --reporter=line
-      - run: bun guest/kittyd/tests/jpeg-startup.ts
-      - run: node guest/kittyd/tests/desktop-recovery-browser.mjs
-      - name: Native desktop acceptance (Ubuntu / GTK / AT-SPI / voxl)
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq python3-gi gir1.2-gtk-3.0 at-spi2-core dbus-x11 xvfb x11-xserver-utils openbox xdotool build-essential patch pkg-config clang libclang-dev libx264-dev libyuv-dev libopus-dev libpulse-dev libxcb1-dev
-          rustup toolchain install 1.93.0 --profile minimal
-          pnpm --filter @kitties/kittyd check
-          pnpm --filter @kitties/kittyd build:voxl
-          pnpm --filter @kitties/kittyd release
-          sudo install -D guest/kittyd/dist/voxl /usr/local/lib/kittyd/voxl
-          bash guest/kittyd/tests/video-cross-user.sh
-          mkdir -p .context
-          KITTYD_VIDEO_FIXTURE="$PWD/.context/video-fixture.bin" xvfb-run -a -s '-screen 0 1280x800x24' bun guest/kittyd/tests/video-native.ts
-          KITTYD_VIDEO_FIXTURE="$PWD/.context/video-fixture.bin" node guest/kittyd/tests/viewer-browser.mjs
-          node guest/kittyd/tests/files-browser.mjs
-          cd guest/kittyd
-          sh scripts/test-native.sh

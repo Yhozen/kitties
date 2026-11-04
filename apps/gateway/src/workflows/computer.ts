@@ -8,14 +8,7 @@ import * as Schedule from "effect/Schedule";
 import { DurableClock } from "effect/workflow";
 import { HomeDO, KittyDO } from "../actors.ts";
 import { ComputerOp } from "../computer-definition.ts";
-import {
-  boatClient,
-  ownsSandbox,
-  activeSandbox,
-  readySandbox,
-  type BoatSandbox,
-  BoatError,
-} from "../boat.ts";
+import { boatClient, ownsSandbox, activeSandbox, readySandbox, type BoatSandbox } from "../boat.ts";
 import type { ComputerState } from "../computer-state.ts";
 import { bootstrapPython, prepareBootstrap, executeBootstrap } from "../guest-bootstrap.ts";
 import { releaseUrl } from "../releases.ts";
@@ -35,7 +28,6 @@ export const ComputerOpLive = Workflows.layer(
       KITTIES_KEK: string;
       KITTIES_RELEASE_KEY: string;
       GUEST_URL: string;
-      STAGE: string;
     };
     const boat = boatClient(env.BOAT_DEV_API_KEY);
     // Billing refusals (empty wallet, full snapshot allowance) clear once the owner pays.
@@ -61,60 +53,7 @@ export const ComputerOpLive = Workflows.layer(
           body?: unknown,
           headers?: Record<string, string>,
         ) =>
-          Effect.gen(function* () {
-            // Only the authenticated next/e2e verifier can install these per-operation faults.
-            const injected =
-              env.STAGE === "next" || env.STAGE === "e2e"
-                ? yield* home
-                    .read("boat-fault", payload.operationId)
-                    .pipe(
-                      Effect.mapError(
-                        () => new BoatError({ code: "BOAT_UNAVAILABLE", status: 0, retryAfter: 5 }),
-                      ),
-                    )
-                : null;
-            const fault = injected
-              ? (JSON.parse(injected) as {
-                  mode: string;
-                  remaining: number;
-                  injected: number;
-                  remoteId?: string;
-                })
-              : null;
-            const hit = method === "POST" && path === "/sandboxes" && fault && fault.remaining > 0;
-            if (hit) {
-              const serverFailure =
-                fault.mode === "5xx" || (fault.mode === "5xx-lost-create" && fault.remaining > 1);
-              fault.remaining--;
-              fault.injected++;
-              yield* home
-                .write("boat-fault", payload.operationId, JSON.stringify(fault))
-                .pipe(
-                  Effect.mapError(
-                    () => new BoatError({ code: "BOAT_UNAVAILABLE", status: 0, retryAfter: 5 }),
-                  ),
-                );
-              if (serverFailure)
-                return yield* Effect.fail(
-                  new BoatError({ code: "BOAT_UNAVAILABLE", status: 503, retryAfter: 1 }),
-                );
-            }
-            const result = yield* boat.request<A>(method, path, body, headers);
-            if (hit && ["lost-create", "5xx-lost-create"].includes(fault.mode)) {
-              fault.remoteId = (result as { sandbox?: BoatSandbox }).sandbox?.id;
-              yield* home
-                .write("boat-fault", payload.operationId, JSON.stringify(fault))
-                .pipe(
-                  Effect.mapError(
-                    () => new BoatError({ code: "BOAT_UNAVAILABLE", status: 0, retryAfter: 5 }),
-                  ),
-                );
-              return yield* Effect.fail(
-                new BoatError({ code: "BOAT_UNAVAILABLE", status: 0, retryAfter: 1 }),
-              );
-            }
-            return result;
-          }).pipe(
+          boat.request<A>(method, path, body, headers).pipe(
             Effect.retry({
               times: 3,
               schedule: Schedule.spaced("2 seconds"),

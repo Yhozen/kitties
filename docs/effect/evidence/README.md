@@ -1,5 +1,7 @@
 # Rewrite acceptance evidence
 
+Historical results only: automated tests, fixtures, probes and their setup have been removed.
+
 These probes ran on 2026-11-01. Each JSON file records its scope and limitations. Local workerd
 results establish behavior, not Cloudflare CPU or regional latency. Fixture-model timings exclude
 paid-provider performance. Unknown desktop outcomes require owner review and are never replayed.

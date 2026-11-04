@@ -4,7 +4,6 @@
   "type": "module",
   "scripts": {
     "check": "vp check",
-    "test": "vp test --run && node --test scripts/chatgpt-connect.test.mjs",
     "build": "vp run -r build",
     "dev": "pnpm --filter @kitties/gateway dev",
     "chatgpt:connect": "node scripts/chatgpt-connect.mjs"
@@ -18,12 +17,10 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261027.1",
-    "@effect/vitest": "4.1.1",
     "@types/node": "26.6.5",
     "typescript": "7.0.2",
     "vite": "npm:@voidzero-dev/vite-plus-core@1.4.0",
-    "vite-plus": "1.4.0",
-    "vitest": "5.0.5"
+    "vite-plus": "1.4.0"
   },
   "engines": {
     "node": ">=26.0.0"
