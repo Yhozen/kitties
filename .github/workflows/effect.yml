@@ -29,3 +29,10 @@ jobs:
       - run: pnpm check
       - run: pnpm test
       - run: pnpm build
+      - name: Native perception acceptance (Ubuntu / GTK / AT-SPI)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-gi gir1.2-gtk-3.0 at-spi2-core dbus-x11 xvfb openbox xdotool
+          pnpm --filter @kitties/kittyd release
+          cd guest/kittyd
+          sh scripts/test-native.sh

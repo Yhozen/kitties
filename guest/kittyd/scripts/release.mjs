@@ -40,7 +40,13 @@ try {
         "--strip-components=2",
         "package/bin/agent-browser-linux-x64",
       ]);
-    else
+    else if (name === "agentDesktopFfi") {
+      run("tar", ["-xzf", archive, "-C", work]);
+      const root = join(work, `agent-desktop-ffi-v${spec.version}-x86_64-unknown-linux-gnu`);
+      cpSync(join(root, "lib/libagent_desktop_ffi.so"), join(work, "libagent_desktop_ffi.so"));
+      cpSync(join(root, "LICENSE"), join(work, "agent-desktop-LICENSE"));
+      rmSync(root, { recursive: true });
+    } else
       run("tar", [
         "-xzf",
         archive,
@@ -52,7 +58,7 @@ try {
     rmSync(archive);
   }
   cpSync("dist/kittyd", join(work, "kittyd"));
-  for (const name of ["install.sh", "kitty-grab.c", "kitty-quiesce.sh"])
+  for (const name of ["install.sh", "kitty-grab.c", "kitty-quiesce.sh", "perception-helper.py"])
     cpSync(join("files", name), join(work, name));
   cpSync("../desktop", join(work, "desktop"), { recursive: true });
   run("tar", [

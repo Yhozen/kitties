@@ -1,6 +1,13 @@
 import { Database } from "bun:sqlite";
 import { mkdir, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import type { PerceptionResult } from "./perception-session.ts";
+
+class PerceptionFailure extends Error {
+  constructor(readonly outcome: PerceptionResult) {
+    super("PERCEPTION_FAILED");
+  }
+}
 
 interface Config {
   url: string;
@@ -184,15 +191,37 @@ async function execute(action: Action): Promise<string> {
     case "ui_read":
     case "ui_click":
     case "ui_type": {
-      const response = await fetch("http://localhost/action", {
-        unix: "/run/kitties-perception/control.sock",
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: action.action, ...args }),
-        signal: AbortSignal.timeout(25000),
-      });
-      if (!response.ok) throw Error("PERCEPTION_UNAVAILABLE");
-      return response.text();
+      try {
+        const response = await fetch("http://localhost/action", {
+          unix: "/run/kitties-perception/control.sock",
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...args, action: action.action }),
+          signal: AbortSignal.timeout(25000),
+        });
+        if (response.status === 400)
+          throw new PerceptionFailure({
+            status: "failed",
+            result: "INVALID_ARGUMENT",
+          });
+        if (!response.ok) throw Error("PERCEPTION_UNAVAILABLE");
+        const outcome = (await response.json()) as PerceptionResult;
+        if (
+          !outcome ||
+          !["completed", "failed", "unknown"].includes(outcome.status) ||
+          typeof outcome.result !== "string" ||
+          outcome.result.length > 65536
+        )
+          throw Error("PERCEPTION_UNAVAILABLE");
+        if (outcome.status !== "completed") throw new PerceptionFailure(outcome);
+        return outcome.result;
+      } catch (error) {
+        if (error instanceof PerceptionFailure) throw error;
+        throw new PerceptionFailure({
+          status: action.action === "ui_read" ? "failed" : "unknown",
+          result: "PERCEPTION_UNAVAILABLE",
+        });
+      }
     }
     case "quiesce":
       return run(["/usr/local/lib/kittyd/kitty-quiesce"]);
@@ -248,9 +277,9 @@ async function dispatch(action: Action, socket: WebSocket, receivedAt: number) {
     result: string;
   try {
     result = await execute(action);
-  } catch {
-    status = "failed";
-    result = "ACTION_FAILED";
+  } catch (error) {
+    status = error instanceof PerceptionFailure ? error.outcome.status : "failed";
+    result = error instanceof PerceptionFailure ? error.outcome.result : "ACTION_FAILED";
   }
   db.query("UPDATE intents SET status=?,result=? WHERE id=?").run(status, result, action.intentId);
   // A lost socket is harmless: the next welcome asks for the saved receipt.

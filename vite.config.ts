@@ -2,7 +2,11 @@ import { defineConfig } from "vite-plus";
 
 export default defineConfig({
   test: {
-    include: ["packages/**/*.test.ts", "apps/gateway/**/*.test.ts"],
+    include: [
+      "packages/**/*.test.ts",
+      "apps/gateway/**/*.test.ts",
+      "guest/kittyd/src/**/*.test.ts",
+    ],
     passWithNoTests: true,
   },
   lint: {

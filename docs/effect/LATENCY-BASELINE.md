@@ -75,3 +75,14 @@ targets, not measurements.
 | 2026-11-01 | 4 | Continuous real stream | 30 min | no disconnects | Three viewers, including a constrained viewer. [Evidence](evidence/stream-soak.json) |
 | 2026-11-01 | 7/10 | Non-model overhead, real desktop action | 653 ms | 1,421 ms | 50 turns; original p95 < 1 s target unmet. Owner accepted cutover with this limitation documented. [Evidence](evidence/step-latency-cloud.json), [decision](evidence/latency-cutover-decision.json) |
 | 2026-11-02 | post-cutover | Non-model overhead, real desktop action | 222 ms | 525 ms | 50 turns on `next`; **p95 < 1 s target met**. Second run: 212 ms / 453 ms. [Run 1](evidence/step-latency-optimized-cloud.json), [run 2](evidence/step-latency-optimized-cloud-run2.json) |
+
+
+### Persistent agent-desktop adapter — 2026-11-04
+
+A local Ubuntu 24.04 GTK3 fixture compared 30 alternating snapshots per path using agent-desktop
+1.1.0 on both sides. CLI p50/p95: **12.65/14.24 ms**; persistent FFI: **9.60/11.89 ms**. This removes
+process and adapter startup, a **16.5% p95 reduction (2.35 ms)** on this small tree. It excludes the
+network, model, and guest receipt path; do not compare it directly to the regional step timings.
+Real semantic click, Unicode typing, state readback, stale refs after restart, and no replay passed.
+See [aggregate evidence](evidence/perception-persistent-local.json) and
+[reproducible probe](../../guest/kittyd/tests/perception-native.py).

@@ -14,4 +14,15 @@ unknown outcome needs an owner decision. A vault reference can type a secret wit
 plaintext into the model context. Never resend an unknown action without checking its outcome.
 
 Measured 200-input latency: ack p95 242.6 ms; click-to-visible p95 359.6 ms. Non-model agent step
-overhead remains above its 1 s target; see [latency](effect/LATENCY-BASELINE.md).
+overhead p95 is 525 ms (453 ms on a second run), below its 1 s target; see [latency](effect/LATENCY-BASELINE.md).
+
+Accessibility calls use a persistent agent-desktop 1.1.0 adapter through its pinned ABI 7 library.
+A separate helper runs as the desktop user with no channel credentials. Requests are bounded,
+serialized, and never queued beyond the active call. Native errors preserve delivery disposition;
+a crash or timeout during a mutation records an unknown outcome. A helper restart creates a new
+reference namespace, so an agent must take a fresh snapshot before acting.
+
+The guest release verifies both upstream CLI and FFI archive checksums and includes the Apache
+license. `guest/kittyd/tests/perception-native.py` exercises real GTK/AT-SPI and compares same-version
+CLI snapshots with persistent calls. The local fixture measured p95 14.24 ms → 11.89 ms; this excludes
+network and model time and does not predict a proportional end-to-end improvement.

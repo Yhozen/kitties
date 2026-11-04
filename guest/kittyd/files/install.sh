@@ -26,6 +26,9 @@ install -d -m 0755 /usr/local/lib/kittyd
 install -m 0755 "$work/kittyd" /usr/local/lib/kittyd/kittyd
 for name in agent-desktop agent-desktop-linux-clipboard-owner; do install -m 0755 "$work/$name" "/usr/local/bin/$name"; done
 install -m 0755 "$work/agent-browser-linux-x64" /usr/local/bin/agent-browser
+install -m 0644 "$work/libagent_desktop_ffi.so" /usr/local/lib/kittyd/libagent_desktop_ffi.so
+install -m 0644 "$work/perception-helper.py" /usr/local/lib/kittyd/perception-helper.py
+install -m 0644 "$work/agent-desktop-LICENSE" /usr/local/lib/kittyd/agent-desktop-LICENSE
 gcc -O2 -march=x86-64 -mtune=generic -o /usr/local/lib/kittyd/kitty-grab "$work/kitty-grab.c" -lX11 -lXext -ljpeg
 install -m 0755 "$work/kitty-quiesce.sh" /usr/local/lib/kittyd/kitty-quiesce
 install -d -o root -g kittyd -m 0750 /etc/kittyd

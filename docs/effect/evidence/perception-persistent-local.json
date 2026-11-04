@@ -1,0 +1,24 @@
+{
+  "status": "passed",
+  "samplesPerPath": 30,
+  "scope": "Ubuntu 24.04 local GTK3, Xvfb 1280x800; excludes network and model time",
+  "version": "agent-desktop 1.1.0 / ABI 7",
+  "assertions": [
+    "snapshot",
+    "semantic click",
+    "Unicode text",
+    "fresh-session stale ref",
+    "no replay"
+  ],
+  "snapshotMs": {
+    "cli": {
+      "p50": 12.65,
+      "p95": 14.24
+    },
+    "persistent": {
+      "p50": 9.6,
+      "p95": 11.89
+    }
+  },
+  "date": "2026-11-04"
+}
