@@ -1,0 +1,13 @@
+{
+  "date": "2026-11-04T04:00:03.960Z",
+  "scope": "Local workerd with real HomeDO/KittyDO + isolated no-env Boat sandbox, actual signed byte streams",
+  "checks": [
+    "6 MiB binary roundtrip through authenticated Worker proxy; Unicode filename",
+    "6 MiB Library upload to R2, download and send to desktop",
+    "stale generation, traversal, size limit and cross-origin upload rejected",
+    "persisted lease blocks sleep and upgrade during a slow upload; released on completion",
+    "desktop account reads upload and creates downloadable output; private parent listing denied",
+    "real Chrome upload and desktop-created download through the local gateway and Boat"
+  ],
+  "status": "passed"
+}

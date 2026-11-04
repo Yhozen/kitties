@@ -1,3 +1,4 @@
+import { DesktopFiles } from "./DesktopFiles";
 import { t } from "./i18n";
 import { createDesktopViewer } from "./desktop-viewer";
 import { useEffect, useRef, useState } from "preact/hooks";
@@ -12,6 +13,7 @@ const xKeys=(event:KeyboardEvent) => {
 interface Receipt { nonce: string; generation: number; epoch: number }
 
 export default function WSDesktop({ id, onClose }: { id: string; onClose: () => void }) {
+  const [showFiles, setShowFiles] = useState(false);
   const canvas = useRef<HTMLCanvasElement>(null);
   const socket = useRef<WebSocket | undefined>(undefined);
   const grant = useRef<Receipt | undefined>(undefined);
@@ -131,5 +133,6 @@ export default function WSDesktop({ id, onClose }: { id: string; onClose: () => 
     <footer><input aria-label="Portapapeles" value={clipboard} onInput={(e) => setClipboard(e.currentTarget.value)} />
       <button disabled={!controlling} onClick={() => input("clipboard_write", { text: clipboard })}>{t("Copy to desktop")}</button>
       <button disabled={!controlling} onClick={() => input("clipboard_read", {})}>{t("Read clipboard")}</button></footer>
+    <details class="desktop-files-toggle" onToggle={event => setShowFiles(event.currentTarget.open)}><summary>{t("Files")}</summary>{showFiles && <DesktopFiles key={id} id={id} />}</details>
   </section>;
 }

@@ -1,6 +1,6 @@
 import type { ToolDefinition } from "./entities.ts";
 export const desktopPerceptionPolicy =
-  "For desktop tasks, prefer references: use desktop_browser_read for browser pages and desktop_ui_read for native apps, then click/type the returned refs. Read again after a stale ref or to confirm a changed page. Use screenshots and pixel controls when references are unavailable or the task needs visual/canvas interaction. Never invent a reference.";
+  "For desktop tasks, prefer references: use desktop_browser_read for browser pages and desktop_ui_read for native apps, then click/type the returned refs. Read again after a stale ref or to confirm a changed page. Use screenshots and pixel controls when references are unavailable or the task needs visual/canvas interaction. Never invent a reference. Files shared by the owner appear in /home/kitty/work/Shared. Save deliverables there so the owner can download them from the desktop Files panel; Library files must first be sent to this desktop.";
 const properties: Record<string, Record<string, unknown>> = {
   click: {
     x: { type: "integer", minimum: 0, maximum: 1279 },

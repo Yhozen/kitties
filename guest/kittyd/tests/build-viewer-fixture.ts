@@ -1,10 +1,10 @@
 import { readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 const result = await Bun.build({
-  entrypoints: ["apps/web/e2e-next/desktop-fixture.tsx"],
+  entrypoints: [process.argv[2] ?? "apps/web/e2e-next/desktop-fixture.tsx"],
   target: "browser",
   outdir: ".context/desktop-benchmark",
-  naming: "viewer.js",
+  naming: process.argv[3] ?? "viewer.js",
   plugins: [
     {
       name: "vite-dictionaries",

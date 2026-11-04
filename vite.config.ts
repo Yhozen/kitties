@@ -18,6 +18,8 @@ export default defineConfig({
       "!apps/web/src/NextShell.tsx",
       "!apps/web/src/main.tsx",
       "!apps/web/src/desktop-viewer.ts",
+      "!apps/web/src/desktop-files.ts",
+      "!apps/web/src/DesktopFiles.tsx",
     ],
   },
   fmt: {
@@ -26,6 +28,8 @@ export default defineConfig({
       "docs/**",
       "apps/web/src/**",
       "!apps/web/src/desktop-viewer.ts",
+      "!apps/web/src/desktop-files.ts",
+      "!apps/web/src/DesktopFiles.tsx",
       "pnpm-lock.yaml",
       "README.md",
       "LICENSE",

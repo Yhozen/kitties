@@ -41,5 +41,6 @@ jobs:
           mkdir -p .context
           KITTYD_VIDEO_FIXTURE="$PWD/.context/video-fixture.bin" xvfb-run -a -s '-screen 0 1280x800x24' bun guest/kittyd/tests/video-native.ts
           KITTYD_VIDEO_FIXTURE="$PWD/.context/video-fixture.bin" node guest/kittyd/tests/viewer-browser.mjs
+          node guest/kittyd/tests/files-browser.mjs
           cd guest/kittyd
           sh scripts/test-native.sh

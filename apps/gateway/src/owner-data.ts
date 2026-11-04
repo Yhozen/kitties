@@ -1,3 +1,4 @@
+import { FILE_LIMIT, attachmentName, relativeFilePath } from "./desktop-files-core.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Workflows from "alchemy/Workflows";
 import * as Effect from "effect/Effect";
@@ -99,6 +100,8 @@ export const makeOwnerData = Effect.gen(function* () {
         if (method === "GET") {
           const blob = yield* Effect.promise(() => env.BLOBS.get(key));
           if (!blob) return json({ code: "NOT_FOUND", params: {} }, 404);
+          const saved = id.startsWith("screenshots/") ? null : yield* home.read("artifact", id);
+          const filename = saved ? (JSON.parse(saved) as { name: string }).name : id;
           return HttpServerResponse.fromWeb(
             new Response(blob.body as unknown as ReadableStream, {
               headers: {
@@ -107,7 +110,7 @@ export const makeOwnerData = Effect.gen(function* () {
                   : "application/octet-stream",
                 "Content-Disposition": id.startsWith("screenshots/")
                   ? "inline"
-                  : `attachment; filename="${id}"`,
+                  : attachmentName(filename),
                 "X-Content-Type-Options": "nosniff",
                 "Cache-Control": "private, no-store",
               },
@@ -115,35 +118,27 @@ export const makeOwnerData = Effect.gen(function* () {
           );
         }
         if (method === "PUT" && !id.startsWith("screenshots/")) {
-          const bytes = yield* Effect.tryPromise({
-            try: async () => {
-              const reader = request.body?.getReader();
-              let size = 0;
-              const parts: Uint8Array[] = [];
-              if (reader)
-                try {
-                  for (;;) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    size += value.length;
-                    if (size > 1024 * 1024) throw Error();
-                    parts.push(value);
-                  }
-                } finally {
-                  await reader.cancel();
-                }
-              const result = new Uint8Array(size);
-              let offset = 0;
-              for (const part of parts) {
-                result.set(part, offset);
-                offset += part.length;
-              }
-              return result;
-            },
-            catch: () => "ARTIFACT_TOO_LARGE",
-          });
-          yield* Effect.promise(() => env.BLOBS.put(key, bytes));
-          const row = { name: id, size: bytes.length, updatedAt: Date.now() };
+          const header = request.headers.get("Content-Length");
+          if (!header || !/^\d+$/.test(header))
+            return json({ code: "FILE_SIZE_REQUIRED", params: {} }, 411);
+          const size = Number(header);
+          if (!Number.isSafeInteger(size) || size > FILE_LIMIT)
+            return json({ code: "FILE_TOO_LARGE", params: {} }, 413);
+          const name = new URL(request.url).searchParams.get("name") ?? id;
+          const validName = yield* Effect.try(() => relativeFilePath(name)).pipe(
+            Effect.catch(() => Effect.succeed(null)),
+          );
+          if (!validName || name.includes("/"))
+            return json({ code: "INVALID_FILE_NAME", params: {} }, 400);
+          // The incoming HTTP body has a known Content-Length. Pass it straight to R2;
+          // buffering or wrapping it would lose that length and consume Worker memory.
+          yield* Effect.promise(() =>
+            env.BLOBS.put(
+              key,
+              (request.body ?? new Uint8Array()) as Parameters<cf.R2Bucket["put"]>[1],
+            ),
+          );
+          const row = { name, size, updatedAt: Date.now() };
           yield* home.write("artifact", id, JSON.stringify(row));
           return json({ id, ...row }, 201);
         }

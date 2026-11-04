@@ -1,3 +1,4 @@
+import { liveFileLeases, newFileLease, validFileLease, type FileLease } from "./file-leases.ts";
 import { makeStorageAdmin } from "./storage-admin.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Effect from "effect/Effect";
@@ -89,6 +90,7 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
           JSON.stringify(value),
         );
       };
+      const fileLeases = () => liveFileLeases(read<FileLease[]>("file-leases") ?? [], Date.now());
       const config = () => read<GuestConfig>("config");
       const scheduleAt = (at: number) => {
         const previous = read<number>("wake");
@@ -248,6 +250,30 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
         return { status: "started", result: null };
       };
       return {
+        beginFileTransfer: () =>
+          Effect.sync(() => {
+            const leases = fileLeases();
+            const current = read<ComputerState>("computer");
+            const lease = newFileLease(current, leases, crypto.randomUUID(), Date.now());
+            write("file-leases", [...leases, lease]);
+            write("computer", { ...current!, lastActiveAt: Date.now() });
+            return { lease, computer: current! };
+          }),
+        validFileTransfer: (id: string) =>
+          Effect.sync(() =>
+            validFileLease(
+              read<ComputerState>("computer"),
+              fileLeases().find((lease) => lease.id === id),
+              Date.now(),
+            ),
+          ),
+        endFileTransfer: (id: string) =>
+          Effect.sync(() => {
+            write(
+              "file-leases",
+              fileLeases().filter((lease) => lease.id !== id),
+            );
+          }),
         computer: () => Effect.sync(() => read<ComputerState>("computer")),
         ...makeStorageAdmin(state, env.KITTIES_KEK, ["kitty_state", "effect_ledger"]),
         beginComputer: (kittyId: string, id: string, kind: ComputerOperation["kind"]) =>
@@ -262,6 +288,7 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
                 pending() > 0)
             )
               throw Error("COMPUTER_IN_USE");
+            if (fileLeases().length) throw Error("FILE_TRANSFERS_BUSY");
             const next = beginOperation(current, id, kind, Date.now());
             write("computer", next);
             if (
@@ -401,6 +428,7 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
             })),
             viewers: sockets("viewer").length + sockets("video-viewer").length,
             videoViewers: sockets("video-viewer").length,
+            fileTransfers: fileLeases().length,
             grant: read<Grant>("grant"),
             pending: pending(),
           })),

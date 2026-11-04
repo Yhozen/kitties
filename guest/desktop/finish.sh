@@ -7,6 +7,7 @@ printf '%s\n' 'kitty ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/kitty
 chmod 440 /etc/sudoers.d/kitty
 visudo -cf /etc/sudoers.d/kitty
 
+python3 /usr/local/lib/kitties/kitty-shared.py
 sh /usr/local/lib/kitties/install-desktop.sh
 sudo -n -H -u kitty python3 /usr/local/lib/kitties/desktop-defaults.py
 systemctl daemon-reload
