@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 # Ubuntu 24.04 x86_64. Install: build-essential pkg-config clang libclang-dev
-# libx264-dev libyuv-dev libopus-dev libpulse-dev curl nodejs npm; rustup 1.93.0.
+# libx264-dev libyuv-dev libopus-dev libpulse-dev libxcb1-dev curl nodejs npm; rustup 1.93.0.
 cd "$(dirname "$0")/.."
 source /etc/os-release
 [[ "$ID" = ubuntu && "$VERSION_ID" = 24.04 && "$(uname -m)" = x86_64 ]]
