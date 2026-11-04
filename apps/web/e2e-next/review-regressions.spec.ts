@@ -216,6 +216,13 @@ test("Sleep closes both viewer sockets, releases control and drops queued input 
   await page.goto("/?lang=en");
   await page.getByRole("button", { name: "Abrir escritorio de Luna" }).click();
   await expect(page.locator(".ws-desktop canvas")).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as unknown as TestWindow).testSockets.some((s) => s.url.endsWith("/control")),
+      ),
+    )
+    .toBe(true);
   await page.evaluate(() => {
     const control = (window as unknown as TestWindow).testSockets.find((s) =>
       s.url.endsWith("/control"),
