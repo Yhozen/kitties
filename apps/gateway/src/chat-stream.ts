@@ -1,8 +1,8 @@
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 
-export function chatEvents(
-  events: (after: number) => Effect.Effect<readonly { seq: number; body: string }[], unknown>,
+export function chatEvents<E>(
+  events: (after: number) => Effect.Effect<readonly { seq: number; body: string }[], E>,
   cursor: number,
 ) {
   let after = cursor,

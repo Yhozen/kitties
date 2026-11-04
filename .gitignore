@@ -12,6 +12,8 @@ node_modules/
 .vite/
 .vite-plus/
 dist/
+coverage/
+test-results/
 apps/*/dist/
 packages/*/dist/
 guest/*/dist/

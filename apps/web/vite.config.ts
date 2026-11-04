@@ -1,9 +1,10 @@
 import { defineConfig } from "vite-plus";
 import preact from "@preact/preset-vite";
 import tailwindcss from "@tailwindcss/postcss";
+import { foldkit } from "@foldkit/vite-plugin";
 
 export default defineConfig({
-  plugins: [preact()],
+  plugins: [preact(), foldkit()],
   css: { postcss: { plugins: [tailwindcss()] } },
   server: {
     headers: { "Service-Worker-Allowed": "/" },
