@@ -72,7 +72,7 @@
         "desktop",
         "mobile"
       ],
-      "mode": "built PWA; mocked application API and cookie-protected manifest fixture"
+      "mode": "built web client; mocked application API and cookie-protected manifest fixture"
     },
     "cloudBrowser": {
       "date": "2026-11-02T03:00:27.793Z",

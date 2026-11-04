@@ -1,6 +1,6 @@
 # Security policy
 
-The supported application is the current Cloudflare Effect deployment and PWA. Legacy native
+The supported application is the current Cloudflare Effect deployment and web client. Legacy native
 binaries are retired. Cloudflare Access limits owner routes; the Worker verifies identity and
 same-origin writes. Secrets use AES-GCM envelopes. Guest commands are fenced by identity,
 generation and epoch. Encrypted exports have a 30-day lock and a Mac escrow copy of the KEK.

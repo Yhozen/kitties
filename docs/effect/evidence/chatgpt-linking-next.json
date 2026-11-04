@@ -50,7 +50,7 @@
         "desktop",
         "mobile"
       ],
-      "mode": "mocked owner API on built PWA"
+      "mode": "mocked owner API on built web client"
     },
     "build": "passed"
   },

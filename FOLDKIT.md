@@ -2,6 +2,7 @@
 
 Adapted from the Foldkit 0.170.0 scaffold for this Vite+ monorepo. Source revision
 and license are recorded in [.agents/skills/UPSTREAM.md](.agents/skills/UPSTREAM.md).
+Kitties delivers its frontend as an online website for desktop and mobile browsers.
 
 ## References
 

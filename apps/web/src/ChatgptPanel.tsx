@@ -25,7 +25,7 @@ export default function ChatgptPanel() {
   };
   return <section>
     <h3>{t("Use your ChatGPT plan")}</h3>
-    <p>{t("Link once using the Mac helper. After linking, Puppies works from the PWA on any device.")}</p>
+    <p>{t("Link once using the Mac helper. After linking, use Puppies in a browser on any device.")}</p>
     <p>{t("ChatGPT plan usage is not available yet. Verify your connection to check access.")}</p>
     {!callback&&<p>{t("On your Mac, run:")} <code>pnpm chatgpt:connect --stage {location.hostname.startsWith("next.")?"next":"prod"}</code></p>}
     {accounts.map(account=><div class="next-provider" key={account.id}>

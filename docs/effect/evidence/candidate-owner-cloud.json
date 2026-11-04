@@ -4,7 +4,7 @@
   "hostname": "candidate.kitties.rccpr.tech",
   "authentication": "Owner confirmed Cloudflare Access sign-in as gabriel@garox.org",
   "checks": [
-    "PWA loads",
+    "web client loads",
     "Health page loads"
   ],
   "ownerConfirmation": "App and Health load",

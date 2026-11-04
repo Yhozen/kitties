@@ -1,6 +1,8 @@
 # Rewrite acceptance evidence
 
 Historical results only: automated tests, fixtures, probes and their setup have been removed.
+The current [frontend setup](../../DEVELOPMENT.md) uses an online browser client.
+Earlier shell delivery checks in these records are historical acceptance, not current requirements.
 
 These probes ran on 2026-11-01. Each JSON file records its scope and limitations. Local workerd
 results establish behavior, not Cloudflare CPU or regional latency. Fixture-model timings exclude

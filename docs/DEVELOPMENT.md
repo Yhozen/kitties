@@ -50,6 +50,12 @@ installed Effect integration; do not skip its postinstall when running checks.
 Effect. Kitties already has the Cloudflare/Alchemy/Effect backend; the frontend
 uses the published Foldkit packages within the same Vite+ workspace.
 
+The frontend runs in desktop and mobile browser tabs and requires a network
+connection. Build standard web pages and browser interactions. The retained
+`apps/web/public/sw.js` URL only unregisters clients from earlier releases and
+clears their shell cache; the application does not register it. Keep this
+retirement endpoint available for returning clients.
+
 | Part | Kitties location and responsibility |
 | --- | --- |
 | Cloudflare | `apps/gateway/src/worker.ts`, Durable Objects and storage run the backend and serve the built web assets. |

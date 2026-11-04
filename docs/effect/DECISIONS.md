@@ -11,7 +11,7 @@ A decision changes only through a new entry that supersedes the old one. Do not 
 | # | Date | Decision | What it removes or changes |
 |---|---|---|---|
 | D1 | 2026-10-31 | **Cloudflare only.** The gateway becomes a Worker with Durable Objects and Alchemy Effect Workflows. | The local gateway, the Docker/Podman and Lima runtimes, the cross-platform CLI binaries (Linux, macOS, Windows, Termux), `kitties -demo`, self-update and the Updates screen. |
-| D2 | 2026-10-31 | **The web UI is the only client**, shipped as an installable PWA. | The Wails desktop app (`desktop/*.go`) and the Android wrapper (`android/`). The Wails and Android code paths in `desktop/frontend/src/api.ts`. |
+| D2 | 2026-10-31 | **The web UI is the only client**. Current delivery requirements are in D17. | The Wails desktop app (`desktop/*.go`) and the Android wrapper (`android/`). The Wails and Android code paths in `desktop/frontend/src/api.ts`. |
 | D3 | 2026-10-31 | **Strangler in place.** The new monorepo lives in this repo and deploys side by side at `next.kitties.rccpr.tech`. The Go deployment stays live and frozen (fixes only) until cutover in Phase 10. | No route-by-route sharing of state: with D5 there is nothing to share. Cutover is a domain switch with a tested rollback. |
 | D4 | 2026-10-31 | **Keep Boat** for cloud desktops. | Other VM providers are not evaluated now. |
 | D5 | 2026-10-31 | **Start fresh.** No Go state is migrated: chats, goals, settings, vault secrets, kitty records and Boat checkpoints. | No importer and no adoption of existing desktops. Old R2 buckets and Boat checkpoints are kept until the owner confirms deletion. |
@@ -83,6 +83,13 @@ migrations.” This supersedes D3's extended parallel rollout and Phase 10's sev
 Use a separate deployment while building; after the functional, recovery and security gates pass,
 switch the production hostname directly. No compatibility bridge, importer or old-state
 reconciliation is required. Retain the old buckets and Boat checkpoints under D5.
+
+## D17 — 2026-11-04: Online browser client
+
+The owner selected a regular website for desktop and mobile browser tabs. This supersedes
+D2's earlier delivery requirements and the shell/phone-notification requirements in the rewrite
+plan. Build the frontend with Foldkit on the existing CAFE stack and Vite+ workspace. The client
+requires a network connection; pending approvals and help remain available in the web UI.
 
 ## T7 — 2026-11-01: agent-desktop FFI exists
 

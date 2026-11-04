@@ -1,3 +1,7 @@
+> Frontend update (2026-11-04): the client is an online website for desktop and mobile
+> browsers. [Development](../DEVELOPMENT.md) defines the current CAFE/Foldkit setup.
+> Earlier shell delivery and phone-notification requirements below are superseded.
+
 > ChatGPT update (2026-11-02): [CHATGPT.md](CHATGPT.md) supersedes the Codex public-client,
 > paste-back and backend-api details below. Use Kitties' dynamic registration, a one-time Mac
 > helper, Cloudflare renewal and the public Responses API. Keep usage disabled through admission.
@@ -40,12 +44,11 @@ command. Its worst problems are architectural:
   - Live streams fall back rects → MJPEG → polling.
   - "always"-risk actions are never enforced (`internal/approvals/approvals.go:162-183`).
 - **Capabilities.** Nothing continues after an approval. Delegation polls synchronously. There is
-  no MCP, connector tools are untyped `{action, text}`, and there is no accessibility tree and no
-  Web Push.
+  no MCP, connector tools are untyped `{action, text}`, and there is no accessibility tree.
 
 **Owner decisions (2026-10-31 / 11-01):**
 - Platform: **Cloudflare only**. The local gateway, Docker/Lima, CLI binaries, self-update, Wails
-  and Android all go. The only client is a **PWA**. Desktops stay on **Boat**.
+  and Android all go. The only client is a **web app**. Desktops stay on **Boat**.
 - Data: **start fresh**, with no migration of any Go state, including Boat checkpoints.
 - Integrations: **Effect AI + MCP first**. Keep **only the ChatGPT/Codex sign-in**, behind a flag.
   Drop the long-tail connectors; generic `http` covers them.
@@ -80,7 +83,7 @@ on 2026-10-01. Phase 3 is the go/no-go gate.
 | Crash/redeploy | work marked interrupted | turns, waits and effects run as Effect Workflows; kittyd reconciles intents after reconnect | redeploy mid-task resumes with no duplicate effects and no owner involvement |
 | Side effects | replay ban by stopping everything | `EffectLedger` in the dispatching actor + guest intent log; unknown outcome → `DurableDeferred` for the owner | kill-after-dispatch never re-sends |
 | State | global mutex, exit on failure | `@effect/sql-sqlite-do` per actor, R2 blobs with lifecycle rules, typed errors per request | no process-wide failure mode |
-| Approvals | held, then nothing | `ApprovalWorkflow`: args digest → decision → runs once → kitty resumes; reminders and expiry; Web Push | approve on a locked phone resumes the turn |
+| Approvals | held, then nothing | `ApprovalWorkflow`: args digest → decision → runs once → kitty resumes; reminders and expiry | approving in the browser after Access authentication resumes the turn |
 | Goals/events | 1-min ticker; drops when busy | per-slot goal workflows; signed webhooks on a bypass path keyed by delivery id; chat inbox queue | 0 drops in a 100-delivery burst |
 | Integrations | 48 untyped connector kinds | Effect AI providers; remote MCP; typed native tools | each MCP server passes or has a written disposition |
 | Perception | pixels + OCR + custom CDP helper | agent-browser (DOM refs) + agent-desktop (AT-SPI refs) via kittyd, pixel fallback | A/B decision rule (Phase 7) |
@@ -89,7 +92,7 @@ on 2026-10-01. Phase 3 is the go/no-go gate.
 ## Target architecture
 
 ```
-PWA (Preact; HttpApi-derived client) ─HTTPS/SSE/WS─▶ Worker "gateway"
+Web app (Preact; HttpApi-derived client) ─HTTPS/SSE/WS─▶ Worker "gateway"
   owner routes: Access + in-Worker identity check (fail closed); explicit allow-list router
   bypass routers (cannot reach /v1): /hooks/*, /guest/*, /.well-known/oauth-*, MCP CIMD path
   ├─ HomeDO (singleton): settings, provider profiles, encrypted secrets, OAuth connections, approval
@@ -135,7 +138,7 @@ Boat REST from the Worker: lifecycle, POST /commands + file write (bootstrap, to
      `Retry-After`). An activity fails only for terminal errors.
    - Never `orDie` inside an activity, and never use `Activity.retry` with a long backoff, because
      it sleeps again on every replay.
-   - Turn workflows use `SuspendOnFailure`, and the PWA offers resume/abandon.
+   - Turn workflows use `SuspendOnFailure`, and the web app offers resume/abandon.
 4. **Bounded run segments.** The limit applies to a segment, from one wake to the next durable
    suspension, not to an activity.
    - Keep each segment under ~10 min of wall time and within `limits.cpu_ms: 300000`.
@@ -173,7 +176,7 @@ Vite Task caching). Pins:
 - The legacy `deploy/cloudflare` stack was kept outside the workspace until cutover, then removed.
 
 ```
-apps/web/              PWA (copied in Phase 3 from desktop/frontend incl. e2e; desktop/ untouched until cutover)
+apps/web/              web app (copied in Phase 3 from desktop/frontend incl. e2e; desktop/ untouched until cutover)
 apps/gateway/          Worker + DOs + workflows; alchemy.run.ts (stack "KittiesNext", stages dev/e2e/next)
 apps/kittyd/           guest daemon
 packages/domain/       Schemas: kitty, chat, turn, step, goal, approval, events, error codes
@@ -243,7 +246,7 @@ Branch `effect/plan` on #13, with one draft PR and no code. New `docs/effect/`:
   - Cloudflare limits: DO SQLite 10 GB, 2 MB rows, 15-min alarms, `cpu_ms` up to 5 min, 32,768
     hibernatable sockets, PITR, R2 locks, 64 MiB Workers;
   - CUA-RESEARCH takeaways.
-- `RISKS.md`: alchemy beta churn, Effect minors, Boat API changes and EU latency, Access + PWA on
+- `RISKS.md`: alchemy beta churn, Effect minors, Boat API changes and EU latency, Access sessions on
   iOS, ChatGPT sign-in ToS, DO streaming cost, MCP protocol mismatch, agent-desktop on Openbox.
   Each has a mitigation and a trigger.
 - `LATENCY-BASELINE.md`: today's numbers, labelled as an *interrupted* baseline (6.3–8.7 s,
@@ -269,7 +272,7 @@ Exit: the draft PR is open in the stack and reviewed. It merges when the stack d
   - `alchemy deploy --stage dev` of a hello Worker + static assets works inside the vp workspace
     without peer errors (alchemy declares a peer on `vite`).
 
-### Phase 3: Walking skeleton, PWA shell and go/no-go spikes (≈1–1.5 weeks)
+### Phase 3: Walking skeleton, web shell and go/no-go spikes (≈1–1.5 weeks)
 - Stack `KittiesNext` (stages dev/e2e/next):
   - Worker with an Effect init and `limits.cpu_ms`.
   - Access app plus an in-Worker identity check.
@@ -278,8 +281,8 @@ Exit: the draft PR is open in the stack and reviewed. It merges when the stack d
   - `packages/api` with `/v1/health` + `/v1/session`.
   - HomeDO/KittyDO/ChatDO on `@effect/sql-sqlite-do` + `Migrator`.
   - Effect logs and traces.
-- `apps/web` copied from `desktop/frontend` (with e2e), plus a manifest, icons and a service worker
-  for the shell. Must be installable on Android Chrome and iOS Safari.
+- `apps/web` copied from `desktop/frontend` (with e2e). The web client must work in desktop
+  and mobile browsers, including Android Chrome and iOS Safari.
 - `packages/testing`: ScriptedLanguageModel and a fake kittyd for the dev/e2e stages.
 - **Spikes.** Each gets thresholds written before it runs, and results go into `RESEARCH.md`:
   1. **Engine semantics.** Prove these behave as documented:
@@ -313,8 +316,9 @@ Exit: the draft PR is open in the stack and reviewed. It merges when the stack d
   7. **MCP probe**: McpClient initialize + listTools from a deployed Worker against GitHub,
      Stripe, Notion, Linear, Atlassian, Slack and Home Assistant. Record the negotiated versions.
      Plan B: a thin Streamable-HTTP client on `effect/http`.
-- Exit: deployed and Access-protected; PWA installable; every spike passes its threshold or has a
-  written decision. If spike 1 fails, the fallback is `NativeEngine`. Its cost is a 5 s poll step
+- Exit: deployed and Access-protected; web client usable in desktop and mobile browsers; every
+  spike passes its threshold or has a written decision. If spike 1 fails, the fallback is
+  `NativeEngine`. Its cost is a 5 s poll step
   per child-wait check (~1,440 steps for a 1-h delegation), and step budgets for Delegation and
   GoalSlot get re-checked.
 
@@ -350,7 +354,7 @@ Exit: the draft PR is open in the stack and reviewed. It merges when the stack d
   - A hold-expiry alarm fires.
   - After a reconnect the client drops unacked input.
   - Port `internal/orchestrator/control_receipt_test.go`.
-- PWA live view: a control WS plus a frame channel; DesktopCare status/restart.
+- Web live view: a control WS plus a frame channel; DesktopCare status/restart.
 - Latency fixture: a guest square changes on click, with per-hop timestamps.
 - Exit:
   - Warm ack p95 < 250 ms and click-to-visible p95 < 500 ms over at least 200 inputs.
@@ -393,7 +397,7 @@ Exit: the draft PR is open in the stack and reviewed. It merges when the stack d
     default to "ask".
   - Native `http` (host allow-list, risk by method), `ntfy` and webhook presets.
   - A basic `ApprovalWorkflow`: hold with an args digest → decision → run once → resume.
-- PWA: chat and settings on the derived client, with the Wails/Android branches removed in
+- Web app: chat and settings on the derived client, with the Wails/Android branches removed in
   `apps/web/src/api.ts`.
 - Run-health table and Health page.
 - Exit:
@@ -466,19 +470,18 @@ Exit: the draft PR is open in the stack and reviewed. It merges when the stack d
 - **Approvals, full**:
   - Trust streaks (idempotent), a rules UI, reminders and expiry.
   - A decision that loses the race against expiry returns 409.
-  - Push approvals: either the service worker opens the approval page behind Access, or the
-    action carries a signed, single-use 5-min token.
+  - Open pending approvals in the web app behind Access; reauthenticate before deciding.
 - Delegation as child workflows, using the deterministic fan-out pattern from spike 1, depth ≤ 2.
   The backup-kitty handoff stays.
-- **Notifications**:
-  - Web Push (`@block65/webcrypto-web-push`), with subscriptions stored in HomeDO and an Access
-    session length that suits the PWA; ntfy/Telegram optional.
+- **Notifications (historical backend contracts)**:
+  - The existing delivery workflow and stored subscriptions remain backend compatibility
+    contracts. The current web client exposes pending work through its approval and help views.
   - Real 10-min folding; notify test and event selection.
   - An at-most-once digest, also on demand.
 - Kitty journal, limits form with `day_actions`, and the `limit` tool.
 - Exit:
   - A 100-delivery burst with duplicates produces exactly one run per delivery.
-  - Approving from a locked phone with an expired Access session resumes the turn.
+  - Reauthenticating from a mobile browser and approving resumes the turn.
   - The goal-chain reconciler test passes.
 
 ### Phase 9: Integrations (≈1.5 weeks)
