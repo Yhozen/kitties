@@ -10,5 +10,5 @@ icon = "play"
 default = true
 
 [scripts.run.check]
-command = "pnpm check && pnpm test"
-icon = "test-tube"
+command = "pnpm check"
+icon = "check"

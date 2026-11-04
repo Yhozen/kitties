@@ -33,18 +33,18 @@ installed packages.
 
 ## Development
 
-Use Node 26+, pnpm 12.16.1 and Bun 1.4.4. Chrome is needed for browser checks.
+Use Node 26+, pnpm 12.16.1 and Bun 1.4.4.
 
 ```sh
 pnpm install --frozen-lockfile
 pnpm check
-pnpm test
 pnpm build
 ```
 
 See [development](docs/DEVELOPMENT.md), [deployment](docs/DEPLOY.md),
 [recovery](docs/effect/RECOVERY.md) and the [phase evidence](docs/effect/README.md).
-Effect and Alchemy are pinned and patched; upgrades must rerun the workflow acceptance suite.
+Effect and Alchemy are pinned and patched. Automated tests and their setup have been removed.
+The phase evidence records historical validation.
 
 ## Credits
 

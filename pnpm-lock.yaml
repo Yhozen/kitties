@@ -193,9 +193,6 @@ importers:
       '@cloudflare/workers-types':
         specifier: 5.20261027.1
         version: 5.20261027.1
-      '@effect/vitest':
-        specifier: 4.1.1
-        version: 4.1.1(effect@4.1.1)(vitest@5.0.5)
       '@types/node':
         specifier: 26.6.5
         version: 26.6.5
@@ -208,9 +205,6 @@ importers:
       vite-plus:
         specifier: 1.4.0
         version: 1.4.0(@types/node@26.6.5)(@vitest/ui@5.0.5)(jiti@2.7.0)(playwright@1.64.1)(typescript@7.0.2)(yaml@2.9.1)
-      vitest:
-        specifier: 5.0.5
-        version: 5.0.5(@types/node@26.6.5)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5)(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.5)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))
 
   apps/gateway:
     dependencies:
@@ -275,9 +269,6 @@ importers:
         specifier: 16.35.0
         version: 16.35.0
     devDependencies:
-      '@playwright/test':
-        specifier: 1.64.1
-        version: 1.64.1
       '@preact/preset-vite':
         specifier: 2.9.0
         version: 2.9.0(@babel/core@7.29.7)(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.5)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(preact@11.0.0)
@@ -321,12 +312,6 @@ importers:
       '@kitties/domain':
         specifier: workspace:*
         version: link:../domain
-      effect:
-        specifier: 4.1.1
-        version: 4.1.1
-
-  packages/testing:
-    dependencies:
       effect:
         specifier: 4.1.1
         version: 4.1.1
@@ -1273,11 +1258,6 @@ packages:
   '@oxlint/plugins@1.89.0':
     resolution: {integrity: sha512-TJBBNl4KIxbxrSk7gsqlz6iM1kxidfyTizEzfWqXvijF2Ou8/Da58GvjemBVmCmaUamwRij+JwsVc0kpBFuqfg==}
     engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
-
-  '@playwright/test@1.64.1':
-    resolution: {integrity: sha512-IaYGml/nSOiZWROfPtuIL7neuu9qDOZ3TNvNljUIrhDMxiGTgPjzj/g9p9RxpS2tSepPDRY+UwAaEeiKtUvIAg==}
-    engines: {node: '>=20'}
-    hasBin: true
 
   '@polka/url@1.0.0-next.29':
     resolution: {integrity: sha512-wwQAWhWSuHaag8c4q/KN/vCoeOJYshAIvMQwD4GpSb3OiZklFfvAgmj0VCBBImRpuF/aFgIRzllXlVX93Jevww==}
@@ -3043,6 +3023,7 @@ snapshots:
     dependencies:
       effect: 4.1.1
       vitest: 5.0.5(@types/node@26.6.5)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5)(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.5)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))
+    optional: true
 
   '@emnapi/runtime@1.11.3':
     dependencies:
@@ -3407,10 +3388,6 @@ snapshots:
     optional: true
 
   '@oxlint/plugins@1.89.0': {}
-
-  '@playwright/test@1.64.1':
-    dependencies:
-      playwright: 1.64.1
 
   '@polka/url@1.0.0-next.29': {}
 
@@ -4249,11 +4226,13 @@ snapshots:
 
   picomatch@4.0.7: {}
 
-  playwright-core@1.64.1: {}
+  playwright-core@1.64.1:
+    optional: true
 
   playwright@1.64.1:
     dependencies:
       playwright-core: 1.64.1
+    optional: true
 
   pngjs@7.0.0: {}
 

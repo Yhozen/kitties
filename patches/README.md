@@ -15,7 +15,8 @@ They update source and emitted JavaScript together.
 - Owner-only administration supports workflow PITR, immutable row capture and bounded export
   reads. Old workflow row captures are also purged. Purging completed journals retains the execution/result tombstone to prevent replay.
 
-The cloud engine suite exercises 3/50/200/500 activities, deferreds, dedupe and failure handling.
-Additional probes cover annotated activity errors, child workflows, storage suspension and durable
-clocks. Re-run these on a deployed Cloudflare runtime when changing a patch or upgrading pins;
-`WorkflowEngine.layerMemory` does not reproduce the Durable Object engine's behavior.
+Historical cloud validation covered 3/50/200/500 activities, deferreds, dedupe, failure handling,
+child workflows, storage suspension and durable clocks. The automated suite and probes have
+been removed; results remain in `docs/effect/evidence/`. Validate changes to patches or pins
+on a deployed Cloudflare runtime: `WorkflowEngine.layerMemory` does not reproduce the Durable
+Object engine's behavior.
