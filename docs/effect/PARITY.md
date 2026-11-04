@@ -22,7 +22,7 @@ Owner confirmation refers to D1–D16 in [DECISIONS.md](DECISIONS.md), not to ru
 | GIF replay becomes client slideshow | changed | 7 | D8 |
 | Goals, run-now, journal, limits, backup kitty, delegation | changed | 8 | D8 |
 | Approval decisions, rules, reminders, trust, expiry | changed | 8 | D8 |
-| Notifications, digest, event selection, Web Push | changed | 8 | D2 |
+| Notification delivery and digest | backend contracts retained; browser controls retired on 2026-11-04 | 8 | D2 |
 | Signed webhook delivery and deduplication | changed | 8 | D8 |
 | GitHub, Stripe, Notion, Linear, Atlassian, Slack, Home Assistant via MCP | changed | 5/9 | D6 |
 | Google Workspace and Microsoft 365 minimal native tools | changed | 9 | D6 |

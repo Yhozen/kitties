@@ -1,7 +1,7 @@
 # A kitty's desktop
 
 Each active kitty has a persistent Boat VM. The `kittyd` daemon connects outbound to Cloudflare
-over a scoped WebSocket. The PWA can watch live frames, take control, send input and use the
+over a scoped WebSocket. The web client can watch live frames, take control, send input and use the
 clipboard. The model uses DOM/accessibility references when possible and screenshots otherwise.
 
 Start, sleep, restore and upgrade are durable operations visible in the desktop panel. Sleep

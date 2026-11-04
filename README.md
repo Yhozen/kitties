@@ -8,7 +8,7 @@ packages, `/v1/kitties` routes, `KittyDO`, `kittyd`, Cloudflare resources and th
 address) keep the upstream spelling so existing state and integrations keep working.
 
 Open **[kitties.rccpr.tech](https://kitties.rccpr.tech)** and sign in through Cloudflare Access.
-The installable PWA is the client on desktop and mobile. Production runs TypeScript and Effect
+The web client runs in desktop and mobile browsers. Production runs TypeScript and Effect
 on Cloudflare Workers, SQLite Durable Objects and Alchemy Effect Workflows.
 
 - Streamed chats, group conversations, persistent memory and reusable skills.
@@ -38,13 +38,15 @@ Use Node 26+, pnpm 12.16.1 and Bun 1.4.4.
 ```sh
 pnpm install --frozen-lockfile
 pnpm check
+pnpm test
 pnpm build
 ```
 
 See [development](docs/DEVELOPMENT.md), [deployment](docs/DEPLOY.md),
 [recovery](docs/effect/RECOVERY.md) and the [phase evidence](docs/effect/README.md).
-Effect and Alchemy are pinned and patched. Automated tests and their setup have been removed.
-The phase evidence records historical validation.
+The frontend is moving to Foldkit on the CAFE stack: Cloudflare, Alchemy, Foldkit and Effect.
+Effect and Alchemy are pinned and patched. See [testing](docs/TESTING.md) for the current
+behavior suite; the phase evidence records historical validation.
 
 ## Credits
 

@@ -66,7 +66,8 @@ Historical reports in `docs/effect/evidence/` are not the current suite.
 ## Foldkit and installed skills
 
 CAFE means Cloudflare, Alchemy, Foldkit and Effect. The existing gateway and
-Alchemy stack supply the backend; Foldkit is the frontend framework. Read
+Alchemy stack supply the backend; Foldkit is the frontend framework. The client
+runs in desktop and mobile browser tabs and requires a network connection. Read
 [FOLDKIT.md](FOLDKIT.md) for conventions and [development](docs/DEVELOPMENT.md)
 for the package and runtime boundaries.
 

@@ -47,7 +47,7 @@ after that workflow is on the default branch. A direct restricted-token publish 
 
 ## Production verification and rollback
 
-After deploy, authenticate through Access and verify `/v1/health`, `/v1/session`, the PWA, a
+After deploy, authenticate through Access and verify `/v1/health`, `/v1/session`, the web app, a
 completed desktop screenshot, duplicate message receipt and replay. The completed cutover also
 ran an actual ChatDO PITR and guest credential rotation; see [cutover evidence](effect/evidence/production-cutover-cloud.json).
 

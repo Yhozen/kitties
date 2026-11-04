@@ -1,8 +1,11 @@
 # Architecture
 
-The Preact PWA talks to a Cloudflare Worker over HTTPS, SSE and WebSockets. Cloudflare Access
+The web client talks to a Cloudflare Worker over HTTPS, SSE and WebSockets. Cloudflare Access
 and an in-Worker owner check protect the application. Guest, signed-hook and OAuth callback
 hosts are separate ingress Workers and cannot reach owner routes.
+
+The frontend is an online website for desktop and mobile browsers. It currently boots Preact
+and is moving to Foldkit on the CAFE stack; see [development](DEVELOPMENT.md).
 
 | Component | Owns |
 |---|---|

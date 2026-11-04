@@ -2,7 +2,7 @@ export default {
   "Load earlier messages": "Carregar mensagens anteriores",
   "Retry previous registration": "Tentar o registro anterior novamente",
   "Use your ChatGPT plan": "Use seu plano do ChatGPT",
-  "Link once using the Mac helper. After linking, Puppies works from the PWA on any device.": "Vincule uma vez com o assistente do Mac. Depois, use Puppies pela PWA em qualquer dispositivo.",
+  "Link once using the Mac helper. After linking, use Puppies in a browser on any device.": "Vincule uma vez com o assistente do Mac. Depois, use Puppies em um navegador em qualquer dispositivo.",
   "ChatGPT plan usage is not available yet. Verify your connection to check access.": "O uso do plano do ChatGPT ainda não está disponível. Verifique a conexão para conferir o acesso.",
   "On your Mac, run:": "No seu Mac, execute:",
   "Responses connection verified": "Conexão do Responses verificada",

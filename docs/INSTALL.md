@@ -5,8 +5,8 @@
 3. Create a kitty with a name, soul and provider. Create a conversation and send a message.
 4. Start its desktop when a task needs a browser or graphical application. First installation can
    take many minutes; Health and the desktop panel show progress. A retry reuses installed steps.
-5. Install the PWA from your browser's install menu; on iPhone use Share → Add to Home Screen.
-   The same URL works on desktop and mobile.
+
+The same URL works in desktop and mobile browsers. A network connection is required.
 
 Use Approvals and Help when a task needs a decision. Approving resumes the waiting work
 automatically. Settings also holds MCP connections, Google/Microsoft authorization and the vault.

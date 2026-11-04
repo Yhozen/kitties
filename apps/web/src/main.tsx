@@ -3,17 +3,7 @@ import App from "./NextShell";
 import "./index.css";
 import "./themes.css";
 import { applyMode, savedMode } from "./theme";
-import serviceWorkerUrl from "./sw.js?worker&url";
 
 applyMode(savedMode());
 
 render(<App />, document.getElementById("root")!);
-
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    void navigator.serviceWorker.register(serviceWorkerUrl, {
-      scope: "/",
-      type: import.meta.env.DEV ? "module" : "classic",
-    }).catch(() => {});
-  });
-}

@@ -1,12 +1,12 @@
 # Kitties documentation
 
 Production is the Cloudflare Effect application at [kitties.rccpr.tech](https://kitties.rccpr.tech).
-The client is an installable PWA, with Boat desktops. The Go, CLI, Wails, Android, Docker and Lima
+The web client runs in desktop and mobile browsers, with Boat desktops. The Go, CLI, Wails, Android, Docker and Lima
 implementations were retired after production smoke and recovery checks passed.
 
 | Guide | Purpose |
 |---|---|
-| [Install](INSTALL.md) | Sign in, install the PWA and create your first kitty |
+| [First steps](INSTALL.md) | Sign in and create your first kitty |
 | [Configuration](CONFIGURATION.md) | Providers, connections, vault and goals |
 | [Desktop](DESKTOP.md) | Watch, control, sleep and restore a desktop |
 | [Autonomy](AUTONOMY.md) | Approvals, help, goals, webhooks and delegation |

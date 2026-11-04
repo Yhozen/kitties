@@ -181,8 +181,8 @@ segmenter in DurableObjectEngine. Application workflows must keep segments below
 use durable clocks for every poll, and split attempts into children. Do not interrupt a side
 effect with `Effect.timeout`; reconcile its durable receipt instead.
 
-The PWA shell passes four Chrome desktop/mobile tests, including offline navigation with owner
-APIs excluded from the service worker cache. Real iOS installation remains untested.
+The former browser shell passed four Chrome desktop/mobile checks. These are historical
+results; current frontend requirements are in [development](../DEVELOPMENT.md).
 
 `alchemy dev --stage dev` replaced the earlier cloud dev resource with a local resource because
 both use the same stage state. Production was unaffected. Local development now uses the
