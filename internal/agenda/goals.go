@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/madkoding/kitties/internal/statefs"
 )
 
 // Goal is something a kitty pursues on its own: on a schedule, when a service reports
@@ -95,8 +97,18 @@ func NewStore(path string) (*Store, error) {
 	if err := json.Unmarshal(data, &list); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
+	interrupted := false
 	for _, g := range list {
+		if g.LastResult == "running" {
+			g.LastResult = "interrupted"
+			interrupted = true
+		}
 		s.goals[g.ID] = g
+	}
+	if interrupted {
+		if err := s.save(); err != nil {
+			return nil, err
+		}
 	}
 	return s, nil
 }
@@ -114,10 +126,10 @@ func (s *Store) save() error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
+	if err := statefs.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(s.path, data, 0o600)
+	return statefs.WriteFile(s.path, data, 0o600)
 }
 
 func (s *Store) listLocked(kitty string) []*Goal {

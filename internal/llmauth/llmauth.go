@@ -27,7 +27,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/madkoding/kitties/internal/maintenance"
 	"github.com/madkoding/kitties/internal/provider"
+	"github.com/madkoding/kitties/internal/statefs"
 )
 
 // Endpoints are the services' addresses; tests point them at a fake.
@@ -127,7 +129,7 @@ func (s *Store) Save(c Credential) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := os.MkdirAll(s.dir, 0o700); err != nil {
+	if err := statefs.MkdirAll(s.dir, 0o700); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(c, "", "  ")
@@ -135,10 +137,10 @@ func (s *Store) Save(c Credential) error {
 		return err
 	}
 	tmp := s.path(c.Kind) + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	if err := statefs.WriteFile(tmp, data, 0o600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, s.path(c.Kind))
+	return statefs.Rename(tmp, s.path(c.Kind))
 }
 
 // Delete forgets the kind's credential.
@@ -148,7 +150,7 @@ func (s *Store) Delete(kind string) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := os.Remove(s.path(kind)); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := statefs.Remove(s.path(kind)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	return nil
@@ -156,6 +158,9 @@ func (s *Store) Delete(kind string) error {
 
 // Manager runs the sign-ins and hands the provider clients their credentials.
 type Manager struct {
+	admission  *maintenance.Gate
+	flowWG     sync.WaitGroup
+	closed     bool
 	store      *Store
 	ep         Endpoints
 	httpDo     func(*http.Request) (*http.Response, error)
@@ -179,6 +184,20 @@ func New(dir string) *Manager {
 		now: time.Now, listen: func(addr string) (net.Listener, error) { return net.Listen("tcp", addr) },
 		adcPath: adcPath, findClaude: provider.FindClaude, flows: map[string]*flow{},
 	}
+}
+
+// SetAdmission configures the backup barrier before login requests are served.
+func (m *Manager) SetAdmission(g *maintenance.Gate) { m.admission = g }
+
+// Close drains credential writes before the durable state service closes.
+func (m *Manager) Close() {
+	m.mu.Lock()
+	m.closed = true
+	for _, f := range m.flows {
+		f.cancel()
+	}
+	m.mu.Unlock()
+	m.flowWG.Wait()
 }
 
 // Account is what the settings page shows of one kind's sign-in.
@@ -266,6 +285,14 @@ func (m *Manager) Source(kind string) provider.LoginSource {
 
 // fresh returns kind's credential with a valid access token.
 func (m *Manager) fresh(ctx context.Context, kind string) (Credential, error) {
+	if m.admission != nil {
+		admitted, release, err := m.admission.Enter(ctx)
+		if err != nil {
+			return Credential{}, err
+		}
+		defer release()
+		ctx = admitted
+	}
 	c, ok, err := m.store.Load(kind)
 	if err != nil {
 		return Credential{}, err
@@ -348,6 +375,27 @@ type StartOptions struct {
 
 // Start begins kind's sign-in. An instant one (Google, Claude) is done or failed on return.
 func (m *Manager) Start(kind string, opts StartOptions) (Flow, error) {
+	return m.StartContext(context.Background(), kind, opts)
+}
+
+func (m *Manager) StartContext(ctx context.Context, kind string, opts StartOptions) (Flow, error) {
+	ctx = context.WithoutCancel(ctx)
+	if m.admission != nil {
+		admitted, release, err := m.admission.Enter(ctx)
+		if err != nil {
+			return Flow{}, err
+		}
+		defer release()
+		ctx = admitted
+	}
+	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		return Flow{}, errors.New("gateway is shutting down")
+	}
+	m.flowWG.Add(1)
+	m.mu.Unlock()
+	defer m.flowWG.Done()
 	m.prune()
 	// A new sign-in replaces the one of the same kind still waiting.
 	m.mu.Lock()
@@ -360,11 +408,11 @@ func (m *Manager) Start(kind string, opts StartOptions) (Flow, error) {
 	m.mu.Unlock()
 	switch kind {
 	case "codex":
-		return m.startCodex()
+		return m.startCodex(ctx)
 	case "copilot":
-		return m.startCopilot()
+		return m.startCopilot(ctx)
 	case "gemini":
-		return m.startGoogle(opts)
+		return m.startGoogle(ctx, opts)
 	case "claude-code":
 		p, err := m.findClaude()
 		if err != nil {
@@ -430,16 +478,35 @@ func (m *Manager) prune() {
 }
 
 // track registers a pending flow and runs it; run's credential is saved and the flow ends.
-func (m *Manager) track(f Flow, paste chan string, run func(ctx context.Context) (Credential, error)) Flow {
-	ctx, cancel := context.WithTimeout(context.Background(), flowTTL)
+func (m *Manager) track(parent context.Context, f Flow, paste chan string, run func(ctx context.Context) (Credential, error)) Flow {
+	ctx, cancel := context.WithTimeout(parent, flowTTL)
+	release := func() {}
+	if m.admission != nil {
+		admitted, done, err := m.admission.Enter(ctx)
+		if err != nil {
+			cancel()
+			f.Status, f.Error = Failed, err.Error()
+			return f
+		}
+		ctx, release = admitted, done
+	}
 	f.ID, f.Status = randomText(12), Pending
 	fl := &flow{Flow: f, started: m.now(), cancel: cancel, paste: paste}
 	m.mu.Lock()
+	if m.closed {
+		cancel()
+	}
 	m.flows[f.ID] = fl
+	m.flowWG.Add(1)
 	m.mu.Unlock()
 	go func() {
+		defer m.flowWG.Done()
+		defer release()
 		defer cancel()
 		c, err := run(ctx)
+		if err == nil {
+			err = ctx.Err()
+		}
 		if err == nil {
 			c.UpdatedAt = m.now()
 			err = m.store.Save(c)

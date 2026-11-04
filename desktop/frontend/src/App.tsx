@@ -90,10 +90,13 @@ export default function App() {
   const [waiting, setWaiting] = useState<number | null>(null);
   // Whether this page holds a session that can be ended (a gateway served on a network).
   const [canSignOut, setCanSignOut] = useState(false);
+  const logoutURL = useRef("");
   // The models (to guide a first run) and whether the gateway can give kitties a desktop.
   const [models, setModels] = useState<ProviderInfo[]>([]);
   const [containers, setContainers] = useState(true);
   const [dockerState, setDockerState] = useState<"not_installed" | "not_running" | undefined>();
+  const [runtime, setRuntime] = useState("container");
+  const [runtimeError, setRuntimeError] = useState("");
 
   const user = t("You");
 
@@ -105,6 +108,8 @@ export default function App() {
       setVersion(h.version || "");
       setContainers(h.containers !== false);
       setDockerState(h.containers_state);
+      setRuntime(h.runtime || "container");
+      setRuntimeError(h.containers_error || "");
       api
         .providers()
         .then(setModels)
@@ -119,7 +124,10 @@ export default function App() {
       if (cookieLogin()) {
         api
           .session()
-          .then((s) => setCanSignOut(s.signed_in && !s.local_token))
+          .then((s) => {
+            setCanSignOut(s.signed_in && !s.local_token);
+            logoutURL.current = s.logout_url === "/cdn-cgi/access/logout" ? s.logout_url : "";
+          })
           .catch(() => setCanSignOut(false));
       }
     } catch (e) {
@@ -240,15 +248,19 @@ export default function App() {
       }
     });
   }, [current, refresh]);
+  const fleetChanging = kitties.some((k) => k.status === "starting" || k.status === "stopping");
   useEffect(() => {
-    const id = setInterval(() => {
-      refresh();
-      if (current) {
-        loadSession(current);
-      }
-    }, 15000);
+    const id = setInterval(
+      () => {
+        refresh();
+        if (current) {
+          loadSession(current);
+        }
+      },
+      fleetChanging ? 2000 : 15000,
+    );
     return () => clearInterval(id);
-  }, [current, refresh, loadSession]);
+  }, [current, refresh, loadSession, fleetChanging]);
 
   const workingChats = useMemo(() => {
     const set = new Set<string>();
@@ -295,6 +307,10 @@ export default function App() {
 
   const signOut = async () => {
     await api.logout().catch(() => {});
+    if (logoutURL.current) {
+      location.assign(logoutURL.current);
+      return;
+    }
     setCanSignOut(false);
     setSession(null);
     setChats([]);
@@ -447,7 +463,13 @@ export default function App() {
             </button>
           </div>
         )}
-        {live && <LiveDesktop kitty={live} onClose={() => setLive(null)} />}
+        {live && (
+          <LiveDesktop
+            key={live.id}
+            kitty={kitties.find((k) => k.id === live.id) || live}
+            onClose={() => setLive(null)}
+          />
+        )}
         {current ? (
           <Conversation
             session={session}
@@ -496,6 +518,8 @@ export default function App() {
         <NewKittyModal
           containers={containers}
           dockerState={dockerState}
+          runtime={runtime}
+          runtimeError={runtimeError}
           taken={kitties.map((k) => k.name)}
           onNeedModel={() => {
             go("#new-models-add");
@@ -577,6 +601,7 @@ export default function App() {
         <KittyDrawer
           kitty={kitty}
           kitties={kitties}
+          runtime={runtime}
           onOpenChat={openChat}
           onClose={() => {
             location.hash = lastChat.current ? `#chat/${lastChat.current}` : "";

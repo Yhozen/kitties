@@ -10,6 +10,7 @@ import (
 	"github.com/madkoding/kitties/internal/agenda"
 	"github.com/madkoding/kitties/internal/approvals"
 	"github.com/madkoding/kitties/internal/kitty"
+	"github.com/madkoding/kitties/internal/maintenance"
 	"github.com/madkoding/kitties/internal/memory"
 	"github.com/madkoding/kitties/internal/provider"
 )
@@ -284,17 +285,28 @@ func (s *Service) learnApproval(ap approvals.Approval) {
 
 // distillLater consolidates a kitty's memory in the background, once at a time.
 func (s *Service) distillLater(k *kitty.Kitty) {
+	ctx := s.shutdownCtx
+	release := func() {}
+	if fleet, ok := s.fleet.(interface{ Admission() *maintenance.Gate }); ok {
+		var err error
+		ctx, release, err = fleet.Admission().Enter(ctx)
+		if err != nil {
+			return
+		}
+	}
 	s.mu.Lock()
-	if s.distilling[k.ID] {
+	if s.stopping || s.distilling[k.ID] {
 		s.mu.Unlock()
+		release()
 		return
 	}
 	s.distilling[k.ID] = true
-	s.mu.Unlock()
 	s.wg.Add(1)
+	s.mu.Unlock()
 	go func() {
 		defer s.wg.Done()
-		_, _ = s.distill(context.Background(), k)
+		defer release()
+		_, _ = s.distill(ctx, k)
 		s.mu.Lock()
 		delete(s.distilling, k.ID)
 		s.mu.Unlock()

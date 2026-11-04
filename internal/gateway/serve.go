@@ -255,6 +255,15 @@ func (s *Server) auth(next http.HandlerFunc) http.Handler {
 			fail(w, http.StatusForbidden, errors.New("a request that changes something must come from the gateway's own page"))
 			return
 		}
+		if s.admission != nil && !maintenanceExempt(r) {
+			ctx, release, err := s.admission.Enter(r.Context())
+			if err != nil {
+				fail(w, http.StatusServiceUnavailable, err)
+				return
+			}
+			defer release()
+			r = r.WithContext(ctx)
+		}
 		next(w, r)
 	})
 }

@@ -24,7 +24,7 @@ func (s *Server) handleAccountLogin(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, err)
 		return
 	}
-	f, err := s.fleet.Accounts().Start(r.PathValue("kind"), opts)
+	f, err := s.fleet.Accounts().StartContext(r.Context(), r.PathValue("kind"), opts)
 	if err != nil {
 		// A sign-in that cannot start is the person's to fix (install a program, pick a key).
 		fail(w, http.StatusBadRequest, err)

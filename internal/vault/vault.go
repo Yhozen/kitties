@@ -21,6 +21,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/madkoding/kitties/internal/statefs"
 )
 
 // KeyEnv is the environment variable that holds the key instead of the key file.
@@ -120,6 +122,9 @@ func Open(dir string) (*Store, error) {
 		return nil, fmt.Errorf("%s: %w", s.path, err)
 	}
 	for _, e := range entries {
+		if e == nil {
+			return nil, errors.New("saved secrets contain an invalid entry")
+		}
 		s.list[strings.ToLower(e.Name)] = e
 	}
 	return s, nil
@@ -149,10 +154,10 @@ func loadKey(dir string) ([]byte, error) {
 	if _, err := rand.Read(key); err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := statefs.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	return key, os.WriteFile(path, []byte(base64.StdEncoding.EncodeToString(key)+"\n"), 0o600)
+	return key, statefs.WriteFile(path, []byte(base64.StdEncoding.EncodeToString(key)+"\n"), 0o600)
 }
 
 // clean is a secret's name as it is kept, or why it is not one.
@@ -174,14 +179,14 @@ func (s *Store) save() error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
+	if err := statefs.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
 		return err
 	}
 	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
+	if err := statefs.WriteFile(tmp, raw, 0o600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, s.path)
+	return statefs.Rename(tmp, s.path)
 }
 
 // Put saves a secret under a name, for these kitties (by id); one with the name is replaced.

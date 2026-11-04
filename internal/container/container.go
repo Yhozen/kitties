@@ -21,6 +21,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/madkoding/kitties/internal/computer"
 )
 
 const (
@@ -37,6 +39,7 @@ const (
 
 var (
 	imageRef = regexp.MustCompile(`^[a-z0-9][a-zA-Z0-9._/:@-]{0,254}$`)
+	idRe     = regexp.MustCompile(`^[a-f0-9]{64}$`)
 	nameRe   = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
 	envKey   = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 )
@@ -279,6 +282,12 @@ func New(rt Runtime) *Manager { return &Manager{rt: rt} }
 // Runtime names the binary in use.
 func (m *Manager) Runtime() string { return m.rt.Bin }
 
+func (m *Manager) Capabilities() computer.Capabilities {
+	return computer.Capabilities{Kind: strings.TrimSuffix(filepath.Base(m.rt.Bin), ".exe"), ImageUpdates: true}
+}
+
+func validReference(ref string) bool { return nameRe.MatchString(ref) || idRe.MatchString(ref) }
+
 // Up starts the container and returns its id.
 func (m *Manager) Up(ctx context.Context, s Spec) (string, error) {
 	if err := s.Validate(); err != nil {
@@ -307,7 +316,7 @@ func (m *Manager) Remove(ctx context.Context, name string) error {
 }
 
 func (m *Manager) simple(ctx context.Context, args ...string) error {
-	if !nameRe.MatchString(args[len(args)-1]) {
+	if !validReference(args[len(args)-1]) {
 		return fmt.Errorf("container name %q is not valid", args[len(args)-1])
 	}
 	out, err := runCmd(ctx, m.rt.Bin, args...)
@@ -319,7 +328,7 @@ func (m *Manager) simple(ctx context.Context, args ...string) error {
 
 // Exec runs a command inside the container and returns what it printed.
 func (m *Manager) Exec(ctx context.Context, name string, argv ...string) (string, error) {
-	if !nameRe.MatchString(name) {
+	if !validReference(name) {
 		return "", fmt.Errorf("container name %q is not valid", name)
 	}
 	if len(argv) == 0 {
@@ -348,7 +357,7 @@ func (m *Manager) Pull(ctx context.Context, image string) error {
 // reference names on this machine (one that was pulled since, or built again). An image that is
 // not here at all is not stale: there is nothing newer to move to.
 func (m *Manager) ImageStale(ctx context.Context, name, image string) (bool, error) {
-	if !nameRe.MatchString(name) {
+	if !validReference(name) {
 		return false, fmt.Errorf("container name %q is not valid", name)
 	}
 	if !imageRef.MatchString(image) {
@@ -368,7 +377,7 @@ func (m *Manager) ImageStale(ctx context.Context, name, image string) (bool, err
 // ExecInput is Exec with text on the command's standard input: what must not show in the
 // command line, where any process of the container (or of the host) can read it.
 func (m *Manager) ExecInput(ctx context.Context, name, stdin string, argv ...string) (string, error) {
-	if !nameRe.MatchString(name) {
+	if !validReference(name) {
 		return "", fmt.Errorf("container name %q is not valid", name)
 	}
 	if len(argv) == 0 {
@@ -385,7 +394,7 @@ func (m *Manager) ExecInput(ctx context.Context, name, stdin string, argv ...str
 
 // Screenshot captures the kitty's display as PNG bytes, with the image's own `kitty-shot` tool.
 func (m *Manager) Screenshot(ctx context.Context, name string) ([]byte, error) {
-	if !nameRe.MatchString(name) {
+	if !validReference(name) {
 		return nil, fmt.Errorf("container name %q is not valid", name)
 	}
 	out, err := runCmd(ctx, m.rt.Bin, "exec", name, "kitty-shot")
@@ -407,7 +416,7 @@ type Info struct {
 
 // List returns every container carrying Label, running or not.
 func (m *Manager) List(ctx context.Context) ([]Info, error) {
-	out, err := runCmd(ctx, m.rt.Bin, "ps", "-a", "--filter", "label="+Label, "--format",
+	out, err := runCmd(ctx, m.rt.Bin, "ps", "-a", "--no-trunc", "--filter", "label="+Label, "--format",
 		"{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}|{{.Label \""+NameLabel+"\"}}")
 	if err != nil {
 		return nil, fmt.Errorf("list the containers: %s", tail(string(out), 6))
@@ -435,7 +444,7 @@ func (m *Manager) Status(ctx context.Context, name string) (exists, running bool
 		return false, false, err
 	}
 	for _, i := range infos {
-		if i.Name == name {
+		if i.Name == name || i.ID == name {
 			return true, i.Running, nil
 		}
 	}

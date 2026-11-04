@@ -36,10 +36,16 @@ type chatResponse struct {
 
 func (c *HTTPClient) callChat(ctx context.Context, t target, messages []Message, tools []Tool) (Reply, error) {
 	body := map[string]any{
-		"model":       c.opts.Model,
-		"messages":    chatMessages(messages),
-		"max_tokens":  c.opts.MaxTokens,
-		"temperature": c.temperature(0.7),
+		"model":      c.opts.Model,
+		"messages":   chatMessages(messages),
+		"max_tokens": c.opts.MaxTokens,
+	}
+	if c.kind.Name != "openai" || c.opts.Temperature != nil {
+		body["temperature"] = c.temperature(0.7)
+	}
+	if c.kind.Name == "openai" {
+		delete(body, "max_tokens")
+		body["max_completion_tokens"] = c.opts.MaxTokens
 	}
 	if len(tools) > 0 {
 		defs := make([]map[string]any, 0, len(tools))
@@ -158,6 +164,9 @@ func (c *HTTPClient) callResponses(ctx context.Context, t target, messages []Mes
 		"model": c.opts.Model,
 		"input": input,
 	}
+	if c.kind.Name == "openai" && c.opts.Temperature != nil {
+		body["temperature"] = *c.opts.Temperature
+	}
 	if system != "" {
 		body["instructions"] = system
 	}
@@ -173,7 +182,11 @@ func (c *HTTPClient) callResponses(ctx context.Context, t target, messages []Mes
 	if len(tools) > 0 {
 		defs := make([]map[string]any, 0, len(tools))
 		for _, t := range tools {
-			defs = append(defs, map[string]any{"type": "function", "name": t.Name, "description": t.Description, "parameters": t.Parameters})
+			definition := map[string]any{"type": "function", "name": t.Name, "description": t.Description, "parameters": t.Parameters}
+			if c.kind.Name == "openai" {
+				definition["strict"] = false
+			}
+			defs = append(defs, definition)
 		}
 		body["tools"] = defs
 	}

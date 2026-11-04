@@ -403,7 +403,7 @@ func TestCancelAndReplace(t *testing.T) {
 func TestFlowOutcomes(t *testing.T) {
 	r := newRig(t)
 	paste := make(chan string, 1)
-	f := r.m.track(Flow{Kind: "codex", Method: "browser"}, paste, func(ctx context.Context) (Credential, error) {
+	f := r.m.track(context.Background(), Flow{Kind: "codex", Method: "browser"}, paste, func(ctx context.Context) (Credential, error) {
 		<-ctx.Done()
 		return Credential{}, context.DeadlineExceeded
 	})
@@ -417,11 +417,11 @@ func TestFlowOutcomes(t *testing.T) {
 	if done := r.wait(t, f.ID); !strings.Contains(done.Error, "too long") {
 		t.Errorf("deadline = %+v", done)
 	}
-	g := r.m.track(Flow{Kind: "codex"}, nil, func(context.Context) (Credential, error) { return Credential{}, context.Canceled })
+	g := r.m.track(context.Background(), Flow{Kind: "codex"}, nil, func(context.Context) (Credential, error) { return Credential{}, context.Canceled })
 	if done := r.wait(t, g.ID); !strings.Contains(done.Error, "cancelled") {
 		t.Errorf("cancelled = %+v", done)
 	}
-	h := r.m.track(Flow{Kind: "codex"}, nil, func(context.Context) (Credential, error) { return Credential{Kind: "nope"}, nil })
+	h := r.m.track(context.Background(), Flow{Kind: "codex"}, nil, func(context.Context) (Credential, error) { return Credential{Kind: "nope"}, nil })
 	if done := r.wait(t, h.ID); done.Status != Failed {
 		t.Errorf("an unsavable credential fails = %+v", done)
 	}

@@ -3,10 +3,12 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/madkoding/kitties/internal/config"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -116,12 +118,16 @@ func TestSmokeAKittyAsksBeforePostingAndTellsThePerson(t *testing.T) {
 	if err := os.WriteFile(cfg, text, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	addr, out, errOut, stopGateway := serve(t, "-config", cfg, "gateway")
+	addr, _, errOut, stopGateway := serve(t, "-config", cfg, "gateway")
 	var once sync.Once
 	code := 0
 	stop := func() int { once.Do(func() { code = stopGateway() }); return code }
 	defer stop()
-	tok := strings.TrimSpace(strings.SplitN(strings.SplitN(out.String(), "gateway token: ", 2)[1], " ", 2)[0])
+	tokenConfig, err := config.Load(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok := strings.TrimSpace(mustRead(t, filepath.Join(tokenConfig.DataDirOr(), "gateway.token")))
 
 	call := func(method, path string, body any) map[string]any {
 		t.Helper()

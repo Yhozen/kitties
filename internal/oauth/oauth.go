@@ -26,6 +26,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/madkoding/kitties/internal/maintenance"
 )
 
 // HTTPDo sends a request; tests answer without a network.
@@ -176,8 +178,9 @@ type Store interface {
 
 // Manager runs the flows.
 type Manager struct {
-	store Store
-	mu    sync.Mutex
+	admission *maintenance.Gate
+	store     Store
+	mu        sync.Mutex
 	// pending are the flows waiting for their callback, by state.
 	pending map[string]flow
 	now     func() time.Time
@@ -218,6 +221,9 @@ func origin(redirect string) string {
 
 // client is the app a connector signs in with: its own, the gateway itself, the one Kitties was
 // built with, or one the service registers now (kept in the settings for the next time).
+// SetAdmission configures the backup barrier before background workers start.
+func (m *Manager) SetAdmission(g *maintenance.Gate) { m.admission = g }
+
 func (m *Manager) client(ctx context.Context, connector string, p Provider, app App, redirect string) (id, secret string, err error) {
 	switch {
 	case app.ClientID != "":
@@ -291,6 +297,14 @@ func (m *Manager) Start(connector, redirect string) (string, error) {
 
 // Exchange finishes a sign-in with the code the callback received, and saves the credentials.
 func (m *Manager) Exchange(ctx context.Context, state, code string) (string, error) {
+	if m.admission != nil {
+		admitted, release, err := m.admission.Enter(ctx)
+		if err != nil {
+			return "", err
+		}
+		defer release()
+		ctx = admitted
+	}
 	m.mu.Lock()
 	f, ok := m.pending[state]
 	delete(m.pending, state)
@@ -446,6 +460,14 @@ func (m *Manager) KeepFresh(ctx context.Context, every time.Duration, names func
 }
 
 func (m *Manager) refreshDue(ctx context.Context, names []string, warn func(string, ...any)) {
+	if m.admission != nil {
+		admitted, release, err := m.admission.Enter(ctx)
+		if err != nil {
+			return
+		}
+		defer release()
+		ctx = admitted
+	}
 	for _, name := range names {
 		if !m.Due(name) {
 			continue
@@ -471,6 +493,14 @@ func (m *Manager) Token(ctx context.Context, connector string) (string, error) {
 
 // refresh trades the refresh token for a new access token and saves it.
 func (m *Manager) refresh(ctx context.Context, connector string, creds Credentials) (string, error) {
+	if m.admission != nil {
+		admitted, release, err := m.admission.Enter(ctx)
+		if err != nil {
+			return "", err
+		}
+		defer release()
+		ctx = admitted
+	}
 	if creds.RefreshToken == "" {
 		return "", errors.New("not signed in: connect the account from Settings")
 	}

@@ -1,5 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { api, type Kitty, rectsDesktop, shotData, streamDesktop } from "./api";
+import { DesktopInputQueue } from "./desktop-input";
 import { plainError } from "./friendly";
 import { t } from "./i18n";
 import { IconExpand, IconReduce, IconX } from "./icons";
@@ -81,15 +82,15 @@ function rememberEnlarged(id: string, on: boolean): void {
 }
 
 // loadFrame fetches one frame and resolves once it can be shown without a blank.
-async function loadFrame(path: string): Promise<string> {
-  const src = await shotData(path);
-  if (src.startsWith("data:")) {
-    return src;
-  }
+async function loadFrame(path: string, signal: AbortSignal): Promise<string> {
+  const src = await shotData(path, "image/png", signal);
   await new Promise<void>((done, fail) => {
     const img = new Image();
     img.onload = () => done();
-    img.onerror = () => fail(new Error(t("The desktop did not answer")));
+    img.onerror = () => {
+      if (src.startsWith("blob:")) URL.revokeObjectURL(src);
+      fail(new Error(t("The desktop did not answer")));
+    };
     img.src = src;
   });
   return src;
@@ -142,6 +143,10 @@ export default function LiveDesktop({
   inline?: boolean;
 }) {
   const [frame, setFrame] = useState("");
+  const [waitingForStart, setWaitingForStart] = useState(kitty.status === "starting");
+  useEffect(() => {
+    if (waitingForStart && kitty.status === "running") setWaitingForStart(false);
+  }, [waitingForStart, kitty.status]);
   const [control, setControl] = useState(false);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -149,6 +154,8 @@ export default function LiveDesktop({
   // screenshots when each one before fails.
   const [mode, setMode] = useState<"rects" | "stream" | "poll">("rects");
   const [loaded, setLoaded] = useState(false);
+  const [displayError, setDisplayError] = useState("");
+  const firstFrameWait = 30_000;
   const [clip, setClip] = useState("");
   const [clipNote, setClipNote] = useState("");
   // Whether the person keeps this kitty's desktop enlarged: remembered, per kitty.
@@ -186,7 +193,48 @@ export default function LiveDesktop({
   const wheelAt = useRef(0);
   // queue sends the inputs one after another, in the order they were made: typed text and keys
   // sent side by side would reach the display mixed up.
-  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const lifetime = useRef(0);
+  const inputs = useMemo(
+    () =>
+      new DesktopInputQueue(
+        (id, action, args) => api.inputKitty(kitty.id, id, action, args),
+        setSending,
+        () => {
+          setWaiting(true);
+          clearTimeout(waitTimer.current);
+          waitTimer.current = window.setTimeout(() => setWaiting(false), 2500);
+        },
+        (error, id) => {
+          lifetime.current++;
+          setBusy(false);
+          clearUnsent();
+          setErr(plainError(error instanceof Error ? error.message : String(error)));
+          void api.controlKitty(kitty.id, false, id).catch(() => undefined);
+        },
+      ),
+    [kitty.id],
+  );
+
+  const clearUnsent = () => {
+    clearTimeout(typeTimer.current);
+    clearTimeout(pendingClick.current);
+    clearTimeout(waitTimer.current);
+    typed.current = "";
+    pendingClick.current = undefined;
+    down.current = null;
+    setGesture(null);
+    setTyping(0);
+    setWaiting(false);
+    controlRef.current = false;
+    setControl(false);
+  };
+  const releaseControl = () => {
+    lifetime.current++;
+    setBusy(false);
+    const id = inputs.close();
+    clearUnsent();
+    if (id) void api.controlKitty(kitty.id, false, id).catch(() => undefined);
+  };
 
   // seen is the display showing something new: what the person just did has had its effect.
   const seen = () => setWaiting(false);
@@ -210,10 +258,18 @@ export default function LiveDesktop({
   // The rectangles: the whole display first, then only the parts that changed, drawn over it. One
   // that fails, or shows nothing in a few seconds, gives way to the stream of whole pictures.
   useEffect(() => {
-    if (mode !== "rects") {
+    if (waitingForStart || mode !== "rects") {
       return;
     }
     let got = false;
+    let alive = true;
+    setLoaded(false);
+    const fallback = (why: string) => {
+      if (!alive) return;
+      setDisplayError(plainError(why));
+      releaseControl();
+      setMode("stream");
+    };
     // Updates are drawn in the order they came, each once all its pictures are decoded.
     let drawing: Promise<unknown> = Promise.resolve();
     const stop = rectsDesktop(
@@ -230,6 +286,10 @@ export default function LiveDesktop({
           drawing = drawing
             .then(async () => {
               const pictures = await Promise.all(list.map((r) => createImageBitmap(r.blob)));
+              if (!alive) {
+                pictures.forEach((picture) => picture.close());
+                return;
+              }
               const ctx = canvas.current?.getContext("2d");
               list.forEach((r, i) => {
                 ctx?.drawImage(pictures[i], r.x, r.y);
@@ -239,84 +299,117 @@ export default function LiveDesktop({
               if (ctx && !got) {
                 got = true;
                 setLoaded(true);
+                setDisplayError("");
               }
             })
-            .catch(() => undefined);
+            .catch((error) => fallback(String(error)));
         },
       },
-      () => setMode("stream"),
+      fallback,
     );
     if (!stop) {
       setMode("stream");
       return;
     }
-    const id = setTimeout(() => !got && setMode("stream"), 6000);
+    const id = setTimeout(() => !got && fallback(t("The desktop did not answer")), firstFrameWait);
     return () => {
+      alive = false;
       clearTimeout(id);
       stop();
     };
-  }, [kitty.id, mode, view]);
+  }, [kitty.id, mode, view, firstFrameWait, waitingForStart]);
 
   // The stream; one that fails, or shows nothing in a few seconds, gives way to screenshots.
   useEffect(() => {
-    if (mode !== "stream") {
+    if (waitingForStart || mode !== "stream") {
       return;
     }
     let got = false;
+    let alive = true;
+    setLoaded(false);
+    const fallback = (why: string) => {
+      if (!alive) return;
+      setDisplayError(plainError(why));
+      releaseControl();
+      setMode("poll");
+    };
     const stop = streamDesktop(
       kitty.id,
       (src) => {
+        if (!alive) return;
         got = true;
         setFrame(src);
-        setLoaded(true);
         seen();
       },
-      () => setMode("poll"),
+      fallback,
     );
-    const id = setTimeout(() => !got && setMode("poll"), 6000);
+    const id = setTimeout(() => !got && fallback(t("The desktop did not answer")), firstFrameWait);
     return () => {
+      alive = false;
       clearTimeout(id);
       stop();
     };
-  }, [kitty.id, mode]);
+  }, [kitty.id, mode, firstFrameWait, waitingForStart]);
 
   // Screenshots: one after another, never two at once.
   useEffect(() => {
-    if (mode !== "poll") {
+    if (waitingForStart || mode !== "poll") {
       return;
     }
     let alive = true;
     let n = 0;
+    let last = "";
+    let request: AbortController | undefined;
+    setLoaded(false);
     (async () => {
       while (alive) {
+        request = new AbortController();
+        const timeout = setTimeout(() => request?.abort(), firstFrameWait);
         try {
-          const src = await loadFrame(`/v1/kitties/${kitty.id}/screenshot?live=${n++}`);
+          const src = await loadFrame(
+            `/v1/kitties/${kitty.id}/screenshot?live=${n++}`,
+            request.signal,
+          );
           if (alive) {
             setFrame(src);
             setLoaded(true);
+            setDisplayError("");
             seen();
-            setErr((e) => (e === t("The desktop did not answer") ? "" : e));
+          } else if (src.startsWith("blob:")) {
+            URL.revokeObjectURL(src);
           }
+          if (last.startsWith("blob:")) URL.revokeObjectURL(last);
+          last = src;
         } catch (e) {
           if (alive) {
-            setErr(t("The desktop did not answer"));
+            releaseControl();
+            setLoaded(false);
+            setDisplayError(
+              request.signal.aborted
+                ? t("The desktop did not answer")
+                : plainError(e instanceof Error ? e.message : String(e)),
+            );
           }
+        } finally {
+          clearTimeout(timeout);
         }
         await new Promise((r) => setTimeout(r, controlRef.current ? CONTROL_EVERY : WATCH_EVERY));
       }
     })();
     return () => {
       alive = false;
+      request?.abort();
+      if (last.startsWith("blob:")) URL.revokeObjectURL(last);
     };
-  }, [kitty.id, mode]);
+  }, [kitty.id, mode, firstFrameWait, waitingForStart]);
 
   // Asked for help: the controls are the person's as soon as the window opens.
   useEffect(() => {
-    if (autoControl) {
+    if (autoControl && !waitingForStart) {
       void take(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoControl]);
+  }, [autoControl, waitingForStart]);
 
   // Closing gives the display back, so the kitty never waits on a closed window.
   useEffect(
@@ -324,11 +417,11 @@ export default function LiveDesktop({
       clearTimeout(waitTimer.current);
       clearTimeout(typeTimer.current);
       clearTimeout(pendingClick.current);
-      if (controlRef.current) {
-        api.controlKitty(kitty.id, false).catch(() => undefined);
-      }
+      lifetime.current++;
+      const id = inputs.dispose();
+      if (id) api.controlKitty(kitty.id, false, id).catch(() => undefined);
     },
-    [kitty.id],
+    [kitty.id, inputs],
   );
 
   // What leaving the window does: a card goes back from the window, a window closes.
@@ -351,20 +444,11 @@ export default function LiveDesktop({
   }, [windowed, inline, onClose]);
 
   const send = (action: string, args: Record<string, unknown>) => {
-    setSending((n) => n + 1);
-    queue.current = queue.current.then(() =>
-      api
-        .inputKitty(kitty.id, action, args)
-        .catch((e) => setErr(plainError((e as Error).message)))
-        .finally(() => {
-          setSending((n) => Math.max(0, n - 1));
-          // The display answers a moment later: until it shows a change (or a while passes) the
-          // person is told it is being waited for.
-          setWaiting(true);
-          clearTimeout(waitTimer.current);
-          waitTimer.current = window.setTimeout(() => setWaiting(false), 2500);
-        }),
-    );
+    if (!inputs.enqueue(action, args)) {
+      setErr(t("Too many inputs are waiting. Wait for them to finish."));
+      return false;
+    }
+    return true;
   };
 
   // ring shows where an input went, for a moment.
@@ -375,17 +459,32 @@ export default function LiveDesktop({
   };
 
   const take = async (on: boolean) => {
+    const at = ++lifetime.current;
     setBusy(true);
     setErr("");
+    let id = inputs.control;
+    if (!on) {
+      id = inputs.close();
+      clearUnsent();
+    }
     try {
-      setControl(await api.controlKitty(kitty.id, on));
-      if (on) {
-        setTimeout(() => surface.current?.focus(), 0);
+      const grant = await api.controlKitty(kitty.id, on, id);
+      if (at !== lifetime.current) {
+        if (grant.control_id)
+          void api.controlKitty(kitty.id, false, grant.control_id).catch(() => undefined);
+        return;
       }
-    } catch (e) {
-      setErr(plainError((e as Error).message));
+      if (on && (!grant.held || !grant.control_id))
+        throw new Error(t("The desktop did not answer"));
+      if (on) inputs.open(grant.control_id!);
+      controlRef.current = grant.held;
+      setControl(grant.held);
+      if (on) setTimeout(() => surface.current?.focus(), 0);
+    } catch (error) {
+      if (at === lifetime.current)
+        setErr(plainError(error instanceof Error ? error.message : String(error)));
     } finally {
-      setBusy(false);
+      if (at === lifetime.current) setBusy(false);
     }
   };
 
@@ -436,10 +535,11 @@ export default function LiveDesktop({
   const flushTyped = () => {
     clearTimeout(typeTimer.current);
     if (typed.current) {
-      send("type", { text: typed.current });
+      if (!send("type", { text: typed.current })) return false;
       typed.current = "";
     }
     setTyping(0);
+    return true;
   };
 
   const onMouseDown = (e: MouseEvent) => {
@@ -478,7 +578,7 @@ export default function LiveDesktop({
       return;
     }
     e.preventDefault();
-    flushTyped();
+    if (!flushTyped()) return;
     const to = point(e);
     if (Math.abs(to.x - from.x) > 4 || Math.abs(to.y - from.y) > 4) {
       ring(to, "drag");
@@ -517,7 +617,7 @@ export default function LiveDesktop({
     }
     wheelAt.current = now;
     ring(point(e), e.deltaY < 0 ? "up" : "down");
-    send("move", point(e));
+    if (!flushTyped() || !send("move", point(e))) return;
     send("scroll", { direction: e.deltaY < 0 ? "up" : "down", amount: 2 });
   };
 
@@ -532,12 +632,16 @@ export default function LiveDesktop({
     const keys = xKeys(e);
     if (keys) {
       e.preventDefault();
-      flushTyped();
+      if (!flushTyped()) return;
       send("key", { keys });
       return;
     }
     if (e.key.length === 1) {
       e.preventDefault();
+      if (new TextEncoder().encode(typed.current + e.key).length > 2000) {
+        setErr(t("Too many inputs are waiting. Wait for them to finish."));
+        return;
+      }
       typed.current += e.key;
       setTyping(typed.current.length);
       clearTimeout(typeTimer.current);
@@ -549,7 +653,7 @@ export default function LiveDesktop({
     const text = e.clipboardData?.getData("text") || "";
     if (control && text) {
       e.preventDefault();
-      flushTyped();
+      if (!flushTyped()) return;
       send("type", { text: text.slice(0, 2000) });
     }
   };
@@ -581,6 +685,15 @@ export default function LiveDesktop({
     activity = { tone: "ready", text: t("Ready: click, drag, scroll or type on the picture") };
   }
 
+  const liveState = waitingForStart
+    ? kitty.error || t("Starting the computer…")
+    : displayError
+      ? t("The desktop did not answer")
+      : !loaded
+        ? t("Connecting to the desktop…")
+        : control
+          ? t("You have the controls: {name} waits", { name: kitty.name })
+          : t("Watching live");
   const name = t("{name}'s desktop", { name: kitty.name });
   const content = (
     <>
@@ -588,12 +701,10 @@ export default function LiveDesktop({
         <div class="flex items-center gap-2 flex-wrap shrink-0">
           <h2 class="font-mono text-base tracking-wide flex-1 min-w-0 truncate">{name}</h2>
           <span
-            class={`state-pill max-w-full ${control ? "is-working" : "is-ok"}`}
+            class={`state-pill max-w-full ${displayError || !loaded || control ? "is-working" : "is-ok"}`}
             data-testid="live-state"
           >
-            {control
-              ? t("You have the controls: {name} waits", { name: kitty.name })
-              : t("Watching live")}
+            {liveState}
           </span>
           {control ? (
             <button
@@ -627,12 +738,10 @@ export default function LiveDesktop({
       ) : (
         <div class="flex items-center gap-2 flex-wrap">
           <span
-            class={`state-pill max-w-full ${control ? "is-working" : "is-ok"}`}
+            class={`state-pill max-w-full ${displayError || !loaded || control ? "is-working" : "is-ok"}`}
             data-testid="live-state"
           >
-            {control
-              ? t("You have the controls: {name} waits", { name: kitty.name })
-              : t("Watching live")}
+            {liveState}
           </span>
           <span class="flex-1" />
           {control ? (
@@ -713,7 +822,14 @@ export default function LiveDesktop({
               draggable={false}
               onLoad={(e) => {
                 setLoaded(true);
+                setDisplayError("");
                 setDims({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight });
+              }}
+              onError={() => {
+                releaseControl();
+                setLoaded(false);
+                setDisplayError(t("The desktop did not answer"));
+                if (mode === "stream") setMode("poll");
               }}
               onMouseDown={onMouseDown}
               onMouseMove={onMouseMove}
@@ -766,7 +882,13 @@ export default function LiveDesktop({
         )}
         {!loaded && (
           <div class="text-sm text-[var(--t3)] py-20">
-            <span class="spinner" /> {t("Connecting to the desktop…")}
+            {displayError ? (
+              t("The desktop did not answer")
+            ) : (
+              <>
+                <span class="spinner" /> {t("Connecting to the desktop…")}
+              </>
+            )}
           </div>
         )}
       </div>
@@ -788,7 +910,7 @@ export default function LiveDesktop({
               key={keys}
               class="btn-ghost px-2 py-1 text-xs font-mono"
               onClick={() => {
-                flushTyped();
+                if (!flushTyped()) return;
                 send("key", { keys });
                 surface.current?.focus();
               }}
@@ -837,6 +959,11 @@ export default function LiveDesktop({
             "Take control to click and type in it yourself, for what {name} cannot do alone (a password, a captcha). {name} waits meanwhile.",
             { name: kitty.name },
           )}
+        </p>
+      )}
+      {displayError && (
+        <p class="text-sm text-[var(--c-red)] shrink-0" data-testid="live-error">
+          {displayError}
         </p>
       )}
       {err && <p class="text-sm text-[var(--c-red)] shrink-0">{err}</p>}

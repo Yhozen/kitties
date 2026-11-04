@@ -12,6 +12,17 @@
 
 </div>
 
+This branch adds an experimental **Lima VM per kitty**: a persistent Debian computer
+with its own kernel and disk. Run `scripts/run-lima.sh`, or use `--demo` for a scripted
+brain with a real VM. See the [Lima PoC guide](docs/LIMA-POC.md) for setup and boundaries.
+
+Cloud deployments can run a private **Cloudflare gateway with persistent Boat desktops**.
+Each desktop has its own VM, installed tools and browser profile; idle desktops sleep
+with a retained checkpoint. Gateway state survives container replacement, and encrypted
+backups cover gateway records and desktop home files. See the [Cloudflare deployment
+guide](deploy/cloudflare/README.md), [recovery procedures](docs/BACKUPS.md), and
+[implementation plan](docs/CLOUD-PLAN.md).
+
 Kitties is a Go framework for running **NNN bots** at once. Every kitty has a **soul** (a
 personality, yours to shape), a **brain** (the AI provider you pick for it: OpenAI, Anthropic,
 Gemini, Ollama, Groq, OpenRouter, DeepSeek, Qwen, Mistral, Copilot or any OpenAI-compatible server,
@@ -111,7 +122,7 @@ motita's design system.
 
 What the kitty's desktop is made of:
 
-+ **Wallpaper**: Kitties' own picture (a cat looking out over a night city), by madkoding, generated with Qwen AI; `docker/kitty-desktop/wallpaper/wallpaper.jpg`
++ **Wallpaper**: Kitties' own picture (a cat looking out over a night city), by madkoding, generated with Qwen AI; `internal/guest/desktop/wallpaper/wallpaper.jpg`
 + **GTK Theme**: Adwaita dark, by the GNOME project (Debian's `gnome-themes-extra`; `GTK_THEME=Adwaita:dark`)
 + **Window Theme**: [Numix](https://github.com/numixproject/numix-gtk-theme) by The Numix Project (GPL-3.0+), with [Greybird-dark](https://github.com/shimmerproject/Greybird) by the Shimmer Project (GPL-2.0+ or CC-BY-SA-3.0+) as the alternative; only their Openbox themes are kept, with their licences
 + **Icon Theme**: [Lucide](https://lucide.dev) by the Lucide contributors (ISC), drawn as gradient squares by app group

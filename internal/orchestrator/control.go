@@ -6,7 +6,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/madkoding/kitties/internal/desktop"
+	"github.com/madkoding/kitties/internal/computer"
 	"github.com/madkoding/kitties/internal/kitty"
 )
 
@@ -29,18 +29,51 @@ func (m *Manager) Hold(ref string, on bool) (bool, error) {
 	if on && !k.Desktop {
 		return false, fmt.Errorf("%s has no desktop", k.Name)
 	}
+	if on {
+		_, admitted, err := m.admission.Enter(context.Background())
+		if err != nil {
+			return false, err
+		}
+		defer admitted()
+		unlock, ok := m.tryLockComputer(k.ID)
+		if !ok {
+			return false, ErrLifecycleBusy
+		}
+		defer unlock()
+		k, err = m.Get(k.ID)
+		if err != nil {
+			return false, err
+		}
+		if k.Availability == computer.Disabled {
+			return false, ErrDisabled
+		}
+		if k.Operation.Kind == "stop" || k.Operation.Kind == "remove" {
+			return false, ErrDraining
+		}
+	}
 	m.holdMu.Lock()
 	defer m.holdMu.Unlock()
 	if m.holds == nil {
 		m.holds, m.holdStarted = map[string]time.Time{}, map[string]time.Time{}
 	}
+	_, wasHeld := m.holds[k.ID]
 	if on {
 		if _, held := m.holds[k.ID]; !held {
 			m.holdStarted[k.ID] = m.now()
 		}
 		m.holds[k.ID] = m.now()
 	} else {
-		delete(m.holds, k.ID)
+		if grant := m.controls[k.ID]; grant != nil {
+			grant.revoked = true
+			if grant.inFlight == 0 {
+				delete(m.holds, k.ID)
+			}
+		} else {
+			delete(m.holds, k.ID)
+		}
+	}
+	if on || wasHeld {
+		m.touch(k.ID)
 	}
 	return on, nil
 }
@@ -51,6 +84,12 @@ func (m *Manager) Held(id string) bool {
 	defer m.holdMu.Unlock()
 	at, ok := m.holds[id]
 	if ok && m.now().Sub(at) > holdIdle {
+		if grant := m.controls[id]; grant != nil {
+			grant.revoked = true
+			if grant.inFlight > 0 {
+				return true
+			}
+		}
 		delete(m.holds, id)
 		return false
 	}
@@ -81,29 +120,6 @@ func (m *Manager) HoldStarted(id string) time.Time {
 	return m.holdStarted[id]
 }
 
-// Input is what the person does on the display: a click, keys, text, the wheel or a drag. It
-// takes the display over, or keeps it taken.
-func (m *Manager) Input(ctx context.Context, ref string, a desktop.Action) error {
-	argv, err := desktop.Person(a)
-	if err != nil {
-		return err
-	}
-	k, err := m.Get(ref)
-	if err != nil {
-		return err
-	}
-	if _, err := m.Hold(k.ID, true); err != nil {
-		return err
-	}
-	// What the person types may be a password: it goes in on the input, not in the arguments.
-	if a.Name == "type" {
-		_, err = m.ExecInput(ctx, k.ID, fmt.Sprint(a.Args["text"]), desktop.TypeFromInput...)
-		return err
-	}
-	_, err = m.Exec(ctx, k.ID, argv...)
-	return err
-}
-
 // Stream follows the kitty's display live: pictures to read with container.ReadFrame, at most
 // fps a second, until the stream is closed.
 func (m *Manager) Stream(ctx context.Context, ref string, fps, quality int) (io.ReadCloser, error) {
@@ -114,7 +130,21 @@ func (m *Manager) Stream(ctx context.Context, ref string, fps, quality int) (io.
 	if !k.Desktop {
 		return nil, fmt.Errorf("%s has no desktop", k.Name)
 	}
-	return m.ctr().Stream(ctx, k.Container, fps, quality)
+	release, err := m.Acquire(ctx, k.ID)
+	if err != nil {
+		return nil, err
+	}
+	k, err = m.Get(k.ID)
+	if err != nil {
+		release()
+		return nil, err
+	}
+	rc, err := m.ctr().Stream(ctx, computerID(k), fps, quality)
+	if err != nil {
+		release()
+		return nil, err
+	}
+	return &activityStream{ReadCloser: rc, release: release}, nil
 }
 
 // MaxClipboard is the most text the clipboard of a display takes from the person at once.
@@ -149,5 +179,5 @@ func (m *Manager) applyTheme(ctx context.Context, k *kitty.Kitty, reset bool) {
 	if !k.Desktop || name == "" || m.ctr() == nil {
 		return
 	}
-	_, _ = m.ctr().Exec(ctx, k.Container, "kitty-theme", name)
+	_, _ = m.ctr().Exec(ctx, computerID(k), "kitty-theme", name)
 }

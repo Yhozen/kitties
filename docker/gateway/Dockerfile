@@ -19,7 +19,7 @@ COPY cmd ./cmd
 COPY internal ./internal
 COPY configs ./configs
 COPY souls ./souls
-RUN find internal/web/dist -mindepth 1 ! -name placeholder.txt -delete
+RUN mkdir -p internal/web/dist && find internal/web/dist -mindepth 1 ! -name placeholder.txt -delete
 COPY --from=page /src/desktop/frontend/dist/ internal/web/dist/
 ARG VERSION=dev
 ARG TARGETOS

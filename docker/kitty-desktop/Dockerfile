@@ -11,17 +11,17 @@
 # anew. No port is published (the browser's DevTools listens on the container's own loopback only): the
 # orchestrator reaches the container through `docker exec`.
 #
-#   docker build -t ghcr.io/madkoding/kitty-desktop:latest docker/kitty-desktop
+#   docker build -f docker/kitty-desktop/Dockerfile -t ghcr.io/madkoding/kitty-desktop:latest .
 
 # Lumen (the Openbox fork) with the shelf, at a fixed commit (a commit is its own checksum).
 FROM debian:trixie-slim AS lumen
-ARG LUMEN_COMMIT=91d71aa172c65dd427c752dcfb70860024a5b242
+COPY internal/guest/desktop/versions.env /tmp/kitties-desktop-versions.env
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl build-essential autoconf \
         automake libtool pkg-config gettext autopoint libglib2.0-dev libxml2-dev libpango1.0-dev libcairo2-dev \
         libx11-dev libxft-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libsm-dev librsvg2-dev \
         libimlib2-dev \
     && rm -rf /var/lib/apt/lists/*
-RUN curl -fsSL -o /tmp/lumen.tar.gz "https://github.com/madkoding/lumen-wm/archive/${LUMEN_COMMIT}.tar.gz" \
+RUN . /tmp/kitties-desktop-versions.env && curl -fsSL -o /tmp/lumen.tar.gz "https://github.com/madkoding/lumen-wm/archive/${LUMEN_COMMIT}.tar.gz" \
     && mkdir /tmp/lumen && tar xzf /tmp/lumen.tar.gz -C /tmp/lumen --strip-components=1 \
     && cd /tmp/lumen && ./bootstrap && ./configure --prefix=/usr --sysconfdir=/etc --disable-nls \
     && make -j"$(nproc)" && make DESTDIR=/out install
@@ -33,8 +33,7 @@ RUN curl -fsSL -o /tmp/lumen.tar.gz "https://github.com/madkoding/lumen-wm/archi
 FROM debian:trixie-slim AS extras
 # Lucide's icons (ISC), from npm (lucide-static) at a fixed version and checksum, drawn by
 # lucide/build-theme.py as gradient squares by group of applications.
-ARG LUCIDE_VERSION=1.61.0
-ARG LUCIDE_SHA256=62773cd2ee411ad2e37c1973d1e4c4b49f9a6c57da6b5d5d0abca08756ba75f1
+COPY internal/guest/desktop/versions.env /tmp/kitties-desktop-versions.env
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git python3 woff2 \
         numix-gtk-theme greybird-gtk-theme \
     && rm -rf /var/lib/apt/lists/*
@@ -44,13 +43,13 @@ RUN mkdir -p /out/themes/Numix /out/themes/Greybird-dark /out/doc/numix /out/doc
     && cp /usr/share/doc/numix-gtk-theme/copyright /out/doc/numix/ \
     && cp /usr/share/doc/greybird-gtk-theme/copyright /out/doc/greybird/
 # the menus wear the shelf's dark material, in both themes
-COPY lumen/menu-style.themerc /tmp/menu-style.themerc
+COPY internal/guest/desktop/lumen/menu-style.themerc /tmp/menu-style.themerc
 RUN cat /tmp/menu-style.themerc >> /out/themes/Numix/openbox-3/themerc \
     && cat /tmp/menu-style.themerc >> /out/themes/Greybird-dark/openbox-3/themerc
-COPY fonts/ /tmp/fonts/
+COPY internal/guest/desktop/fonts/ /tmp/fonts/
 RUN for f in /tmp/fonts/*.woff2; do woff2_decompress "$f"; done && mv /tmp/fonts/*.ttf /out/fonts/
-COPY lucide/ /tmp/lucide-map/
-RUN mkdir -p /tmp/lucide \
+COPY internal/guest/desktop/lucide/ /tmp/lucide-map/
+RUN . /tmp/kitties-desktop-versions.env && mkdir -p /tmp/lucide \
     && curl -fsSL -o /tmp/lucide.tgz "https://registry.npmjs.org/lucide-static/-/lucide-static-${LUCIDE_VERSION}.tgz" \
     && echo "${LUCIDE_SHA256}  /tmp/lucide.tgz" | sha256sum -c - \
     && tar xzf /tmp/lucide.tgz -C /tmp/lucide \
@@ -61,7 +60,7 @@ RUN mkdir -p /tmp/lucide \
 FROM debian:trixie-slim AS grab
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev libx11-dev libxext-dev libjpeg-dev \
     && rm -rf /var/lib/apt/lists/*
-COPY kitty-grab.c /tmp/kitty-grab.c
+COPY internal/guest/files/kitty-grab.c /tmp/kitty-grab.c
 RUN gcc -O2 -Wall -Werror -o /kitty-grab /tmp/kitty-grab.c -lX11 -lXext -ljpeg && strip /kitty-grab
 
 FROM debian:trixie-slim
@@ -102,37 +101,41 @@ COPY --from=extras /out/doc/LUCIDE-LICENSE /usr/share/doc/lucide-icons/LICENSE
 COPY --from=extras /out/fonts/ /usr/share/fonts/truetype/kitties/
 RUN fc-cache -f
 # The wallpaper: whatever picture is in wallpaper/ (jpg, png or webp), cropped to the display.
-COPY wallpaper/ /tmp/wallpaper/
+COPY internal/guest/desktop/wallpaper/ /tmp/wallpaper/
 RUN mkdir -p /usr/share/backgrounds/kitties \
     && convert "$(ls /tmp/wallpaper/* | head -n 1)" -resize '1280x800^' -gravity center -extent 1280x800 \
         -quality 90 /usr/share/backgrounds/kitties/wallpaper.jpg \
     && rm -rf /tmp/wallpaper
 
-COPY --chmod=755 entrypoint.sh /usr/local/bin/kitty-entrypoint
-COPY --chmod=755 kitty-shot.sh /usr/local/bin/kitty-shot
-COPY --chmod=755 kitty-ocr.sh /usr/local/bin/kitty-ocr
-COPY --chmod=755 kitty-backup.sh /usr/local/bin/kitty-backup
-COPY --chmod=755 kitty-restore.sh /usr/local/bin/kitty-restore
+COPY --chmod=755 docker/kitty-desktop/entrypoint.sh /usr/local/bin/kitty-entrypoint
+COPY --chmod=755 internal/guest/files/kitty-shot.sh /usr/local/bin/kitty-shot
+COPY --chmod=755 internal/guest/files/kitty-ocr.sh /usr/local/bin/kitty-ocr
+COPY --chmod=755 internal/guest/files/kitty-backup.sh /usr/local/bin/kitty-backup
+COPY --chmod=755 internal/guest/files/kitty-restore.sh /usr/local/bin/kitty-restore
 # "Continue where you left off": the browser keeps session cookies (logins that have no expiry)
 # across a restart, which an update of the desktop is.
-COPY chromium-policy.json /etc/chromium/policies/managed/kitties.json
-COPY --chmod=755 kitty-page.py /usr/local/bin/kitty-page
-COPY --chmod=755 kitty-open.sh /usr/local/bin/kitty-open
-COPY --chmod=755 kitty-launch.sh /usr/local/bin/kitty-launch
-COPY --chmod=755 kitty-install.sh /usr/local/bin/kitty-install
-COPY --chmod=755 kitty-apt.sh /usr/local/sbin/kitty-apt
-COPY --chmod=755 kitty-stream.sh /usr/local/bin/kitty-stream
+COPY internal/guest/files/chromium-policy.json /etc/chromium/policies/managed/kitties.json
+COPY --chmod=755 internal/guest/files/kitty-page.py /usr/local/bin/kitty-page
+COPY internal/guest/files/kitty_browser.py /usr/local/lib/kitties/kitty_browser.py
+COPY --chmod=755 internal/guest/files/kitty-ready.sh /usr/local/bin/kitty-ready
+COPY --chmod=755 internal/guest/files/kitty-quiesce.sh /usr/local/bin/kitty-quiesce
+RUN mkdir -p /etc/kitties && printf '%s\n' '{"executable":"chromium","port":19222,"sandbox":false}' > /etc/kitties/browser.json
+COPY --chmod=755 internal/guest/files/kitty-open.py /usr/local/bin/kitty-open
+COPY --chmod=755 internal/guest/files/kitty-launch.sh /usr/local/bin/kitty-launch
+COPY --chmod=755 internal/guest/files/kitty-install.sh /usr/local/bin/kitty-install
+COPY --chmod=755 internal/guest/files/kitty-apt.sh /usr/local/sbin/kitty-apt
+COPY --chmod=755 internal/guest/files/kitty-stream.sh /usr/local/bin/kitty-stream
 COPY --from=grab --chmod=755 /kitty-grab /usr/local/bin/kitty-grab
-COPY --chmod=755 kitty-clip.sh /usr/local/bin/kitty-clip
-COPY --chmod=755 kitty-theme.sh /usr/local/bin/kitty-theme
-COPY --chmod=755 kitty-shelf-media.sh /usr/local/bin/kitty-shelf-media
-COPY --chmod=755 kitty-shelf-weather.sh /usr/local/bin/kitty-shelf-weather
-COPY --chown=kitty:kitty lumen/rc.xml lumen/menu.xml lumen/autostart /home/kitty/.config/lumen/
+COPY --chmod=755 internal/guest/files/kitty-clip.sh /usr/local/bin/kitty-clip
+COPY --chmod=755 internal/guest/files/kitty-theme.sh /usr/local/bin/kitty-theme
+COPY --chmod=755 internal/guest/files/kitty-shelf-media.sh /usr/local/bin/kitty-shelf-media
+COPY --chmod=755 internal/guest/files/kitty-shelf-weather.sh /usr/local/bin/kitty-shelf-weather
+COPY --chown=kitty:kitty internal/guest/desktop/lumen/rc.xml internal/guest/desktop/lumen/menu.xml internal/guest/desktop/lumen/autostart /home/kitty/.config/lumen/
 # The file manager's settings and the desktop's (wallpaper only).
-COPY --chown=kitty:kitty home/ /home/kitty/
+COPY --chown=kitty:kitty internal/guest/desktop/home/ /home/kitty/
 # An empty desktop: PCManFM draws only the wallpaper, no icons (the shelf has the apps).
 RUN mkdir -p /home/kitty/Desktop && chown kitty:kitty /home/kitty/Desktop
-COPY --chown=kitty:kitty Xresources /home/kitty/.Xresources
+COPY --chown=kitty:kitty internal/guest/desktop/Xresources /home/kitty/.Xresources
 
 USER kitty
 WORKDIR /home/kitty/work

@@ -15,9 +15,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/madkoding/kitties/internal/maintenance"
+
 	"github.com/madkoding/kitties/internal/agenda"
 	"github.com/madkoding/kitties/internal/budget"
 	"github.com/madkoding/kitties/internal/notify"
+	"github.com/madkoding/kitties/internal/statefs"
 )
 
 // Window is how long after the chosen time a summary is still sent, so a gateway that was down
@@ -48,12 +51,14 @@ type Source struct {
 
 // Reporter builds and sends the summaries.
 type Reporter struct {
-	src  Source
-	path string // remembers the day it last sent, so a restart does not repeat it
-	now  func() time.Time
+	admission *maintenance.Gate
+	src       Source
+	path      string // remembers the day it last sent, so a restart does not repeat it
+	now       func() time.Time
 
-	mu   sync.Mutex
-	last string
+	mu      sync.Mutex
+	last    string
+	pending string
 }
 
 // New creates a reporter that keeps its memory of the last send at path.
@@ -61,10 +66,11 @@ func New(src Source, path string) *Reporter {
 	r := &Reporter{src: src, path: path, now: time.Now}
 	if raw, err := os.ReadFile(path); err == nil {
 		var s struct {
-			Last string `json:"last"`
+			Last    string `json:"last"`
+			Pending string `json:"pending"`
 		}
 		if json.Unmarshal(raw, &s) == nil {
-			r.last = s.Last
+			r.last, r.pending = s.Last, s.Pending
 		}
 	}
 	return r
@@ -82,6 +88,9 @@ var counted = []struct{ kind, word string }{
 }
 
 // Build writes the summary of the day before now.
+// SetAdmission configures the backup barrier before background workers start.
+func (r *Reporter) SetAdmission(g *maintenance.Gate) { r.admission = g }
+
 func (r *Reporter) Build(now time.Time) notify.Notification {
 	since := now.Add(-24 * time.Hour)
 	kitties := r.src.Kitties()
@@ -163,6 +172,14 @@ func short(n int) string {
 
 // SendNow sends a summary at once, whatever the hour.
 func (r *Reporter) SendNow(ctx context.Context) error {
+	if r.admission != nil {
+		admitted, release, err := r.admission.Enter(ctx)
+		if err != nil {
+			return err
+		}
+		defer release()
+		ctx = admitted
+	}
 	if r.src.Config().Connector == "" {
 		return errors.New("choose a notification channel first")
 	}
@@ -172,6 +189,17 @@ func (r *Reporter) SendNow(ctx context.Context) error {
 // Tick sends today's summary when its time has come and it was not sent yet. It reports whether
 // it sent one (a failed send is tried again on the next tick, within the window).
 func (r *Reporter) Tick(ctx context.Context) (bool, error) {
+	if r.admission != nil {
+		admitted, release, err := r.admission.Enter(ctx)
+		if err != nil {
+			if errors.Is(err, maintenance.ErrBusy) {
+				return false, nil
+			}
+			return false, err
+		}
+		defer release()
+		ctx = admitted
+	}
 	cfg := r.src.Config()
 	h, m, ok := cfg.DigestAt()
 	if !ok || cfg.Connector == "" {
@@ -182,18 +210,43 @@ func (r *Reporter) Tick(ctx context.Context) (bool, error) {
 	day := now.Format("2006-01-02")
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if now.Before(due) || now.Sub(due) > Window || r.last == day {
+	if now.Before(due) || now.Sub(due) > Window || r.last == day || r.pending == day {
 		return false, nil
 	}
-	if err := r.src.Deliver(ctx, r.compose(ctx, now)); err != nil {
+	// A restart cannot know whether an interrupted delivery reached its recipient.
+	if err := r.save(r.last, day); err != nil {
 		return false, err
 	}
-	r.last = day
-	raw, _ := json.Marshal(map[string]string{"last": day})
-	if err := os.MkdirAll(filepath.Dir(r.path), 0o755); err == nil {
-		_ = os.WriteFile(r.path, raw, 0o600)
+	r.pending = day
+	if err := r.src.Deliver(ctx, r.compose(ctx, now)); err != nil {
+		clearErr := r.save(r.last, "")
+		if clearErr == nil {
+			r.pending = ""
+		}
+		return false, errors.Join(err, clearErr)
 	}
+	if err := r.save(day, ""); err != nil {
+		return true, err
+	}
+	r.last, r.pending = day, ""
 	return true, nil
+}
+
+func (r *Reporter) save(last, pending string) error {
+	raw, err := json.Marshal(struct {
+		Last    string `json:"last"`
+		Pending string `json:"pending,omitempty"`
+	}{Last: last, Pending: pending})
+	if err != nil {
+		return err
+	}
+	if err := statefs.MkdirAll(filepath.Dir(r.path), 0o755); err != nil {
+		return err
+	}
+	if err := statefs.WriteFile(r.path+".tmp", raw, 0o600); err != nil {
+		return err
+	}
+	return statefs.Rename(r.path+".tmp", r.path)
 }
 
 // Run ticks every half minute until ctx ends; a failure goes to logf.

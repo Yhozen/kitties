@@ -1,0 +1,20 @@
+**/.env
+**/.env.*
+**/*.local.yaml
+kitties.yaml
+.kitties
+.git
+**/node_modules
+**/dist
+**/__pycache__
+**/.DS_Store
+**/test-results
+**/e2e/.data*
+**/e2e/.state.json
+kitties
+kitties.exe
+coverage*
+
+# Deployment state may contain secret resource outputs.
+**/.alchemy
+**/.wrangler

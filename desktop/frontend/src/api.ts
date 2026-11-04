@@ -11,7 +11,16 @@ export interface Kitty {
   desktop: boolean;
   container?: string;
   // starting: its desktop is coming up (the first time, its image downloads).
-  status: "created" | "starting" | "running" | "stopped" | "error";
+  status: "created" | "starting" | "running" | "stopping" | "sleeping" | "stopped" | "error";
+  availability?: "enabled" | "sleeping" | "disabled";
+  computer?: {
+    runtime?: string;
+    id?: string;
+    owner_id?: string;
+    generation?: number;
+    checkpoint_id?: string;
+  };
+  operation?: { kind?: string; started_at?: string };
   error?: string;
   connectors?: string[];
   soul: { name?: string; persona?: string; tone?: string; traits?: string[]; skills?: string[] };
@@ -170,6 +179,7 @@ export interface Turn {
   skills?: string[];
   // resumable: the task stopped on its budget and can go on from where it was.
   resumable?: boolean;
+  interrupted?: boolean;
   working?: boolean;
   needs_help?: boolean;
   delegations?: Delegation[];
@@ -623,10 +633,17 @@ export function shotURL(path: string): string {
 }
 
 // shotData loads a screenshot as a data: URL through the API (the only way inside Wails).
-export async function shotData(path: string, mime = "image/png"): Promise<string> {
+export async function shotData(
+  path: string,
+  mime = "image/png",
+  signal?: AbortSignal,
+): Promise<string> {
   const app = window.go?.main?.App;
   if (!app) {
-    return shotURL(path);
+    if (!signal) return shotURL(path);
+    const response = await fetch(shotURL(path), { signal });
+    if (!response.ok) throw await desktopResponseError(response);
+    return URL.createObjectURL(await response.blob());
   }
   const raw = await app.Request("GET", path, "");
   const parsed = JSON.parse(raw) as { status: number; body: string; base64?: string };
@@ -637,7 +654,15 @@ export async function shotData(path: string, mime = "image/png"): Promise<string
 }
 
 export const api = {
-  health: () => request<{ ok: boolean; version: string; containers: boolean; containers_state?: "not_installed" | "not_running" }>("GET", "/v1/health"),
+  health: () =>
+    request<{
+      ok: boolean;
+      version: string;
+      containers: boolean;
+      containers_state?: "not_installed" | "not_running";
+      containers_error?: string;
+      runtime?: string;
+    }>("GET", "/v1/health"),
   kitties: () => request<{ kitties: Kitty[] }>("GET", "/v1/kitties").then((r) => r.kitties || []),
   kitty: (ref: string) =>
     request<{ kitty: Kitty }>("GET", `/v1/kitties/${ref}`).then((r) => r.kitty),
@@ -665,10 +690,13 @@ export const api = {
   startKitty: (ref: string) => request("POST", `/v1/kitties/${ref}/start`),
   // controlKitty takes a kitty's display over (hold) or gives it back; inputKitty is a click,
   // keys or text of the person on it.
-  controlKitty: (ref: string, hold: boolean) =>
-    request<{ held: boolean }>("POST", `/v1/kitties/${ref}/control`, { hold }).then((r) => r.held),
-  inputKitty: (ref: string, action: string, args: Record<string, unknown>) =>
-    request("POST", `/v1/kitties/${ref}/input`, { action, args }),
+  controlKitty: (ref: string, hold: boolean, control_id = "") =>
+    request<{ held: boolean; control_id?: string }>("POST", `/v1/kitties/${ref}/control`, {
+      hold,
+      control_id,
+    }),
+  inputKitty: (ref: string, control_id: string, action: string, args: Record<string, unknown>) =>
+    request("POST", `/v1/kitties/${ref}/input`, { control_id, action, args }),
   // answerHelp is what the person answers a kitty that asked for help: told to it, or (secret)
   // typed on its desktop without showing it.
   answerHelp: (
@@ -704,6 +732,13 @@ export const api = {
   setClipboard: (ref: string, text: string) =>
     request("PUT", `/v1/kitties/${ref}/clipboard`, { text }),
   stopKitty: (ref: string) => request("POST", `/v1/kitties/${ref}/stop`),
+  sleepKitty: (ref: string) => request("POST", `/v1/kitties/${ref}/sleep`),
+  backupStatus: () => request<BackupStatus>("GET", "/v1/backups/status"),
+  backupNow: () => request<BackupStatus>("POST", "/v1/backups"),
+  recoveries: () =>
+    request<{ recoveries: Recovery[] }>("GET", "/v1/recoveries").then((r) => r.recoveries || []),
+  purgeRecovery: (ref: string) =>
+    request("POST", `/v1/recoveries/${encodeURIComponent(ref)}/purge`),
   removeKitty: (ref: string) => request("DELETE", `/v1/kitties/${ref}`),
   // connectorNames are the connections a kitty may be given.
   connectorNames: () =>
@@ -845,7 +880,11 @@ export const api = {
   testNotify: (connector = "") =>
     request<{ ok: boolean; error?: string }>("POST", "/v1/settings/notify/test", { connector }),
   // The browser session of a gateway served on a network: who is signed in, and the way in and out.
-  session: () => request<{ signed_in: boolean; local_token: boolean }>("GET", "/v1/session"),
+  session: () =>
+    request<{ signed_in: boolean; local_token: boolean; logout_url?: string }>(
+      "GET",
+      "/v1/session",
+    ),
   login: (token: string) => request<{ ok: boolean }>("POST", "/v1/login", { token: token.trim() }),
   logout: () => request<{ ok: boolean }>("POST", "/v1/logout"),
   sendDigest: () => request<{ ok: boolean; error?: string }>("POST", "/v1/settings/notify/digest"),
@@ -911,6 +950,17 @@ export function watchDesktop(
   };
 }
 
+async function desktopResponseError(response: Response): Promise<Error> {
+  const body = await response.text();
+  let message = body.slice(0, 200);
+  try {
+    message = (JSON.parse(body) as { error?: string }).error || message;
+  } catch {
+    // Older gateways may return a plain-text error.
+  }
+  return new ApiError(response.status, message || `HTTP ${response.status}`);
+}
+
 // streamDesktop follows a kitty's display live and hands each picture to onFrame as an image
 // address (a blob: URL in a browser, a data: URL inside Wails), until the returned function is
 // called. The gateway's motion JPEG is read with fetch and cut into pictures here: an <img> of
@@ -937,9 +987,8 @@ export function streamDesktop(
         headers: conn.token ? { Authorization: "Bearer " + conn.token } : {},
         signal: stop.signal,
       });
-      if (!res.ok || !res.body) {
-        throw new Error(`HTTP ${res.status}`);
-      }
+      if (!res.ok) throw await desktopResponseError(res);
+      if (!res.body) throw new Error("the stream has no response body");
       const reader = res.body.getReader();
       let buf = new Uint8Array(0);
       const text = new TextDecoder();
@@ -1051,7 +1100,34 @@ function watchRects(
 // A DesktopRect is a part of the display that changed, and its picture.
 // DesktopInfo is what is known about a kitty's desktop: its image, whether a newer one waits, and
 // when its sessions were last backed up.
+export interface BackupStatus {
+  enabled: boolean;
+  running: boolean;
+  phase?: string;
+  last_success?: string;
+  last_failure?: string;
+  last_error?: string;
+  next_attempt?: string;
+  overdue: boolean;
+  snapshot_id?: string;
+}
+
+export type Recovery = {
+  name: string;
+  computer: NonNullable<Kitty["computer"]>;
+  checkpoint_name: string;
+  checkpoint_at?: string;
+  removed: boolean;
+  pending?: string;
+};
+
 export type DesktopInfo = {
+  capabilities?: {
+    kind: string;
+    persistent_disk: boolean;
+    guest_workspace: boolean;
+    image_updates: boolean;
+  };
   image: string;
   update_available: boolean;
   auto_update?: boolean;
@@ -1105,9 +1181,8 @@ export function rectsDesktop(
         headers: conn.token ? { Authorization: "Bearer " + conn.token } : {},
         signal: stop.signal,
       });
-      if (!res.ok || !res.body) {
-        throw new Error(`HTTP ${res.status}`);
-      }
+      if (!res.ok) throw await desktopResponseError(res);
+      if (!res.body) throw new Error("the stream has no response body");
       const reader = res.body.getReader();
       const text = new TextDecoder();
       let buf = new Uint8Array(0);

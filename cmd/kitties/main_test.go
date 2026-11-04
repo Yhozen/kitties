@@ -26,7 +26,7 @@ type fakeContainers struct{ names map[string]bool }
 
 func (f *fakeContainers) Up(_ context.Context, s container.Spec) (string, error) {
 	f.names[s.Name] = true
-	return "id", nil
+	return s.Name, nil
 }
 func (f *fakeContainers) Start(context.Context, string) error { return nil }
 func (f *fakeContainers) Stop(context.Context, string) error  { return nil }
@@ -53,7 +53,7 @@ func (f *fakeContainers) Screenshot(context.Context, string) ([]byte, error) {
 func (f *fakeContainers) List(context.Context) ([]container.Info, error) {
 	var out []container.Info
 	for n := range f.names {
-		out = append(out, container.Info{Name: n, Running: true})
+		out = append(out, container.Info{ID: n, Name: n, Running: true})
 	}
 	return out, nil
 }
@@ -326,6 +326,8 @@ func TestGatewayCommand(t *testing.T) {
 	}
 	if data, err := os.ReadFile(filepath.Join(filepath.Dir(cfg), "data", "gateway.token")); err != nil || len(strings.TrimSpace(string(data))) != 32 {
 		t.Errorf("the token is kept in the data folder: %q %v", data, err)
+	} else if token := strings.TrimSpace(string(data)); strings.Contains(out.String(), token) || strings.Contains(errOut.String(), token) {
+		t.Error("gateway startup printed its bearer token")
 	}
 	// A kitty that cannot start is reported, not fatal.
 	withRuntime(t, false)

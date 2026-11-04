@@ -1,3 +1,0 @@
-# The desktop's wallpaper and the icons on it (PCManFM draws them under the windows and leaves
-# the shelf's space alone).
-pcmanfm --desktop >/tmp/pcmanfm.log 2>&1 &

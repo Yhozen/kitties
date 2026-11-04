@@ -37,7 +37,7 @@ func newPKCE() pkce {
 	return pkce{verifier: v, challenge: base64.RawURLEncoding.EncodeToString(sum[:]), state: randomText(16)}
 }
 
-func (m *Manager) startCodex() (Flow, error) {
+func (m *Manager) startCodex(ctx context.Context) (Flow, error) {
 	p := newPKCE()
 	q := url.Values{
 		"response_type": {"code"}, "client_id": {codexClientID}, "redirect_uri": {codexRedirect},
@@ -59,7 +59,7 @@ func (m *Manager) startCodex() (Flow, error) {
 		srv = serveCallback(ln, p.state, callbacks)
 	}
 	paste := make(chan string, 1)
-	return m.track(Flow{Kind: "codex", Method: "browser", URL: link, Paste: true}, paste, func(ctx context.Context) (Credential, error) {
+	return m.track(ctx, Flow{Kind: "codex", Method: "browser", URL: link, Paste: true}, paste, func(ctx context.Context) (Credential, error) {
 		if srv != nil {
 			// Shutdown, not Close: the page the browser is being sent finishes first.
 			defer func() {
@@ -247,8 +247,8 @@ func copilotHeaders(session string) map[string]string {
 	return h
 }
 
-func (m *Manager) startCopilot() (Flow, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+func (m *Manager) startCopilot(parent context.Context) (Flow, error) {
+	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
 	var dc struct {
 		DeviceCode string `json:"device_code"`
@@ -263,7 +263,7 @@ func (m *Manager) startCopilot() (Flow, error) {
 		return Flow{}, errors.New("GitHub returned no code")
 	}
 	f := Flow{Kind: "copilot", Method: "device", URL: dc.VerifyURI, Code: dc.UserCode}
-	return m.track(f, nil, func(ctx context.Context) (Credential, error) {
+	return m.track(parent, f, nil, func(ctx context.Context) (Credential, error) {
 		token, err := m.pollGitHub(ctx, dc.DeviceCode, dc.Interval)
 		if err != nil {
 			return Credential{}, err
@@ -383,7 +383,7 @@ func adcPath() string {
 const GcloudCommand = "gcloud auth application-default login --scopes=https://www.googleapis.com/auth/cloud-platform,https://www.googleapis.com/auth/generative-language.retriever"
 
 // startGoogle takes the Google login gcloud already holds, and checks it with a renewal.
-func (m *Manager) startGoogle(opts StartOptions) (Flow, error) {
+func (m *Manager) startGoogle(parent context.Context, opts StartOptions) (Flow, error) {
 	path := m.adcPath()
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -406,7 +406,7 @@ func (m *Manager) startGoogle(opts StartOptions) (Flow, error) {
 	if project == "" {
 		return Flow{}, errors.New("Google bills Gemini to a Cloud project: type its id (Project ID), or run `gcloud auth application-default set-quota-project <id>`")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
 	c, err := m.googleRefresh(ctx, Credential{Kind: "gemini", RefreshToken: adc.RefreshToken, ClientID: adc.ClientID,
 		ClientSecret: adc.ClientSecret, ProjectID: project, Who: "gcloud, project " + project})

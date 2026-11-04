@@ -13,7 +13,6 @@ import (
 	"html"
 	"io"
 	"io/fs"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -27,6 +26,7 @@ import (
 	"github.com/madkoding/kitties/internal/desktop"
 	"github.com/madkoding/kitties/internal/kitty"
 	"github.com/madkoding/kitties/internal/llmauth"
+	"github.com/madkoding/kitties/internal/maintenance"
 	"github.com/madkoding/kitties/internal/notify"
 	"github.com/madkoding/kitties/internal/oauth"
 	"github.com/madkoding/kitties/internal/orchestrator"
@@ -49,10 +49,10 @@ type Fleet interface {
 	Scale(ctx context.Context, name string, n int) error
 	Exec(ctx context.Context, ref string, argv ...string) (string, error)
 	Screenshot(ctx context.Context, ref string) ([]byte, error)
-	// Hold gives the person a kitty's display, or gives it back; Input is a click, keys or text
+	// Control grants or releases the person's display receipt; Input is a click, keys or text
 	// of the person on it.
-	Hold(ref string, on bool) (bool, error)
-	Input(ctx context.Context, ref string, a desktop.Action) error
+	Control(context.Context, string, bool, string) (orchestrator.ControlState, error)
+	Input(ctx context.Context, ref, controlID string, a desktop.Action) error
 	// Stream follows a kitty's display (pictures for container.ReadFrame) until closed.
 	Stream(ctx context.Context, ref string, fps, quality int) (io.ReadCloser, error)
 	// Clipboard and SetClipboard are the text on a kitty's clipboard, both ways.
@@ -104,14 +104,16 @@ type Chats interface {
 
 // Server is the HTTP API.
 type Server struct {
-	fleet   Fleet
-	chats   Chats
-	token   string
-	version string
-	started time.Time
-	mux     *http.ServeMux
-	skills  *skills.Library
-	arts    *artifacts.Store
+	admission *maintenance.Gate
+	backups   Backups
+	fleet     Fleet
+	chats     Chats
+	token     string
+	version   string
+	started   time.Time
+	mux       *http.ServeMux
+	skills    *skills.Library
+	arts      *artifacts.Store
 
 	// The web server side (serve.go).
 	web          fs.FS
@@ -241,6 +243,9 @@ func (s *Server) routes() {
 	s.memoryRoutes()
 	s.vaultRoutes()
 	s.desktopRoutes()
+	s.lifecycleRoutes()
+	s.recoveryOperatorRoutes()
+	s.backupRoutes()
 	s.updateRoutes()
 	s.mux.Handle("GET /v1/chats/{id}/events", api(s.handleEvents))
 	s.mux.Handle("POST /v1/oauth/{name}/start", api(s.handleOAuthStart))
@@ -507,7 +512,7 @@ func codeFor(err error) int {
 	switch {
 	case errors.Is(err, orchestrator.ErrNotFound), strings.HasPrefix(msg, "no such "):
 		return http.StatusNotFound
-	case errors.Is(err, chat.ErrBusy), strings.Contains(msg, "already running"), strings.Contains(msg, "already has an answer"), strings.Contains(msg, "has the desktop"), strings.Contains(msg, "is already approved"), strings.Contains(msg, "is already rejected"):
+	case errors.Is(err, orchestrator.ErrControlExpired), errors.Is(err, orchestrator.ErrDisabled), errors.Is(err, orchestrator.ErrDraining), errors.Is(err, orchestrator.ErrLifecycleBusy), errors.Is(err, orchestrator.ErrRecoveryBusy), errors.Is(err, chat.ErrBusy), strings.Contains(msg, "already running"), strings.Contains(msg, "already has an answer"), strings.Contains(msg, "has the desktop"), strings.Contains(msg, "is already approved"), strings.Contains(msg, "is already rejected"):
 		return http.StatusConflict
 	case errors.Is(err, chat.ErrNoApprovals), errors.Is(err, chat.ErrNoMemory):
 		return http.StatusNotFound
@@ -552,6 +557,10 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	has, err := s.fleet.HasContainers()
 	out := map[string]any{"ok": true, "version": s.version, "uptime": time.Since(s.started).Round(time.Second).String(),
 		"kitties": len(s.fleet.List()), "containers": has}
+	out["runtime"] = "container"
+	if fleet, ok := s.fleet.(interface{ RuntimeName() string }); ok {
+		out["runtime"] = fleet.RuntimeName()
+	}
 	if err != nil {
 		out["containers_error"] = err.Error()
 		switch {
@@ -645,9 +654,15 @@ func (s *Server) lifecycle(w http.ResponseWriter, r *http.Request, op func(conte
 }
 
 func (s *Server) handleStartKitty(w http.ResponseWriter, r *http.Request) {
+	if s.asyncLifecycle(w, r, "start") {
+		return
+	}
 	s.lifecycle(w, r, s.fleet.Start)
 }
 func (s *Server) handleStopKitty(w http.ResponseWriter, r *http.Request) {
+	if s.asyncLifecycle(w, r, "stop") {
+		return
+	}
 	s.lifecycle(w, r, s.fleet.Stop)
 }
 func (s *Server) handleRemoveKitty(w http.ResponseWriter, r *http.Request) {
@@ -684,6 +699,18 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleScreenshot(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Has("live") {
+		if fleet, ok := s.fleet.(interface {
+			Acquire(context.Context, string) (func(), error)
+		}); ok {
+			release, err := fleet.Acquire(r.Context(), r.PathValue("ref"))
+			if err != nil {
+				fail(w, codeFor(err), err)
+				return
+			}
+			defer release()
+		}
+	}
 	png, err := s.fleet.Screenshot(r.Context(), r.PathValue("ref"))
 	if err != nil {
 		fail(w, codeFor(err), err)
@@ -694,29 +721,30 @@ func (s *Server) handleScreenshot(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(png)
 }
 
-// handleControl takes a kitty's display over ({"hold": true}) or gives it back.
+// handleControl grants a display receipt or releases the named control_id.
 func (s *Server) handleControl(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Hold bool `json:"hold"`
+		Hold      bool   `json:"hold"`
+		ControlID string `json:"control_id"`
 	}
 	if err := decode(r, &body); err != nil {
 		fail(w, http.StatusBadRequest, err)
 		return
 	}
-	held, err := s.fleet.Hold(r.PathValue("ref"), body.Hold)
+	state, err := s.fleet.Control(r.Context(), r.PathValue("ref"), body.Hold, body.ControlID)
 	if err != nil {
 		fail(w, codeFor(err), err)
 		return
 	}
-	reply(w, http.StatusOK, map[string]any{"held": held})
+	reply(w, http.StatusOK, state)
 }
 
-// handleInput is the person's mouse and keys on a kitty's display: {"action": "click", "args":
-// {"x": 10, "y": 20}}.
+// handleInput dispatches one allowed mouse or keyboard action for its control_id.
 func (s *Server) handleInput(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Action string         `json:"action"`
-		Args   map[string]any `json:"args"`
+		Action    string         `json:"action"`
+		ControlID string         `json:"control_id"`
+		Args      map[string]any `json:"args"`
 	}
 	if err := decode(r, &body); err != nil {
 		fail(w, http.StatusBadRequest, err)
@@ -730,7 +758,7 @@ func (s *Server) handleInput(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, err)
 		return
 	}
-	if err := s.fleet.Input(r.Context(), r.PathValue("ref"), a); err != nil {
+	if err := s.fleet.Input(r.Context(), r.PathValue("ref"), body.ControlID, a); err != nil {
 		fail(w, codeFor(err), err)
 		return
 	}
@@ -1024,46 +1052,4 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = io.WriteString(w, indexHTML)
-}
-
-// Listen serves on addr until ctx ends (https when a certificate was given). It says where the
-// page is, and warns when the token would cross a network in the clear.
-func (s *Server) Listen(ctx context.Context, addr string, logf func(string, ...any)) error {
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		return fmt.Errorf("listen on %s: %w", addr, err)
-	}
-	tls := s.tlsCert != ""
-	if !config.IsLoopbackAddr(addr) && !tls && !s.trustProxy && !strings.HasPrefix(s.publicURL, "https://") {
-		logf("warning: the gateway listens on %s without https; the token and the chats cross the network in the clear. Set gateway.tls_cert and tls_key, or put it behind a TLS proxy (trust_proxy)", addr)
-	}
-	srv := &http.Server{Handler: s, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute}
-	go func() {
-		<-ctx.Done()
-		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = srv.Shutdown(shutdown)
-	}()
-	scheme := "http"
-	if tls {
-		scheme = "https"
-	}
-	where := s.publicURL
-	if where == "" {
-		where = scheme + "://" + ln.Addr().String()
-	}
-	what := "gateway"
-	if s.web != nil {
-		what = "gateway and web interface"
-	}
-	logf("%s listening on %s", what, where)
-	if tls {
-		err = srv.ServeTLS(ln, s.tlsCert, s.tlsKey)
-	} else {
-		err = srv.Serve(ln)
-	}
-	if err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return err
-	}
-	return nil
 }

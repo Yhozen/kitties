@@ -1,0 +1,18 @@
+providers:
+  openai:
+    kind: openai
+    model: gpt-6-luna
+    api_key_env: OPENAI_API_KEY
+default_provider: openai
+containers:
+  runtime: boat
+  auto_update: false
+boat:
+  max_running: 5
+  idle_minutes: 15
+  ttl_minutes: 60
+  renew_minutes: 5
+gateway:
+  local_token: false
+updates:
+  gateway: off

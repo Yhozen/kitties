@@ -36,6 +36,8 @@ type Config struct {
 	Kitties []Kitty `yaml:"kitties"`
 	// Containers is how each kitty's isolated desktop is run.
 	Containers Containers `yaml:"containers"`
+	// Boat configures the remote desktop runtime; credentials are read from the environment.
+	Boat Boat `yaml:"boat"`
 	// Gateway is the HTTP API people and other programs talk to.
 	Gateway Gateway `yaml:"gateway"`
 	// Updates is when the automatic updates run and what Kitties does about a new version of itself.
@@ -118,7 +120,7 @@ type Goal struct {
 
 // Containers is the container runtime block.
 type Containers struct {
-	// Runtime is docker, podman or auto.
+	// Runtime is docker, podman, auto, lima, or boat.
 	Runtime string `yaml:"runtime"`
 	// Image is the image every kitty runs: a headless X display (Xvfb) with a browser and the
 	// usual desktop tools; see docker/kitty-desktop.
@@ -137,6 +139,16 @@ type Containers struct {
 	AutoUpdate bool `yaml:"auto_update"`
 	// UpdateCheckHours is how often the gateway looks for a newer image (6 by default).
 	UpdateCheckHours int `yaml:"update_check_hours"`
+}
+
+// Boat configures persistent cloud desktops. API credentials never go into guest environment.
+type Boat struct {
+	APIKeyEnv    string `yaml:"api_key_env"`
+	Size         string `yaml:"size"`
+	MaxRunning   int    `yaml:"max_running"`
+	IdleMinutes  int    `yaml:"idle_minutes"`
+	TTLMinutes   int    `yaml:"ttl_minutes"`
+	RenewMinutes int    `yaml:"renew_minutes"`
 }
 
 // Gateway is the HTTP API block. On a server it is also the web interface: the same address
@@ -318,6 +330,7 @@ func Defaults() Config {
 			Runtime: "auto", Image: "ghcr.io/madkoding/kitty-desktop:latest",
 			MemoryMB: 2048, CPUs: 2, AutoUpdate: true, UpdateCheckHours: 6,
 		},
+		Boat:       Boat{APIKeyEnv: "BOAT_DEV_API_KEY", Size: "small", MaxRunning: 5, IdleMinutes: 15, TTLMinutes: 60, RenewMinutes: 5},
 		Gateway:    Gateway{Listen: "127.0.0.1:7488"},
 		Updates:    Updates{Gateway: UpdateNotify, CheckHours: 12, Repo: "madkoding/kitties", API: "https://api.github.com"},
 		Connectors: map[string]Connector{},
@@ -427,12 +440,37 @@ func (c *Config) Validate() error {
 		}
 	}
 	switch c.Containers.Runtime {
-	case "auto", "docker", "podman":
+	case "auto", "docker", "podman", "lima", "boat":
 	default:
-		return fmt.Errorf("containers.runtime: %q is not auto, docker or podman", c.Containers.Runtime)
+		return fmt.Errorf("containers.runtime: %q is not auto, docker, podman, lima or boat", c.Containers.Runtime)
 	}
 	if c.Containers.Image == "" {
 		return errors.New("containers.image cannot be empty")
+	}
+	if (c.Containers.Runtime == "lima" || c.Containers.Runtime == "boat") && (c.Containers.Workspace != "" || c.Containers.Network != "") {
+		return errors.New("VM desktops use a private guest disk and provider networking; containers.workspace and containers.network must be empty")
+	}
+	if c.Containers.Runtime == "boat" {
+		if c.Boat.APIKeyEnv == "" {
+			return errors.New("boat.api_key_env cannot be empty")
+		}
+		switch c.Boat.Size {
+		case "small", "default", "large":
+		default:
+			return errors.New("boat.size must be small, default or large")
+		}
+		if c.Boat.MaxRunning < 1 || c.Boat.MaxRunning > 5 {
+			return errors.New("boat.max_running must be between 1 and 5")
+		}
+		if c.Boat.IdleMinutes < 1 || c.Boat.TTLMinutes < 10 || c.Boat.RenewMinutes < 1 || c.Boat.RenewMinutes*2 >= c.Boat.TTLMinutes {
+			return errors.New("boat: idle_minutes must be positive, ttl_minutes at least 10, and renew_minutes less than half the TTL")
+		}
+		if c.Gateway.LocalToken != nil && *c.Gateway.LocalToken {
+			return errors.New("Boat gateways cannot enable gateway.local_token")
+		}
+		localToken := false
+		c.Gateway.LocalToken = &localToken
+		c.Containers.AutoUpdate = false
 	}
 	if err := c.Updates.validate(); err != nil {
 		return err

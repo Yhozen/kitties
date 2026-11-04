@@ -36,6 +36,8 @@ import { AccountSignIn } from "./SignIn";
 import { ask } from "./Confirm";
 import Secrets from "./Secrets";
 import Updates from "./Updates";
+import Recoveries from "./Recoveries";
+import Backups from "./Backups";
 import { LANGS, currentLang, setLang, t, type Lang } from "./i18n";
 
 // SETTINGS, FOR PEOPLE.
@@ -1987,6 +1989,8 @@ export default function SettingsModal({
           <>
             <Preferences />
             <Updates />
+            <Recoveries />
+            <Backups />
           </>
         )}
       </div>

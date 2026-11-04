@@ -58,7 +58,7 @@ func TestValidation(t *testing.T) {
 		{"providers:\n  p:\n    kind: codex\n    auth: oauth\n", "is not login"},
 		{"providers:\n  p:\n    kind: openai\n    auth: login\n", "takes an API key"},
 		{base + "kitties:\n  - name: a\n    connectors: [x]\n", "not a configured connector"},
-		{base + "containers:\n  runtime: lxc\n", "not auto, docker or podman"},
+		{base + "containers:\n  runtime: lxc\n", "not auto, docker, podman, lima or boat"},
 		{base + "containers:\n  image: ''\n", "image cannot be empty"},
 		{base + "containers:\n  cpus: -1\n", "cannot be negative"},
 		{base + "gateway:\n  listen: ''\n", "listen cannot be empty"},

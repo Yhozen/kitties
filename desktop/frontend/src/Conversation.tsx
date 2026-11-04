@@ -532,12 +532,16 @@ function TurnCard({
           {t("{n} steps on the desktop", { n: turn.steps.length })}
         </button>
       )}
-      {turn.resumable && !turn.working && latest && onContinue && (
+      {(turn.resumable || turn.interrupted) && !turn.working && latest && onContinue && (
         <div class="callout flex items-center gap-2 mt-2" data-testid="resume-callout">
           <span class="flex-1">
-            {t("{name} ran out of budget for this task; it can go on from where it was.", {
-              name: kitty?.name || t("The kitty"),
-            })}
+            {turn.interrupted
+              ? t(
+                  "The gateway restarted during this task. Review its last actions before continuing.",
+                )
+              : t("{name} ran out of budget for this task; it can go on from where it was.", {
+                  name: kitty?.name || t("The kitty"),
+                })}
           </span>
           <button class="btn-accent px-3 py-1.5 text-sm" onClick={onContinue} data-testid="resume">
             {t("Continue")}
@@ -798,7 +802,14 @@ export default function Conversation({ session, kitties, user, pending, waiting,
                   ? () => {
                       const k = turn.kitty ? byId.get(turn.kitty) : undefined;
                       const who = k && session.members.length > 1 ? `@${k.name} ` : "";
-                      onSend(who + t("Continue where you left off."));
+                      onSend(
+                        who +
+                          t(
+                            turn.interrupted
+                              ? "Check which actions completed before the interruption, then continue. Do not repeat actions that already succeeded."
+                              : "Continue where you left off.",
+                          ),
+                      );
                     }
                   : undefined
               }
@@ -852,7 +863,14 @@ export default function Conversation({ session, kitties, user, pending, waiting,
                 />
               ) : null;
             })}
-          {helping && <LiveDesktop kitty={helping} autoControl onClose={() => setHelping(null)} />}
+          {helping && (
+            <LiveDesktop
+              key={helping.id}
+              kitty={byId.get(helping.id) || helping}
+              autoControl
+              onClose={() => setHelping(null)}
+            />
+          )}
         </div>
         {strip && stripStep && (
           <div class="desk-strip" data-testid="desk-strip">

@@ -12,6 +12,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/madkoding/kitties/internal/statefs"
 )
 
 // Day is what one kitty spent on one day.
@@ -86,14 +88,14 @@ func (s *Store) save() error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
+	if err := statefs.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
 		return err
 	}
 	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
+	if err := statefs.WriteFile(tmp, raw, 0o600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, s.path)
+	return statefs.Rename(tmp, s.path)
 }
 
 // AddTokens counts tokens spent by a kitty today.

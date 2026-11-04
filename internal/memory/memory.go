@@ -18,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/madkoding/kitties/internal/statefs"
 )
 
 // The scopes of a note: what the person likes, how the work goes, or a project.
@@ -160,8 +162,8 @@ func (s *Store) save(kitty string, f *file) {
 	if err != nil {
 		return
 	}
-	if os.MkdirAll(s.dir, 0o700) == nil {
-		_ = os.WriteFile(s.path(kitty), raw, 0o600)
+	if statefs.MkdirAll(s.dir, 0o700) == nil {
+		_ = statefs.WriteFile(s.path(kitty), raw, 0o600)
 	}
 }
 
@@ -247,7 +249,7 @@ func (s *Store) ForgetKitty(kitty string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.k, kitty)
-	err := os.Remove(s.path(kitty))
+	err := statefs.Remove(s.path(kitty))
 	if os.IsNotExist(err) {
 		return nil
 	}
