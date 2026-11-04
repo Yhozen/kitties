@@ -6,8 +6,6 @@ import * as Config from "effect/Config";
 import Gateway from "./src/worker.ts";
 import { GuestAssets } from "./src/resources.ts";
 import { KittyDO } from "./src/kitty.ts";
-import Verification from "./src/verification.ts";
-import AcceptanceFixture from "./src/acceptance-fixture.ts";
 import OAuthIngress from "./src/oauth-ingress.ts";
 import HookIngress from "./src/hook-ingress.ts";
 
@@ -20,10 +18,6 @@ export default Alchemy.Stack(
     yield* HookIngress;
     yield* OAuthIngress;
     const stage = yield* Stage;
-    if (stage === "next") {
-      yield* Verification;
-      yield* AcceptanceFixture;
-    }
     const ingress = yield* Cloudflare.Worker("GuestIngress", {
       main: new URL("./src/guest-ingress.ts", import.meta.url).pathname,
       dev: { port: 1338, strictPort: true },

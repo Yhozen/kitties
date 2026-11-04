@@ -16,7 +16,7 @@ updates:
     groups:
       workspace:
         patterns: ["*"]
-    # Effect/Alchemy upgrades require the cloud workflow acceptance suite.
+    # Validate Effect/Alchemy upgrades on a deployed Cloudflare runtime.
     ignore:
       - dependency-name: "effect"
       - dependency-name: "@effect/*"

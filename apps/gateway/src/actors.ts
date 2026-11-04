@@ -32,7 +32,6 @@ const makeActor = Effect.gen(function* () {
         "1_initial": Effect.gen(function* () {
           const db = yield* SqlClient.SqlClient;
           yield* db`CREATE TABLE records (kind TEXT NOT NULL, id TEXT NOT NULL, body TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY(kind,id))`;
-          yield* db`CREATE TABLE probe_calls (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, step INTEGER NOT NULL)`;
         }),
       }),
     }).pipe(Effect.provide(database), Effect.orDie);
@@ -671,13 +670,6 @@ const makeActor = Effect.gen(function* () {
         }>`SELECT id,body FROM records WHERE kind=${kind} ORDER BY id`,
       remove: (kind: string, id: string) =>
         sql`DELETE FROM records WHERE kind=${kind} AND id=${id}`.pipe(Effect.asVoid),
-      recordProbeCall: (runId: string, step: number) =>
-        sql`INSERT INTO probe_calls (run_id,step) VALUES (${runId},${step})`.pipe(Effect.asVoid),
-      probeCalls: (runId: string) =>
-        sql<{
-          step: number;
-          calls: number;
-        }>`SELECT step,COUNT(*) AS calls FROM probe_calls WHERE run_id=${runId} GROUP BY step ORDER BY step`,
     };
   });
 });

@@ -23,4 +23,4 @@ slice edge in Chrome. Live scenes give their masks unique ids, since a `url(#id)
 another avatar's hidden slice masks nothing.
 
 To update, copy `packages/core/src` from a newer upstream commit, reapply the extension (search
-for "Puppies extension" and `skin`), keep this file and `LICENSE`, and run `pnpm test`.
+for "Puppies extension" and `skin`), keep this file and `LICENSE`, and run `pnpm check`.

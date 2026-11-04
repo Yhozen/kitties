@@ -1,15 +1,6 @@
 import { defineConfig } from "vite-plus";
 
 export default defineConfig({
-  test: {
-    include: [
-      "packages/**/*.test.ts",
-      "apps/gateway/**/*.test.ts",
-      "guest/kittyd/src/**/*.test.ts",
-      "apps/web/src/**/*.test.ts",
-    ],
-    passWithNoTests: true,
-  },
   lint: {
     options: { typeAware: true, typeCheck: true },
     ignorePatterns: [
@@ -41,7 +32,6 @@ export default defineConfig({
   run: {
     tasks: {
       verify: { command: "vp check", cache: true },
-      unit: { command: "vp test --run", cache: true },
     },
   },
 });

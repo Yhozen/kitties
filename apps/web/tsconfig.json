@@ -4,5 +4,5 @@
     "types": ["vite/client"]
   },
   "include": ["src"],
-  "exclude": ["dist", "e2e"]
+  "exclude": ["dist"]
 }
