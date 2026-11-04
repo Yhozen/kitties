@@ -57,3 +57,20 @@ The private guest config is deleted and that fixture's daemon is stopped afterwa
 sandbox is created or touched. Results and synthetic screenshots go under `.context/desktop-benchmark`.
 Chrome's local-network permission check is disabled only in this intercepted local test page;
 production browser settings are unchanged.
+
+## Continuous video with acknowledgement delay
+
+With the same dedicated container and local stage as the click probe:
+
+```sh
+KITTIES_MOTION_LABEL=adaptive node guest/kittyd/probes/desktop-motion.mjs
+KITTIES_MOTION_LABEL=adaptive-reverse node guest/kittyd/probes/desktop-motion.mjs --reverse
+```
+
+The fixture updates every 16 ms, encoding its source timestamp in the picture. The browser
+samples visible-image age as well as time between updates, so freezes count toward latency.
+Playwright delays both directions of the video WebSocket by half of each requested RTT
+(0, 100, 200 and 350 ms), without delaying the control socket. This introduces delay, not a
+bandwidth or loss model. Results and a synthetic screenshot are under `.context/desktop-motion`.
+The benchmark cleans up its exact guest process and private config. Do not edit gateway source
+or run concurrent heavy builds during measurements; local Alchemy would rebuild the worker.

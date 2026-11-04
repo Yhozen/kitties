@@ -109,3 +109,41 @@ Reproduce with `node guest/kittyd/probes/desktop-browser.mjs` and `--reverse`, a
 [the desktop test instructions](../../guest/kittyd/tests/README.md). Browser acceptance also decodes
 an actual voxl keyframe and checks JPEG fallback, generation/epoch fences, and delayed decode after
 closure. CI runs those checks on Chrome alongside native GTK/AT-SPI and voxl acceptance.
+
+### Video acknowledgement delay — 2026-11-04
+
+The eight-frame limit caused repeated keyframe recovery when continuous updates had to cross a
+longer round trip. Video now learns each viewer's acknowledgement delay and variation, allowing
+8–32 outstanding frames. The 2 MiB byte ceiling and five-second acknowledgement deadline remain.
+Decoder resets retain the timing estimate while clearing outstanding frames and requiring a new
+keyframe. Tests cover slow viewers independently, invalid acknowledgements, hibernated state and
+the 2 KiB WebSocket attachment limit.
+
+The new probe drives real voxl, kittyd, local workerd and the Preact/WebCodecs viewer with a
+synthetic moving object and an encoded source timestamp. It delays video and acknowledgements
+equally. Each case warms up for 2.5 seconds and measures for eight seconds. Both implementations
+were tested with the cases in ascending order and again in descending order. The latter also
+samples **the age of the currently visible image every 16 ms**, including periods without a
+new frame; measuring only at frame arrival would omit freezes.
+
+| Added RTT | Fixed limit: fps → adaptive fps | Visible image age p95: fixed → adaptive | Update gap p95: fixed → adaptive |
+| --- | --- | --- | --- |
+| 0 ms | 61.3 → 61.3 | 24 → 26 ms | 18.3 → 18.9 ms |
+| 100 ms | 18.4 → 61.4 | 412 → 89 ms | 388.2 → 38.3 ms |
+| 200 ms | 16.0 → 61.4 | 483 → 139 ms | 391.8 → 39.2 ms |
+| 350 ms | 16.0 → 61.0 | 568 → 215 ms | 401.4 → 37.2 ms |
+
+At 100–350 ms added RTT, visible-image p95 age fell **62–78%** and frame bytes fell **80–82%**.
+The baseline generated 16 keyframes per measured eight-second window; the adaptive runs needed
+none after warmup. Without added delay the results are effectively unchanged. The source timer
+uses 16 ms ticks, so its nominal 60 fps stream can slightly exceed 60 fps.
+
+These are synthetic delay tests, with no bandwidth constraint, packet loss or model calls. The
+moving object is inexpensive to encode. They do not establish high-entropy video, congested-link,
+physical-device or public-deployment performance. The byte cap still limits larger frames.
+
+[All four runs](evidence/desktop-video-rtt-local.json). Reproduce with
+`KITTIES_MOTION_LABEL=adaptive node guest/kittyd/probes/desktop-motion.mjs` and `--reverse`, using
+the same dedicated container and local stage as the click probe. For the fixed-limit comparison,
+change only `offerVideo`'s frame-count guard to eight, wait for the local gateway rebuild, and
+restore it afterward. No production settings or user sandboxes are involved.

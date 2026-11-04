@@ -746,10 +746,11 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
                 if (session.epoch !== c.epoch) return ws.close(1008, "Stale epoch");
                 const flow = (session.video ??= freshVideoFlow());
                 if (body.type === "video_ack" && typeof body.seq === "number") {
-                  if (acknowledgeVideo(flow, body.seq) && flow.waitingKey) requestVideoKeyframe();
+                  if (acknowledgeVideo(flow, body.seq, now) && flow.waitingKey)
+                    requestVideoKeyframe();
                 } else if (body.type === "keyframe" && now - (session.keyframeAt ?? 0) >= 500) {
                   // A decoder reset drops queued pictures; discard their flow-control slots.
-                  session.video = freshVideoFlow();
+                  session.video = freshVideoFlow(flow);
                   session.keyframeAt = now;
                   requestVideoKeyframe();
                 }

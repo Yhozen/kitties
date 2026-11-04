@@ -1,0 +1,245 @@
+{
+  "description": "Fixed eight credits compared with RTT-adaptive credits; all runs use actual voxl/kittyd/KittyDO/WebCodecs on the same synthetic continuous fixture. No public network or model latency. Visible age is sampled every 16 ms, including freezes; received-frame age alone omits freezes.",
+  "runs": {
+    "baseline": {
+      "date": "2026-11-04T04:06:48.188Z",
+      "scope": "Real voxl + kittyd + local workerd + actual Preact viewer in Chrome; synthetic Xvfb continuous updates. Playwright delays video and acknowledgement delivery equally. No network bandwidth/loss constraint; no model time.",
+      "reports": [
+        {
+          "rttMs": 0,
+          "sampleSeconds": 8,
+          "drawn": 490,
+          "fps": 61.25,
+          "frameAgeP50Ms": 10,
+          "frameAgeP95Ms": 19,
+          "updateGapP95Ms": 19.2,
+          "updateGapMaxMs": 55,
+          "deliveredFrames": 490,
+          "keyframes": 0,
+          "bytes": 85879
+        },
+        {
+          "rttMs": 100,
+          "sampleSeconds": 8,
+          "drawn": 144,
+          "fps": 18,
+          "frameAgeP50Ms": 68,
+          "frameAgeP95Ms": 104,
+          "updateGapP95Ms": 383.2,
+          "updateGapMaxMs": 394,
+          "deliveredFrames": 144,
+          "keyframes": 16,
+          "bytes": 454159
+        },
+        {
+          "rttMs": 200,
+          "sampleSeconds": 8,
+          "drawn": 128,
+          "fps": 16,
+          "frameAgeP50Ms": 120,
+          "frameAgeP95Ms": 144,
+          "updateGapP95Ms": 396.7,
+          "updateGapMaxMs": 407,
+          "deliveredFrames": 128,
+          "keyframes": 16,
+          "bytes": 462925
+        },
+        {
+          "rttMs": 350,
+          "sampleSeconds": 8,
+          "drawn": 128,
+          "fps": 16,
+          "frameAgeP50Ms": 201,
+          "frameAgeP95Ms": 228,
+          "updateGapP95Ms": 415.9,
+          "updateGapMaxMs": 424,
+          "deliveredFrames": 128,
+          "keyframes": 16,
+          "bytes": 446303
+        }
+      ]
+    },
+    "adaptive": {
+      "date": "2026-11-04T04:08:43.925Z",
+      "scope": "Real voxl + kittyd + local workerd + actual Preact viewer in Chrome; synthetic Xvfb continuous updates. Playwright delays video and acknowledgement delivery equally. No network bandwidth/loss constraint; no model time.",
+      "reports": [
+        {
+          "rttMs": 0,
+          "sampleSeconds": 8,
+          "drawn": 491,
+          "fps": 61.375,
+          "frameAgeP50Ms": 10,
+          "frameAgeP95Ms": 28,
+          "updateGapP95Ms": 19.1,
+          "updateGapMaxMs": 54,
+          "deliveredFrames": 491,
+          "keyframes": 0,
+          "bytes": 87321
+        },
+        {
+          "rttMs": 100,
+          "sampleSeconds": 8,
+          "drawn": 490,
+          "fps": 61.25,
+          "frameAgeP50Ms": 59,
+          "frameAgeP95Ms": 83,
+          "updateGapP95Ms": 33.8,
+          "updateGapMaxMs": 59,
+          "deliveredFrames": 492,
+          "keyframes": 0,
+          "bytes": 86947
+        },
+        {
+          "rttMs": 200,
+          "sampleSeconds": 8,
+          "drawn": 491,
+          "fps": 61.375,
+          "frameAgeP50Ms": 110,
+          "frameAgeP95Ms": 139,
+          "updateGapP95Ms": 41,
+          "updateGapMaxMs": 56,
+          "deliveredFrames": 493,
+          "keyframes": 0,
+          "bytes": 88271
+        },
+        {
+          "rttMs": 350,
+          "sampleSeconds": 8,
+          "drawn": 491,
+          "fps": 61.375,
+          "frameAgeP50Ms": 185,
+          "frameAgeP95Ms": 204,
+          "updateGapP95Ms": 33.6,
+          "updateGapMaxMs": 49,
+          "deliveredFrames": 491,
+          "keyframes": 0,
+          "bytes": 86872
+        }
+      ]
+    },
+    "baseline-reverse": {
+      "date": "2026-11-04T04:10:19.719Z",
+      "scope": "Real voxl + kittyd + local workerd + actual Preact viewer in Chrome; synthetic Xvfb continuous updates. Playwright delays video and acknowledgement delivery equally. No network bandwidth/loss constraint; no model time.",
+      "reports": [
+        {
+          "rttMs": 350,
+          "sampleSeconds": 8,
+          "drawn": 128,
+          "fps": 16,
+          "visibleAgeP95Ms": 568,
+          "frameAgeP50Ms": 199,
+          "frameAgeP95Ms": 227,
+          "updateGapP95Ms": 401.4,
+          "updateGapMaxMs": 423,
+          "deliveredFrames": 128,
+          "keyframes": 16,
+          "bytes": 454045
+        },
+        {
+          "rttMs": 200,
+          "sampleSeconds": 8,
+          "drawn": 128,
+          "fps": 16,
+          "visibleAgeP95Ms": 483,
+          "frameAgeP50Ms": 120,
+          "frameAgeP95Ms": 140,
+          "updateGapP95Ms": 391.8,
+          "updateGapMaxMs": 407,
+          "deliveredFrames": 128,
+          "keyframes": 16,
+          "bytes": 447587
+        },
+        {
+          "rttMs": 100,
+          "sampleSeconds": 8,
+          "drawn": 147,
+          "fps": 18.375,
+          "visibleAgeP95Ms": 412,
+          "frameAgeP50Ms": 67,
+          "frameAgeP95Ms": 101,
+          "updateGapP95Ms": 388.2,
+          "updateGapMaxMs": 392,
+          "deliveredFrames": 147,
+          "keyframes": 16,
+          "bytes": 458788
+        },
+        {
+          "rttMs": 0,
+          "sampleSeconds": 8,
+          "drawn": 490,
+          "fps": 61.25,
+          "visibleAgeP95Ms": 24,
+          "frameAgeP50Ms": 9,
+          "frameAgeP95Ms": 17,
+          "updateGapP95Ms": 18.3,
+          "updateGapMaxMs": 56,
+          "deliveredFrames": 490,
+          "keyframes": 0,
+          "bytes": 84826
+        }
+      ]
+    },
+    "adaptive-reverse": {
+      "date": "2026-11-04T04:11:29.112Z",
+      "scope": "Real voxl + kittyd + local workerd + actual Preact viewer in Chrome; synthetic Xvfb continuous updates. Playwright delays video and acknowledgement delivery equally. No network bandwidth/loss constraint; no model time.",
+      "reports": [
+        {
+          "rttMs": 350,
+          "sampleSeconds": 8,
+          "drawn": 488,
+          "fps": 61,
+          "visibleAgeP95Ms": 215,
+          "frameAgeP50Ms": 187,
+          "frameAgeP95Ms": 209,
+          "updateGapP95Ms": 37.2,
+          "updateGapMaxMs": 53,
+          "deliveredFrames": 490,
+          "keyframes": 0,
+          "bytes": 86717
+        },
+        {
+          "rttMs": 200,
+          "sampleSeconds": 8,
+          "drawn": 491,
+          "fps": 61.375,
+          "visibleAgeP95Ms": 139,
+          "frameAgeP50Ms": 109,
+          "frameAgeP95Ms": 134,
+          "updateGapP95Ms": 39.2,
+          "updateGapMaxMs": 54,
+          "deliveredFrames": 491,
+          "keyframes": 0,
+          "bytes": 89265
+        },
+        {
+          "rttMs": 100,
+          "sampleSeconds": 8,
+          "drawn": 491,
+          "fps": 61.375,
+          "visibleAgeP95Ms": 89,
+          "frameAgeP50Ms": 58,
+          "frameAgeP95Ms": 84,
+          "updateGapP95Ms": 38.3,
+          "updateGapMaxMs": 60,
+          "deliveredFrames": 490,
+          "keyframes": 0,
+          "bytes": 84202
+        },
+        {
+          "rttMs": 0,
+          "sampleSeconds": 8,
+          "drawn": 490,
+          "fps": 61.25,
+          "visibleAgeP95Ms": 26,
+          "frameAgeP50Ms": 10,
+          "frameAgeP95Ms": 16,
+          "updateGapP95Ms": 18.9,
+          "updateGapMaxMs": 56,
+          "deliveredFrames": 490,
+          "keyframes": 0,
+          "bytes": 85208
+        }
+      ]
+    }
+  }
+}

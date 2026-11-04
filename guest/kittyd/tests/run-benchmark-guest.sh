@@ -1,6 +1,6 @@
 #!/bin/bash
 set -eu
-python3 /work/guest/kittyd/tests/desktop-fixture.py &
+python3 "${KITTYD_FIXTURE:-/work/guest/kittyd/tests/desktop-fixture.py}" &
 fixture_pid=$!
 guest_pid=
 cleanup() {
