@@ -1,4 +1,7 @@
-import { makeStorageAdmin } from "./storage-admin.ts";
+import * as Schema from "effect/Schema";
+import * as Option from "effect/Option";
+import { stored } from "./stored-records.ts";
+import { StorageAdmin } from "./storage-admin.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import { WorkflowEngine } from "effect/workflow";
 import * as Effect from "effect/Effect";
@@ -30,8 +33,26 @@ interface Row {
 const makeChat = Effect.gen(function* () {
   const state = yield* Cloudflare.DurableObjectState;
   const engine = yield* WorkflowEngine.WorkflowEngine;
+  // SAFETY: Gateway deployment declares these named bindings in worker.ts; Cloudflare injects their declared values into every bound actor.
   const env = (yield* Cloudflare.WorkerEnvironment) as { KITTIES_KEK: string };
   const homes = yield* HomeDO;
+
+  const admin = yield* StorageAdmin.pipe(
+    Effect.provide(
+      StorageAdmin.layer(
+        [
+          "messages",
+          "events",
+          "chat_state",
+          "rounds",
+          "model_rounds",
+          "tool_results",
+          "charge_outbox",
+        ],
+        env.KITTIES_KEK,
+      ),
+    ),
+  );
 
   return Effect.sync(() => {
     const sql = state.raw.storage.sql;
@@ -81,7 +102,17 @@ const makeChat = Effect.gen(function* () {
           if (!rows.length) return;
 
           for (const row of rows) {
-            const charge = JSON.parse(row.body) as Charge;
+            const charge = stored(
+              Schema.Struct({
+                id: Schema.String,
+                day: Schema.String,
+                kitty: Schema.String,
+                tokens: Schema.Number,
+                actions: Schema.Number,
+              }),
+              row.body,
+            );
+
             yield* home.charge(charge.id, charge.day, charge.kitty, charge.tokens, charge.actions);
             sql.exec("DELETE FROM charge_outbox WHERE id=?", row.id);
           }
@@ -105,7 +136,7 @@ const makeChat = Effect.gen(function* () {
       state.raw.waitUntil(Effect.runPromise(flushCharges));
     };
 
-    const event = (body: unknown): void => {
+    const event = <Event>(body: Event): void => {
       sql.exec("INSERT INTO events(body,at) VALUES (?,?)", JSON.stringify(body), Date.now());
     };
 
@@ -118,10 +149,9 @@ const makeChat = Effect.gen(function* () {
 
       if (!row) return;
 
-      const executionId = yield* Turn.execute(
-        JSON.parse(row.payload) as typeof Turn.payloadSchema.Type,
-        { discard: true },
-      ).pipe(Effect.provideService(WorkflowEngine.WorkflowEngine, engine));
+      const executionId = yield* Turn.execute(stored(Turn.payloadSchema, row.payload), {
+        discard: true,
+      }).pipe(Effect.provideService(WorkflowEngine.WorkflowEngine, engine));
 
       sql.exec(
         "UPDATE messages SET status='running',run_id=? WHERE id=? AND status='queued'",
@@ -135,15 +165,7 @@ const makeChat = Effect.gen(function* () {
     );
 
     return {
-      ...makeStorageAdmin(state, env.KITTIES_KEK, [
-        "messages",
-        "events",
-        "chat_state",
-        "rounds",
-        "model_rounds",
-        "tool_results",
-        "charge_outbox",
-      ]),
+      ...admin,
       enqueue: (payload: typeof Turn.payloadSchema.Type, start = true) =>
         Effect.gen(function* () {
           if (
@@ -245,8 +267,8 @@ const makeChat = Effect.gen(function* () {
                 completed: true,
                 cancelled: false,
                 attempt: 0,
-                history: null as string | null,
-                previous: null as { history: string; body: string } | null,
+                history: null,
+                previous: null,
               };
             const row = sql.exec<Row>("SELECT * FROM messages WHERE id=?", id).toArray()[0];
 
@@ -255,8 +277,8 @@ const makeChat = Effect.gen(function* () {
                 completed: false,
                 cancelled: true,
                 attempt: 0,
-                history: null as string | null,
-                previous: null as { history: string; body: string } | null,
+                history: null,
+                previous: null,
               };
             sql.exec(
               "INSERT INTO rounds VALUES (?,?,1,NULL) ON CONFLICT(id,round) DO UPDATE SET attempt=attempt+1",
@@ -330,16 +352,20 @@ const makeChat = Effect.gen(function* () {
             )
             .toArray()
             .reverse()) {
-            const value = JSON.parse(row.body) as { result?: { screenshot?: unknown } };
+            const value = Schema.decodeUnknownOption(
+              Schema.Struct({ result: Schema.Struct({ screenshot: Schema.String }) }),
+            )(JSON.parse(row.body));
 
             if (
-              typeof value.result?.screenshot === "string" &&
-              /^screenshots\/[a-zA-Z0-9_-]+\/[0-9]+\/[a-zA-Z0-9_.-]+$/.test(value.result.screenshot)
+              Option.isSome(value) &&
+              /^screenshots\/[a-zA-Z0-9_-]+\/[0-9]+\/[a-zA-Z0-9_.-]+$/.test(
+                value.value.result.screenshot,
+              )
             )
               result.push({
                 messageId: row.id,
                 callId: row.call_id,
-                screenshot: value.result.screenshot,
+                screenshot: value.value.result.screenshot,
               });
           }
 
@@ -507,12 +533,15 @@ const makeChat = Effect.gen(function* () {
               body,
             );
 
-            const timing = JSON.parse(body) as {
-              modelStartedAt?: number;
-              modelFinishedAt?: number;
-              preparationStartedAt?: number;
-              contextLoadedAt?: number;
-            };
+            const timing = stored(
+              Schema.Struct({
+                modelStartedAt: Schema.optional(Schema.Number),
+                modelFinishedAt: Schema.optional(Schema.Number),
+                preparationStartedAt: Schema.optional(Schema.Number),
+                contextLoadedAt: Schema.optional(Schema.Number),
+              }),
+              body,
+            );
 
             if (timing.modelStartedAt !== undefined && timing.modelFinishedAt !== undefined)
               event({
@@ -578,8 +607,8 @@ const makeChat = Effect.gen(function* () {
   });
 });
 
-type ChatShape = Effect.Success<Effect.Success<typeof makeChat>>;
+type ChatHandlers = Effect.Success<Effect.Success<typeof makeChat>>;
 
-export class ChatDO extends Cloudflare.DurableObject<ChatDO, ChatShape>()("ChatDO") {}
+export class ChatDO extends Cloudflare.DurableObject<ChatDO, ChatHandlers>()("ChatDO") {}
 
 export const ChatDOLive = ChatDO.make(makeChat);

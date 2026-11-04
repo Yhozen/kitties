@@ -76,21 +76,8 @@ export function beginOperation(
   const recreate = previous.phase === "deleted" && (kind === "start" || kind === "upgrade");
   const generation = previous.generation + (kind === "restore" || recreate ? 1 : 0);
 
-  return {
+  const next: ComputerState = {
     ...previous,
-    ...(recreate
-      ? {
-          remoteId: undefined,
-          receipt: undefined,
-          quiesced: undefined,
-          previousIds: [
-            ...new Set([
-              ...previous.previousIds,
-              ...(previous.remoteId ? [previous.remoteId] : []),
-            ]),
-          ],
-        }
-      : {}),
     generation,
     tokenVersion: previous.tokenVersion + 1,
     phase:
@@ -101,6 +88,17 @@ export function beginOperation(
           : "draining",
     operation: { id, kind, at, generation },
   };
+
+  if (recreate) {
+    next.remoteId = undefined;
+    next.receipt = undefined;
+    next.quiesced = undefined;
+    next.previousIds = [
+      ...new Set([...previous.previousIds, ...(previous.remoteId ? [previous.remoteId] : [])]),
+    ];
+  }
+
+  return next;
 }
 
 export const canMutate = (state: ComputerState, id: string) => state.operation?.id === id;

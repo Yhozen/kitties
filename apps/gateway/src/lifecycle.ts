@@ -1,3 +1,6 @@
+import * as Schema from "effect/Schema";
+import * as Context from "effect/Context";
+import * as Layer from "effect/Layer";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Workflows from "alchemy/Workflows";
 import * as Effect from "effect/Effect";
@@ -8,7 +11,7 @@ import { boatClient, ownsSandbox } from "./boat.ts";
 import { DesktopAttempt, DesktopDecision } from "./desktop-definition.ts";
 import { retryHelpDecisions } from "./help-decisions.ts";
 
-export const makeLifecycle = Effect.gen(function* () {
+const makeLifecycle = Effect.gen(function* () {
   const homes = yield* HomeDO,
     kitties = yield* KittyDO,
     computers = yield* Workflows.RunWorkflow(ComputerOp),
@@ -16,6 +19,7 @@ export const makeLifecycle = Effect.gen(function* () {
 
   const engine = yield* WorkflowEngine.WorkflowEngine;
 
+  // SAFETY: Gateway deployment declares these named bindings in worker.ts; Cloudflare injects their declared values into every bound actor.
   const env = (yield* Cloudflare.WorkerEnvironment) as {
     BOAT_DEV_API_KEY: string;
     KITTIES_DEPLOYMENT: string;
@@ -117,7 +121,12 @@ export const makeLifecycle = Effect.gen(function* () {
 
           // Keep a draining or failed operation alive; TTL must never replace quiescence.
           if (Date.now() - state.lastRenewAt > 240000) {
-            yield* boat.request("PATCH", "/sandboxes/" + state.remoteId, { ttlSeconds: 3600 });
+            yield* boat.request(
+              "PATCH",
+              "/sandboxes/" + state.remoteId,
+              Schema.Union([Schema.Json, Schema.Void]),
+              { ttlSeconds: 3600 },
+            );
             yield* kitty.renewComputer(state.remoteId, Date.now());
           }
 
@@ -159,3 +168,9 @@ export const makeLifecycle = Effect.gen(function* () {
     Effect.catchCause(() => Effect.logError("Lifecycle watchdog will retry on the next tick")),
   );
 });
+
+export class Lifecycle extends Context.Service<Lifecycle, Effect.Success<typeof makeLifecycle>>()(
+  "@kitties/gateway/Lifecycle",
+) {
+  static readonly layer = Layer.effect(Lifecycle, makeLifecycle);
+}

@@ -1,3 +1,8 @@
+import { blobStream } from "./blob-stream.ts";
+import * as Schema from "effect/Schema";
+import { stored, NameRecord } from "./stored-records.ts";
+import * as Context from "effect/Context";
+import * as Layer from "effect/Layer";
 import type { ComputerState } from "./computer-state.ts";
 import type { FileLease } from "./file-leases.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
@@ -21,7 +26,30 @@ import {
   type FileUrl,
 } from "./desktop-files-core.ts";
 
-const json = (value: unknown, status = 200) =>
+const FileListingResponse: Schema.Codec<FileListing> = Schema.Struct({
+  path: Schema.String,
+  files: Schema.mutable(
+    Schema.Array(
+      Schema.Struct({
+        name: Schema.String,
+        path: Schema.String,
+        isDir: Schema.Boolean,
+        isSymlink: Schema.Boolean,
+        size: Schema.Number,
+        modifiedAt: Schema.String,
+      }),
+    ),
+  ),
+  truncated: Schema.Boolean,
+});
+
+const FileUrlResponse: Schema.Codec<FileUrl> = Schema.Struct({
+  path: Schema.String,
+  method: Schema.String,
+  url: Schema.String,
+});
+
+const json = <Value>(value: Value, status = 200) =>
   Response.json(value, { status, headers: { "Cache-Control": "no-store" } });
 
 interface FileEnvironment {
@@ -39,10 +67,11 @@ interface FilePorts {
   };
 }
 
-export const makeDesktopFiles = Effect.gen(function* () {
+const makeDesktopFiles = Effect.gen(function* () {
   const homes = yield* HomeDO,
     kitties = yield* KittyDO;
 
+  // SAFETY: Gateway deployment declares these named bindings in worker.ts; Cloudflare injects their declared values into every bound actor.
   const env = (yield* Cloudflare.WorkerEnvironment) as FileEnvironment;
 
   return desktopFileHandler(env, {
@@ -99,9 +128,9 @@ export function desktopFileHandler(env: FileEnvironment, ports: FilePorts) {
               const blob = await env.BLOBS.get("artifacts/" + artifact);
 
               if (!blob) throw new FileError("NOT_FOUND", 404);
-              name = (JSON.parse(saved) as { name: string }).name;
+              name = stored(NameRecord, saved).name;
               size = blob.size;
-              body = blob.body as unknown as ReadableStream<Uint8Array>;
+              body = blobStream(blob.body);
             } else {
               name = url.searchParams.get("name") ?? "";
               const header = request.headers.get("X-File-Size");
@@ -135,10 +164,15 @@ export function desktopFileHandler(env: FileEnvironment, ports: FilePorts) {
 
           const apiPath = `/sandboxes/${encodeURIComponent(lease.remoteId)}/files`;
 
-          const api = <A>(method: string, path: string, payload?: unknown) =>
+          const api = <A>(
+            method: string,
+            path: string,
+            responseSchema: Schema.Codec<A>,
+            payload?: Schema.Json,
+          ) =>
             Effect.runPromise(
               boat
-                .request<A>(method, apiPath + path, payload)
+                .request(method, apiPath + path, responseSchema, payload)
                 .pipe(
                   Effect.mapError(
                     (error) =>
@@ -170,7 +204,11 @@ export function desktopFileHandler(env: FileEnvironment, ports: FilePorts) {
 
             if (!upload && !action) {
               const listing = fileListing(
-                await api<FileListing>("GET", "/list?path=" + encodeURIComponent(directory)),
+                await api(
+                  "GET",
+                  "/list?path=" + encodeURIComponent(directory),
+                  FileListingResponse,
+                ),
                 relative,
               );
 
@@ -185,7 +223,7 @@ export function desktopFileHandler(env: FileEnvironment, ports: FilePorts) {
             const parentPath = SHARED_ROOT + (parent ? "/" + parent : "");
 
             const listing = fileListing(
-              await api<FileListing>("GET", "/list?path=" + encodeURIComponent(parentPath)),
+              await api("GET", "/list?path=" + encodeURIComponent(parentPath), FileListingResponse),
               parent,
             );
 
@@ -201,38 +239,40 @@ export function desktopFileHandler(env: FileEnvironment, ports: FilePorts) {
             const path = upload ? directory + "/" + name : directory;
             await valid();
 
-            const signed = await api<FileUrl>("POST", upload ? "/upload-url" : "/download-url", {
-              path,
-              ttlSeconds: 60,
-            });
+            const signed = await api(
+              "POST",
+              upload ? "/upload-url" : "/download-url",
+              FileUrlResponse,
+              {
+                path,
+                ttlSeconds: 60,
+              },
+            );
 
             const destination = transferUrl(signed, path, upload ? "PUT" : "GET");
             await valid();
             uncertainUpload = upload;
 
-            const upstream = await fetch(destination, {
+            const init: RequestInit = {
               method: upload ? "PUT" : "GET",
               redirect: "manual",
               signal,
-              ...(upload
-                ? {
-                    headers: { "Content-Type": "application/octet-stream" },
-                    body: fileStream(
-                      body ??
-                        new ReadableStream({
-                          start(c) {
-                            c.close();
-                          },
-                        }),
-                      {
-                        signal,
-                        expected: size,
-                        finished: async () => {},
-                      },
-                    ),
-                  }
-                : {}),
-            });
+            };
+
+            if (upload) {
+              init.headers = { "Content-Type": "application/octet-stream" };
+              init.body = fileStream(
+                body ??
+                  new ReadableStream({
+                    start(c) {
+                      c.close();
+                    },
+                  }),
+                { signal, expected: size, finished: async () => {} },
+              );
+            }
+
+            const upstream = await fetch(destination, init);
 
             if (!upstream.ok) {
               await upstream.body?.cancel();
@@ -267,17 +307,18 @@ export function desktopFileHandler(env: FileEnvironment, ports: FilePorts) {
 
             handedOff = true;
 
+            const headers = new Headers({
+              "Content-Type": "application/octet-stream",
+              "Content-Disposition": attachmentName(name),
+              "X-Content-Type-Options": "nosniff",
+              "Cache-Control": "private, no-store",
+            });
+
+            if (expected !== undefined) headers.set("Content-Length", String(expected));
+
             return new Response(
               fileStream(upstream.body, { signal, expected, finished: release }),
-              {
-                headers: {
-                  "Content-Type": "application/octet-stream",
-                  "Content-Disposition": attachmentName(name),
-                  "X-Content-Type-Options": "nosniff",
-                  "Cache-Control": "private, no-store",
-                  ...(expected === undefined ? {} : { "Content-Length": String(expected) }),
-                },
-              },
+              { headers },
             );
           } finally {
             // An interrupted PUT may still commit remotely. Keep its bounded lease until expiry;
@@ -307,4 +348,11 @@ export function desktopFileHandler(env: FileEnvironment, ports: FilePorts) {
 
       return HttpServerResponse.fromWeb(response);
     });
+}
+
+export class DesktopFiles extends Context.Service<
+  DesktopFiles,
+  Effect.Success<typeof makeDesktopFiles>
+>()("@kitties/gateway/DesktopFiles") {
+  static readonly layer = Layer.effect(DesktopFiles, makeDesktopFiles);
 }

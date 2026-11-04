@@ -1,3 +1,7 @@
+import * as Match from "effect/Match";
+import { stored, ExecutionRecord } from "./stored-records.ts";
+import * as Context from "effect/Context";
+import * as Layer from "effect/Layer";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import { workflowActor } from "./workflow-admin.ts";
 import { WorkflowEngine } from "effect/workflow";
@@ -10,12 +14,13 @@ import { RecoveryDO } from "./recovery-store.ts";
 import { Export, Restore, Purge } from "./recovery-definition.ts";
 import { readBody } from "./request.ts";
 
-const json = (body: unknown, status = 200) =>
+const json = <Value>(body: Value, status = 200) =>
   HttpServerResponse.fromWeb(
     Response.json(body, { status, headers: { "Cache-Control": "no-store" } }),
   );
 
-export const makeRecovery = Effect.gen(function* () {
+const makeRecovery = Effect.gen(function* () {
+  // SAFETY: Gateway deployment declares these named bindings in worker.ts; Cloudflare injects their declared values into every bound actor.
   const env = (yield* Cloudflare.WorkerEnvironment) as { KITTIES_KEK: string };
   const engine = yield* WorkflowEngine.WorkflowEngine;
 
@@ -41,13 +46,12 @@ export const makeRecovery = Effect.gen(function* () {
   });
 
   const actor = (kind: string, name: string) =>
-    kind === "workflow"
-      ? workflowActor(engine, name, env.KITTIES_KEK)
-      : kind === "home"
-        ? homes.getByName(name, { locationHint: "weur" })
-        : kind === "kitty"
-          ? kitties.getByName(name, { locationHint: "weur" })
-          : chats.getByName(name, { locationHint: "weur" });
+    Match.value(kind).pipe(
+      Match.when("workflow", () => workflowActor(engine, name, env.KITTIES_KEK)),
+      Match.when("home", () => homes.getByName(name, { locationHint: "weur" })),
+      Match.when("kitty", () => kitties.getByName(name, { locationHint: "weur" })),
+      Match.orElse(() => chats.getByName(name, { locationHint: "weur" })),
+    );
 
   return {
     route: (request: Request) =>
@@ -76,10 +80,13 @@ export const makeRecovery = Effect.gen(function* () {
 
           if (!record) return json({ code: "NOT_FOUND", params: {} }, 404);
 
-          const workflow =
-            summary[1] === "export" ? Export : summary[1] === "restore" ? Restore : Purge;
+          const workflow = Match.value(summary[1]).pipe(
+            Match.when("export", () => Export),
+            Match.when("restore", () => Restore),
+            Match.orElse(() => Purge),
+          );
 
-          const executionId = (JSON.parse(record) as { executionId: string }).executionId;
+          const executionId = stored(ExecutionRecord, record).executionId;
 
           return json(
             yield* workflowActor(
@@ -103,11 +110,14 @@ export const makeRecovery = Effect.gen(function* () {
 
           if (!record) return json({ code: "NOT_FOUND", params: {} }, 404);
 
-          const workflow =
-            body.kind === "export" ? Export : body.kind === "restore" ? Restore : Purge;
+          const workflow = Match.value(body.kind).pipe(
+            Match.when("export", () => Export),
+            Match.when("restore", () => Restore),
+            Match.orElse(() => Purge),
+          );
 
           yield* workflow
-            .resume((JSON.parse(record) as { executionId: string }).executionId)
+            .resume(stored(ExecutionRecord, record).executionId)
             .pipe(Effect.provideService(WorkflowEngine.WorkflowEngine, engine));
 
           return json({ ok: true });
@@ -176,7 +186,10 @@ export const makeRecovery = Effect.gen(function* () {
           const previous = yield* root().read("restore", body.operationId);
 
           if (previous) {
-            const saved = JSON.parse(previous) as { status: string; executionId: string };
+            const saved = stored(
+              Schema.Struct({ status: Schema.String, executionId: Schema.String }),
+              previous,
+            );
 
             if (saved.status === "completed") return json({ executionId: saved.executionId }, 202);
           }
@@ -222,3 +235,9 @@ export const makeRecovery = Effect.gen(function* () {
         .pipe(Effect.map((status) => status.mode === "ready")),
   };
 });
+
+export class Recovery extends Context.Service<Recovery, Effect.Success<typeof makeRecovery>>()(
+  "@kitties/gateway/Recovery",
+) {
+  static readonly layer = Layer.effect(Recovery, makeRecovery);
+}

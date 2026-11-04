@@ -1,15 +1,20 @@
+import { stored, HookRecord } from "./stored-records.ts";
+import { Turn } from "./turn-definition.ts";
+import * as Context from "effect/Context";
+import * as Layer from "effect/Layer";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Effect from "effect/Effect";
 import { HomeDO, ChatDO } from "./actors.ts";
-import { open, type Envelope } from "./secrets.ts";
+import { open } from "./secrets.ts";
 import { sha256 } from "./kitty.ts";
 import { verifyWebhook } from "./webhook-signature.ts";
-import type { Goal } from "./entities.ts";
+import { GoalView } from "./entities.ts";
 
-export const makeWebhooks = Effect.gen(function* () {
+const makeWebhooks = Effect.gen(function* () {
   const homes = yield* HomeDO,
     chats = yield* ChatDO;
 
+  // SAFETY: Gateway deployment declares these named bindings in worker.ts; Cloudflare injects their declared values into every bound actor.
   const env = (yield* Cloudflare.WorkerEnvironment) as { KITTIES_KEK: string };
 
   return (id: string, headers: Record<string, string>, body: string) =>
@@ -20,11 +25,7 @@ export const makeWebhooks = Effect.gen(function* () {
 
       if (!saved) return { status: 404 };
 
-      const hook = JSON.parse(saved) as {
-        goalId: string;
-        kind: "github" | "stripe" | "generic";
-        secret: Envelope;
-      };
+      const hook = stored(HookRecord, saved);
 
       const secret = yield* Effect.tryPromise({
         try: () => open(env.KITTIES_KEK, `hooks:${id}:secret`, hook.secret),
@@ -37,7 +38,7 @@ export const makeWebhooks = Effect.gen(function* () {
       const goalBody = yield* home.read("goal", hook.goalId);
 
       if (!goalBody) return { status: 404 };
-      const goal = JSON.parse(goalBody) as Goal;
+      const goal = stored(GoalView, goalBody);
 
       if (!goal.enabled) return { status: 409 };
 
@@ -63,8 +64,14 @@ export const makeWebhooks = Effect.gen(function* () {
       // Re-delivery repairs a crash between the inbox receipt and chat enqueue.
       yield* chats
         .getByName(goal.chatId, { locationHint: "weur" })
-        .enqueue(JSON.parse(claimed.body) as typeof snapshot);
+        .enqueue(stored(Turn.payloadSchema, claimed.body));
 
       return { status: 202 };
     }).pipe(Effect.catchCause(() => Effect.succeed({ status: 503 })));
 });
+
+export class Webhooks extends Context.Service<Webhooks, Effect.Success<typeof makeWebhooks>>()(
+  "@kitties/gateway/Webhooks",
+) {
+  static readonly layer = Layer.effect(Webhooks, makeWebhooks);
+}

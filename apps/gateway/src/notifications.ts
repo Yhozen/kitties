@@ -1,3 +1,6 @@
+import { stored } from "./stored-records.ts";
+import * as Context from "effect/Context";
+import * as Layer from "effect/Layer";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Workflows from "alchemy/Workflows";
 import * as Effect from "effect/Effect";
@@ -6,11 +9,11 @@ import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import { HomeDO } from "./actors.ts";
 import { Notify } from "./notification-definition.ts";
 import { readBody } from "./request.ts";
-import { seal, type Envelope } from "./secrets.ts";
+import { seal } from "./secrets.ts";
 import { sha256 } from "./kitty.ts";
 import { publicHttps } from "./outbound.ts";
 
-const json = (data: unknown, status = 200) =>
+const json = <Value>(data: Value, status = 200) =>
   HttpServerResponse.fromWeb(
     Response.json(data, { status, headers: { "Cache-Control": "no-store" } }),
   );
@@ -29,10 +32,11 @@ const subscriptionSchema = Schema.Struct({
   }),
 });
 
-export const makeNotifications = Effect.gen(function* () {
+const makeNotifications = Effect.gen(function* () {
   const homes = yield* HomeDO,
     workflows = yield* Workflows.RunWorkflow(Notify);
 
+  // SAFETY: Gateway deployment declares these named bindings in worker.ts; Cloudflare injects their declared values into every bound actor.
   const env = (yield* Cloudflare.WorkerEnvironment) as { KITTIES_KEK: string };
 
   const tick = Effect.gen(function* () {
@@ -40,7 +44,7 @@ export const makeNotifications = Effect.gen(function* () {
     yield* Effect.forEach(
       yield* home.list("notification-batch"),
       (row) => {
-        const batch = JSON.parse(row.body) as { status: string };
+        const batch = stored(Schema.Struct({ status: Schema.String }), row.body);
 
         return batch.status === "pending" ? workflows.start({ id: row.id }) : Effect.void;
       },
@@ -110,7 +114,7 @@ export const makeNotifications = Effect.gen(function* () {
         }
 
         return json({
-          publicKey: (JSON.parse(saved!) as { publicKey: string; secret: Envelope }).publicKey,
+          publicKey: stored(Schema.Struct({ publicKey: Schema.String }), saved!).publicKey,
         });
       }
 
@@ -181,3 +185,10 @@ export const makeNotifications = Effect.gen(function* () {
 
   return { route, tick };
 });
+
+export class Notifications extends Context.Service<
+  Notifications,
+  Effect.Success<typeof makeNotifications>
+>()("@kitties/gateway/Notifications") {
+  static readonly layer = Layer.effect(Notifications, makeNotifications);
+}

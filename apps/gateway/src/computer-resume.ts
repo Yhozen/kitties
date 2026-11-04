@@ -1,10 +1,14 @@
+import { stored } from "./stored-records.ts";
+import * as Schema from "effect/Schema";
+import * as Context from "effect/Context";
+import * as Layer from "effect/Layer";
 import * as Effect from "effect/Effect";
 import * as Workflows from "alchemy/Workflows";
 import { WorkflowEngine } from "effect/workflow";
 import { HomeDO, KittyDO } from "./actors.ts";
 import { ComputerOp } from "./computer-definition.ts";
 
-export const makeComputerResume = Effect.gen(function* () {
+const makeComputerResume = Effect.gen(function* () {
   const homes = yield* HomeDO,
     kitties = yield* KittyDO,
     computers = yield* Workflows.RunWorkflow(ComputerOp),
@@ -53,7 +57,11 @@ export const makeComputerResume = Effect.gen(function* () {
       }
 
       if (!saved) return null;
-      const record = JSON.parse(saved) as { kittyId: string; executionId: string };
+
+      const record = stored(
+        Schema.Struct({ kittyId: Schema.String, executionId: Schema.String }),
+        saved,
+      );
 
       if (
         record.kittyId !== kittyId ||
@@ -68,3 +76,10 @@ export const makeComputerResume = Effect.gen(function* () {
       return { executionId: record.executionId };
     });
 });
+
+export class ComputerResume extends Context.Service<
+  ComputerResume,
+  Effect.Success<typeof makeComputerResume>
+>()("@kitties/gateway/ComputerResume") {
+  static readonly layer = Layer.effect(ComputerResume, makeComputerResume);
+}

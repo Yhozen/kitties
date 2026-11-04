@@ -1,3 +1,7 @@
+import { blobStream } from "./blob-stream.ts";
+import { stored } from "./stored-records.ts";
+import * as Context from "effect/Context";
+import * as Layer from "effect/Layer";
 import { FILE_LIMIT, attachmentName, relativeFilePath } from "./desktop-files-core.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Workflows from "alchemy/Workflows";
@@ -9,18 +13,19 @@ import { HomeDO, KittyDO } from "./actors.ts";
 import { DesktopAttempt, DesktopDecision } from "./desktop-definition.ts";
 import { seal } from "./secrets.ts";
 import { readBody } from "./request.ts";
-import { savedHelpDecision, type HelpRecord } from "./help-store.ts";
+import { savedHelpDecision, HelpRecord } from "./help-store.ts";
 
-const json = (value: unknown, status = 200) =>
+const json = <Value>(value: Value, status = 200) =>
   HttpServerResponse.fromWeb(
     Response.json(value, { status, headers: { "Cache-Control": "no-store" } }),
   );
 
-export const makeOwnerData = Effect.gen(function* () {
+const makeOwnerData = Effect.gen(function* () {
   const homes = yield* HomeDO,
     kitties = yield* KittyDO,
     desktop = yield* Workflows.RunWorkflow(DesktopAttempt);
 
+  // SAFETY: Gateway deployment declares these named bindings in worker.ts; Cloudflare injects their declared values into every bound actor.
   const env = (yield* Cloudflare.WorkerEnvironment) as { KITTIES_KEK: string; BLOBS: cf.R2Bucket };
 
   return (request: Request) =>
@@ -32,7 +37,10 @@ export const makeOwnerData = Effect.gen(function* () {
       if (path === "/v1/vault" && method === "GET")
         return json(
           (yield* home.list("vault")).map((row) => {
-            const saved = JSON.parse(row.body) as { name: string; updatedAt: number };
+            const saved = stored(
+              Schema.Struct({ name: Schema.String, updatedAt: Schema.Number }),
+              row.body,
+            );
 
             return { id: row.id, name: saved.name, updatedAt: saved.updatedAt };
           }),
@@ -90,7 +98,7 @@ export const makeOwnerData = Effect.gen(function* () {
         const saved = yield* home.read("desktop-help", id);
 
         if (!saved) return json({ code: "NOT_FOUND", params: {} }, 404);
-        const row = JSON.parse(saved) as HelpRecord;
+        const row = stored(HelpRecord, saved);
         const accepted = savedHelpDecision(row);
 
         if (
@@ -131,10 +139,10 @@ export const makeOwnerData = Effect.gen(function* () {
 
           if (!blob) return json({ code: "NOT_FOUND", params: {} }, 404);
           const saved = id.startsWith("screenshots/") ? null : yield* home.read("artifact", id);
-          const filename = saved ? (JSON.parse(saved) as { name: string }).name : id;
+          const filename = saved ? stored(Schema.Struct({ name: Schema.String }), saved).name : id;
 
           return HttpServerResponse.fromWeb(
-            new Response(blob.body as unknown as ReadableStream, {
+            new Response(blobStream(blob.body), {
               headers: {
                 "Content-Type": id.startsWith("screenshots/")
                   ? "image/jpeg"
@@ -171,6 +179,7 @@ export const makeOwnerData = Effect.gen(function* () {
           yield* Effect.promise(() =>
             env.BLOBS.put(
               key,
+              // SAFETY: Request bodies are Web byte streams accepted directly by R2; retaining the original fixed-length stream preserves Content-Length.
               (request.body ?? new Uint8Array()) as Parameters<cf.R2Bucket["put"]>[1],
             ),
           );
@@ -184,3 +193,9 @@ export const makeOwnerData = Effect.gen(function* () {
       return undefined;
     });
 });
+
+export class OwnerData extends Context.Service<OwnerData, Effect.Success<typeof makeOwnerData>>()(
+  "@kitties/gateway/OwnerData",
+) {
+  static readonly layer = Layer.effect(OwnerData, makeOwnerData);
+}

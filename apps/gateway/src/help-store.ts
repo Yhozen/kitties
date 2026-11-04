@@ -1,20 +1,26 @@
-import type * as Cloudflare from "@alchemy.run/cloudflare";
-import type * as Effect from "effect/Effect";
+import * as Context from "effect/Context";
+import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
+import { stored } from "./stored-records.ts";
+import * as Cloudflare from "@alchemy.run/cloudflare";
+import * as Effect from "effect/Effect";
 
 export type HelpDecision = "accept" | "skip";
 
-export interface HelpRecord {
-  status: string;
-  expiresAt: number;
-  executionId: string;
-  kittyId: string;
-  decision?: HelpDecision;
-}
+export const HelpRecord = Schema.Struct({
+  status: Schema.String,
+  expiresAt: Schema.Number,
+  executionId: Schema.String,
+  kittyId: Schema.String,
+  decision: Schema.optional(Schema.Literals(["accept", "skip"])),
+});
+
+export type HelpRecord = typeof HelpRecord.Type;
 
 export const savedHelpDecision = (row: HelpRecord): HelpDecision | undefined =>
   row.decision ?? (row.status === "accept" || row.status === "skip" ? row.status : undefined);
 
-export function makeHelpStore(state: Effect.Success<typeof Cloudflare.DurableObjectState>) {
+function makeHelpStore(state: Effect.Success<typeof Cloudflare.DurableObjectState>) {
   const { sql } = state.raw.storage;
 
   const read = (id: string) => {
@@ -22,7 +28,7 @@ export function makeHelpStore(state: Effect.Success<typeof Cloudflare.DurableObj
       .exec<{ body: string }>("SELECT body FROM records WHERE kind='desktop-help' AND id=?", id)
       .toArray()[0];
 
-    return row ? (JSON.parse(row.body) as HelpRecord) : undefined;
+    return row ? stored(HelpRecord, row.body) : undefined;
   };
 
   const write = (id: string, row: HelpRecord) =>
@@ -62,4 +68,13 @@ export function makeHelpStore(state: Effect.Success<typeof Cloudflare.DurableObj
         return decision;
       }),
   };
+}
+
+export class HelpStore extends Context.Service<HelpStore, ReturnType<typeof makeHelpStore>>()(
+  "@kitties/gateway/HelpStore",
+) {
+  static readonly layer = Layer.effect(
+    HelpStore,
+    Effect.map(Cloudflare.DurableObjectState, makeHelpStore),
+  );
 }

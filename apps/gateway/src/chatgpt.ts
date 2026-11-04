@@ -1,12 +1,16 @@
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+import { safeChatgptError } from "./chatgpt-errors.ts";
+import * as Context from "effect/Context";
+import * as Layer from "effect/Layer";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Effect from "effect/Effect";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
-import { ChatgptLinkInput, type ChatgptFailure } from "@kitties/domain/entities";
+import { ChatgptLinkInput, ChatgptError, type ChatgptFailure } from "@kitties/domain/entities";
 import { HomeDO } from "./actors.ts";
 import { readBody } from "./request.ts";
-import { safeChatgptError } from "./chatgpt-errors.ts";
 
-const json = (body: unknown, status = 200) =>
+const json = <Value>(body: Value, status = 200) =>
   HttpServerResponse.fromWeb(
     Response.json(body, {
       status,
@@ -14,11 +18,9 @@ const json = (body: unknown, status = 200) =>
     }),
   );
 
-const failure = (error: unknown) => {
-  const info =
-    error && typeof error === "object" && "code" in error && "reason" in error
-      ? (error as ChatgptFailure)
-      : safeChatgptError(error);
+const failure = (error: ChatgptFailure) => {
+  const decoded = Schema.decodeUnknownOption(ChatgptError)(error);
+  const info = Option.getOrElse(decoded, () => safeChatgptError(error));
 
   return json(
     { code: info.code, params: {}, error: info },
@@ -26,8 +28,9 @@ const failure = (error: unknown) => {
   );
 };
 
-export const makeChatgpt = Effect.gen(function* () {
+const makeChatgpt = Effect.gen(function* () {
   const homes = yield* HomeDO;
+  // SAFETY: Gateway deployment declares these named bindings in worker.ts; Cloudflare injects their declared values into every bound actor.
   const env = (yield* Cloudflare.WorkerEnvironment) as { CHATGPT_ENABLED: string };
   const home = () => homes.getByName("owner", { locationHint: "weur" });
 
@@ -145,3 +148,9 @@ export const makeChatgpt = Effect.gen(function* () {
       if (path.startsWith("/v1/chatgpt/")) return json({ code: "NOT_FOUND", params: {} }, 404);
     });
 });
+
+export class Chatgpt extends Context.Service<Chatgpt, Effect.Success<typeof makeChatgpt>>()(
+  "@kitties/gateway/Chatgpt",
+) {
+  static readonly layer = Layer.effect(Chatgpt, makeChatgpt);
+}

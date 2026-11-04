@@ -1,10 +1,14 @@
+import * as Schema from "effect/Schema";
+import { stored, ConnectionRecord } from "./stored-records.ts";
+import * as Context from "effect/Context";
+import * as Layer from "effect/Layer";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Effect from "effect/Effect";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import { HomeDO } from "./actors.ts";
 import { discoverOAuth, jsonResponse, type OAuthConfig } from "./oauth-core.ts";
 import { allowedFetch, publicHttps } from "./outbound.ts";
-import { OAuthStartInput, type Connection } from "./entities.ts";
+import { OAuthStartInput } from "./entities.ts";
 import { readBody } from "./request.ts";
 
 export const oauthOrigin = (stage: string) => `https://auth-${stage}.kitties.rccpr.tech`;
@@ -25,13 +29,14 @@ export const nativeOAuth = {
   },
 };
 
-const json = (body: unknown, status = 200) =>
+const json = <Value>(body: Value, status = 200) =>
   HttpServerResponse.fromWeb(
     Response.json(body, { status, headers: { "Cache-Control": "no-store" } }),
   );
 
-export const makeOAuth = Effect.gen(function* () {
+const makeOAuth = Effect.gen(function* () {
   const homes = yield* HomeDO;
+  // SAFETY: Gateway deployment declares these named bindings in worker.ts; Cloudflare injects their declared values into every bound actor.
   const env = (yield* Cloudflare.WorkerEnvironment) as { STAGE: string };
   const home = () => homes.getByName("owner", { locationHint: "weur" });
 
@@ -55,7 +60,7 @@ export const makeOAuth = Effect.gen(function* () {
           saved = yield* home().read("connection", id);
 
         if (!saved) return json({ code: "NOT_FOUND", params: {} }, 404);
-        const connection = JSON.parse(saved) as Connection;
+        const connection = stored(ConnectionRecord, saved);
 
         if (!match[2] && request.method === "GET")
           return json({ status: yield* home().oauthStatus(id) });
@@ -122,11 +127,11 @@ export const makeOAuth = Effect.gen(function* () {
             catch: () => "OAUTH_REGISTRATION_FAILED",
           });
 
-          if (typeof registration.client_id !== "string")
+          if (!Schema.is(Schema.String)(registration.client_id))
             return json({ code: "OAUTH_REGISTRATION_FAILED", params: {} }, 400);
           clientId = registration.client_id;
 
-          if (typeof registration.client_secret === "string")
+          if (Schema.is(Schema.String)(registration.client_secret))
             clientSecret = registration.client_secret;
         }
 
@@ -149,9 +154,9 @@ export const makeOAuth = Effect.gen(function* () {
           scope: body.scope ?? ("scope" in metadata ? metadata.scope : metadata.scopes.join(" ")),
           redirectUri,
           protectedUrl: connection.url,
-          ...(connection.kind === "mcp" ? { resource: connection.url } : {}),
         };
 
+        if (connection.kind === "mcp") config.resource = connection.url;
         const result = yield* home().oauthBegin(id, config);
 
         // Google needs explicit offline consent to return a refresh token on reauthorization.
@@ -167,3 +172,9 @@ export const makeOAuth = Effect.gen(function* () {
       }),
   };
 });
+
+export class OAuth extends Context.Service<OAuth, Effect.Success<typeof makeOAuth>>()(
+  "@kitties/gateway/OAuth",
+) {
+  static readonly layer = Layer.effect(OAuth, makeOAuth);
+}
