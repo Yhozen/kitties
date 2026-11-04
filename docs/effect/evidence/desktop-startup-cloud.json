@@ -1,0 +1,83 @@
+{
+  "date": "2026-11-04T12:20:19.864Z",
+  "findings": {
+    "previousRelease": "Production and next were still running November 2 builds; application deployment is manual.",
+    "staticJpeg": "The first image was captured before the media handshake, then discarded until a screen change or another viewer joined.",
+    "video": "voxl failed MIT-SHM Attach with BadAccess because the daemon and display use different Unix users."
+  },
+  "repairs": {
+    "firstFrame": "Publish cached JPEG on media open; retry a silent initial image; show Connected only after drawing.",
+    "input": "After an unconfirmed input, discard the queue and reconnect without replay.",
+    "video": "Checksum-pinned voxl patch falls back to X11 GetImage while retaining private segment permissions."
+  },
+  "validation": {
+    "jpeg": {
+      "stage": "prod",
+      "mode": "jpeg",
+      "firstFrameMs": 1023,
+      "frames": 1,
+      "acks": [
+        {
+          "status": "completed",
+          "timings": {
+            "receivedAt": 1793794227274,
+            "startedAt": 1793794227276,
+            "completedAt": 1793794227279,
+            "doReceivedAt": 1793794227210,
+            "doAckAt": 1793794227267
+          }
+        }
+      ],
+      "label": "Conectado\nCompatibility view\nDevolver control\nClose",
+      "errors": []
+    },
+    "video": {
+      "stage": "prod",
+      "mode": "video",
+      "firstFrameMs": 1047,
+      "frames": 4,
+      "acks": [
+        {
+          "status": "completed",
+          "timings": {
+            "receivedAt": 1793794756003,
+            "startedAt": 1793794756004,
+            "completedAt": 1793794756007,
+            "doReceivedAt": 1793794755925,
+            "doAckAt": 1793794755997
+          }
+        }
+      ],
+      "label": "Conectado\nLive video\nDevolver control\nClose",
+      "errors": []
+    },
+    "files": {
+      "stage": "prod",
+      "bytes": 6291456,
+      "checks": [
+        "Boat upload readable by the desktop account",
+        "Desktop account writes downloadable file",
+        "Byte-identical download"
+      ],
+      "scope": "Live fresh production Shared folder and Boat transfer path; browser API previously covered by acceptance tests"
+    },
+    "crossUser": {
+      "unpatched": "fails to produce H264",
+      "patched": "passes capture, keyframe recovery and loopback authentication"
+    },
+    "unitTests": 107,
+    "helperTests": 3,
+    "browserRecoveryTests": 3,
+    "decoderTests": 10
+  },
+  "reset": {
+    "oldComputersDeleted": 3,
+    "oldSavedSnapshotsDeleted": 2,
+    "next": "absent",
+    "production": "fresh ready computer; generation incremented"
+  },
+  "guestRelease": {
+    "key": "6864185dfe89002ccdfd33f50a3e1f191ead0694a3a95f4ce2a3711c247f8019.tgz",
+    "sha256": "6864185dfe89002ccdfd33f50a3e1f191ead0694a3a95f4ce2a3711c247f8019"
+  }
+}
