@@ -40,11 +40,16 @@ export interface VideoFlow {
 
 export const MAX_VIDEO_FRAMES = 32;
 
-export const freshVideoFlow = (previous?: VideoFlow): VideoFlow => ({
-  waitingKey: true,
-  inflight: [],
-  ...(previous?.rttMs === undefined ? {} : { rttMs: previous.rttMs, jitterMs: previous.jitterMs }),
-});
+export const freshVideoFlow = (previous?: VideoFlow): VideoFlow => {
+  const flow: VideoFlow = { waitingKey: true, inflight: [] };
+
+  if (previous?.rttMs !== undefined) {
+    flow.rttMs = previous.rttMs;
+    flow.jitterMs = previous.jitterMs;
+  }
+
+  return flow;
+};
 
 export function videoFrameLimit(flow: VideoFlow) {
   if (flow.rttMs === undefined) return 8;

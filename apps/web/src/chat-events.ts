@@ -1,11 +1,14 @@
+import * as Schema from "effect/Schema";
 import type { MessageView } from "@kitties/domain/entities";
 
 type Message = typeof MessageView.Type;
-export type ChatEvent =
-  | { type: "message"; messageId: string; text: string; kittyId: string }
-  | { type: "round_reset"; messageId: string; round?: number; attempt: number; prefix?: string }
-  | { type: "delta"; messageId: string; round: number; attempt: number; text: string }
-  | { type: "completed" | "cancelled" | "failed"; messageId: string };
+export const ChatEvent = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("message"), messageId: Schema.String, text: Schema.String, kittyId: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("round_reset"), messageId: Schema.String, round: Schema.optional(Schema.Number), attempt: Schema.Number, prefix: Schema.optional(Schema.String) }),
+  Schema.Struct({ type: Schema.Literal("delta"), messageId: Schema.String, round: Schema.Number, attempt: Schema.Number, text: Schema.String }),
+  Schema.Struct({ type: Schema.Literals(["completed", "cancelled", "failed"]), messageId: Schema.String }),
+]);
+export type ChatEvent = typeof ChatEvent.Type;
 
 export function applyChatEvent(current: readonly Message[], event: ChatEvent, chatId: string): readonly Message[] {
   if (event.type === "message") return current.some(m => m.id === event.messageId) ? current : [...current, {

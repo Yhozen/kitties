@@ -1,4 +1,5 @@
 import http from "node:http";
+import * as Match from "effect/Match";
 import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
@@ -110,7 +111,12 @@ async function main() {
   console.log(helper.browserUrl);
 
   if (!args.includes("--no-open")) {
-    const program = process.platform === "darwin" ? "open" : process.platform === "win32" ? "rundll32" : "xdg-open";
+    const program = Match.value(process.platform).pipe(
+      Match.when("darwin", () => "open"),
+      Match.when("win32", () => "rundll32"),
+      Match.orElse(() => "xdg-open"),
+    );
+
     const child = spawn(program, process.platform === "win32" ? ["url.dll,FileProtocolHandler", helper.browserUrl] : [helper.browserUrl], { stdio: "ignore" });
     child.on("error", () => console.log("Open the Kitties URL above in your browser on this computer."));
     child.unref();

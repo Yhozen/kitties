@@ -2,7 +2,11 @@ import fs from 'node:fs';
 
 const base='https://api.cloudflare.com/client/v4',headers={Authorization:`Bearer ${process.env.CLOUDFLARE_API_TOKEN}`,'Content-Type':'application/json'};
 
-const api=async(path,method='GET',body)=>{const r=await fetch(base+path,{method,headers,...(body?{body:JSON.stringify(body)}:{})});const v=await r.json();
+const api=async(path,method='GET',body)=>{
+const options={method,headers};
+
+if(body)options.body=JSON.stringify(body);
+const r=await fetch(base+path,options);const v=await r.json();
 
 if(!v.success)throw Error(JSON.stringify({status:r.status,errors:v.errors}));
 

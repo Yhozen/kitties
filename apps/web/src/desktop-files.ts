@@ -1,4 +1,9 @@
 import { t } from "./i18n";
+import * as Schema from "effect/Schema";
+import * as Option from "effect/Option";
+
+const FileFailure = Schema.Struct({ code: Schema.optional(Schema.String) });
+const parseFileFailure = Schema.decodeUnknownOption(FileFailure);
 
 export const FILE_LIMIT = 64 * 1024 * 1024;
 
@@ -23,7 +28,7 @@ export const fileSize = (size: number) =>
   size < 1024 * 1024 ? `${Math.ceil(size / 1024)} KB` : `${(size / 1024 / 1024).toFixed(1)} MB`;
 
 export function fileError(code: string): Error {
-  const messages: Record<string, string> = {
+  const messages = new Map(Object.entries({
     FILE_TOO_LARGE: t("Choose a file no larger than 64 MB."),
     FILE_NOT_FOUND_OR_SHARING_NOT_READY: t(
       "Shared folder unavailable. Start or upgrade this computer, then try again.",
@@ -39,17 +44,17 @@ export function fileError(code: string): Error {
     INVALID_FILE_PATH: t(
       "Choose a file with a shorter name, without slashes or control characters.",
     ),
-  };
+  }));
 
   return Error(
-    messages[code] ?? t("Transfer could not be confirmed. Refresh the folder before retrying."),
+    messages.get(code) ?? t("Transfer could not be confirmed. Refresh the folder before retrying."),
   );
 }
 
 export async function fileResponse(response: Response) {
   if (!response.ok) {
-    const error = (await response.json().catch(() => ({}))) as { code?: string };
-    throw fileError(error.code ?? "");
+    const error = parseFileFailure(await response.json().catch(() => ({})));
+    throw fileError(Option.isSome(error) ? error.value.code ?? "" : "");
   }
 
   return response;
@@ -91,7 +96,8 @@ export function uploadFile(
         let code = "";
 
         try {
-          code = JSON.parse(xhr.responseText).code;
+          const error = parseFileFailure(JSON.parse(xhr.responseText));
+          code = Option.isSome(error) ? error.value.code ?? "" : "";
         } catch {}
 
         finish(fileError(code));
