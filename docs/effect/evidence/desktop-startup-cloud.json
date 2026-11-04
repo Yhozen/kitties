@@ -77,7 +77,7 @@
     "production": "fresh ready computer; generation incremented"
   },
   "guestRelease": {
-    "key": "6864185dfe89002ccdfd33f50a3e1f191ead0694a3a95f4ce2a3711c247f8019.tgz",
+    "archive": "6864185dfe89002ccdfd33f50a3e1f191ead0694a3a95f4ce2a3711c247f8019.tgz",
     "sha256": "6864185dfe89002ccdfd33f50a3e1f191ead0694a3a95f4ce2a3711c247f8019"
   }
 }
