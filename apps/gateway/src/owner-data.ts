@@ -9,6 +9,7 @@ import { HomeDO, KittyDO } from "./actors.ts";
 import { DesktopAttempt, DesktopDecision } from "./desktop-definition.ts";
 import { seal } from "./secrets.ts";
 import { readBody } from "./request.ts";
+import { savedHelpDecision, type HelpRecord } from "./help-store.ts";
 const json = (value: unknown, status = 200) =>
   HttpServerResponse.fromWeb(
     Response.json(value, { status, headers: { "Cache-Control": "no-store" } }),
@@ -72,15 +73,18 @@ export const makeOwnerData = Effect.gen(function* () {
           );
         const saved = yield* home.read("desktop-help", id);
         if (!saved) return json({ code: "NOT_FOUND", params: {} }, 404);
-        const row = JSON.parse(saved) as {
-          status: string;
-          expiresAt: number;
-          executionId: string;
-          kittyId: string;
-        };
-        if (row.status !== "pending" || row.expiresAt <= Date.now())
+        const row = JSON.parse(saved) as HelpRecord;
+        const accepted = savedHelpDecision(row);
+        if (
+          accepted
+            ? accepted !== body.decision
+            : row.status !== "pending" || row.expiresAt <= Date.now()
+        )
           return json({ code: "HELP_CONFLICT", params: {} }, 409);
-        if ((yield* kitties.getByName(row.kittyId, { locationHint: "weur" }).status()).grant)
+        if (
+          !accepted &&
+          (yield* kitties.getByName(row.kittyId, { locationHint: "weur" }).status()).grant
+        )
           return json({ code: "CONTROL_MUST_BE_RELEASED", params: {} }, 409);
         const claimed = yield* home.decideHelp(id, body.decision);
         if (!claimed) return json({ code: "HELP_CONFLICT", params: {} }, 409);

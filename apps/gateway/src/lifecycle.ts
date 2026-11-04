@@ -5,10 +5,13 @@ import { WorkflowEngine } from "effect/workflow";
 import { HomeDO, KittyDO } from "./actors.ts";
 import { ComputerOp } from "./computer-definition.ts";
 import { boatClient, ownsSandbox } from "./boat.ts";
+import { DesktopAttempt, DesktopDecision } from "./desktop-definition.ts";
+import { retryHelpDecisions } from "./help-decisions.ts";
 export const makeLifecycle = Effect.gen(function* () {
   const homes = yield* HomeDO,
     kitties = yield* KittyDO,
-    computers = yield* Workflows.RunWorkflow(ComputerOp);
+    computers = yield* Workflows.RunWorkflow(ComputerOp),
+    desktops = yield* Workflows.RunWorkflow(DesktopAttempt);
   const engine = yield* WorkflowEngine.WorkflowEngine;
   const env = (yield* Cloudflare.WorkerEnvironment) as {
     BOAT_DEV_API_KEY: string;
@@ -17,14 +20,17 @@ export const makeLifecycle = Effect.gen(function* () {
   const boat = boatClient(env.BOAT_DEV_API_KEY);
   return Effect.gen(function* () {
     const home = homes.getByName("owner", { locationHint: "weur" });
+    yield* retryHelpDecisions(home, (executionId, decision) =>
+      desktops.get(executionId).signal(DesktopDecision, decision),
+    );
     const records = yield* home.list("kitty");
     yield* Effect.forEach(
       records,
       (record) =>
         Effect.gen(function* () {
-          const kitty = kitties.getByName(record.id, { locationHint: "weur" }),
-            state = yield* kitty.computer();
-          if (!state?.remoteId || ["absent", "sleeping", "deleted"].includes(state.phase)) return;
+          const kitty = kitties.getByName(record.id, { locationHint: "weur" });
+          let state = yield* kitty.computer();
+          if (!state) return;
           if (state.operation) {
             // Starting is idempotent and also repairs a crash between the actor
             // claiming an operation and the Worker publishing its run receipt.
@@ -49,7 +55,10 @@ export const makeLifecycle = Effect.gen(function* () {
                 Effect.provideService(WorkflowEngine.WorkflowEngine, engine),
               );
             }
+            // Resumption may have changed the phase or installed the first remote ID.
+            state = yield* kitty.computer();
           }
+          if (!state?.remoteId || ["absent", "sleeping", "deleted"].includes(state.phase)) return;
           const machine = yield* boat.get(state.remoteId);
           if (
             !ownsSandbox(

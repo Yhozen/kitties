@@ -187,6 +187,8 @@ export const DesktopAttemptLive = Workflows.layer(
         success: Schema.String,
         error: Schema.String,
         execute: Effect.gen(function* () {
+          const decision = yield* home.completeHelp(payload.id).pipe(Effect.mapError(storage));
+          if (decision) status = decision === "accept" ? "completed" : "unknown";
           const receipt = yield* kitty.receipt(intentId).pipe(Effect.mapError(storage));
           let result: unknown = { status };
           if (receipt?.result) {
@@ -214,15 +216,8 @@ export const DesktopAttemptLive = Workflows.layer(
               home
                 .charge(key, new Date().toISOString().slice(0, 10), payload.kittyId, 0, 1)
                 .pipe(Effect.mapError(storage)),
-              home
-                .write(
-                  "desktop-help",
-                  payload.id,
-                  JSON.stringify({ ...payload, executionId, status: "completed" }),
-                )
-                .pipe(Effect.mapError(storage)),
             ],
-            { concurrency: 3 },
+            { concurrency: 2 },
           );
           return payload.callId;
         }),

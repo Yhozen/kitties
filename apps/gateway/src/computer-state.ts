@@ -65,9 +65,23 @@ export function beginOperation(
     throw Error("USE_RESTORE");
   if ((kind === "sleep" || kind === "delete") && !previous.remoteId) throw Error("COMPUTER_ABSENT");
   if (kind === "start" && previous.phase === "ready") return previous;
-  const generation = previous.generation + (kind === "restore" ? 1 : 0);
+  const recreate = previous.phase === "deleted" && (kind === "start" || kind === "upgrade");
+  const generation = previous.generation + (kind === "restore" || recreate ? 1 : 0);
   return {
     ...previous,
+    ...(recreate
+      ? {
+          remoteId: undefined,
+          receipt: undefined,
+          quiesced: undefined,
+          previousIds: [
+            ...new Set([
+              ...previous.previousIds,
+              ...(previous.remoteId ? [previous.remoteId] : []),
+            ]),
+          ],
+        }
+      : {}),
     generation,
     tokenVersion: previous.tokenVersion + 1,
     phase:

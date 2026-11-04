@@ -1,4 +1,5 @@
 export default {
+  "Load earlier messages": "Cargar mensajes anteriores",
   "Retry previous registration": "Reintentar el registro anterior",
   "Use your ChatGPT plan": "Usa tu plan de ChatGPT",
   "Link once using the Mac helper. After linking, Puppies works from the PWA on any device.": "Vincula una vez con el asistente del Mac. Después, usa Puppies desde la PWA en cualquier dispositivo.",

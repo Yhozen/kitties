@@ -12,6 +12,7 @@ import { makeOAuthStorage, type OAuthConfig } from "./oauth-core.ts";
 import { makeChatgptStorage, type ChatgptCallback } from "./chatgpt-core.ts";
 import { safeChatgptError } from "./chatgpt-errors.ts";
 import { authorization, type RuleMode } from "./approval-policy.ts";
+import { makeHelpStore, type HelpDecision } from "./help-store.ts";
 
 const makeActor = Effect.gen(function* () {
   const state = yield* Cloudflare.DurableObjectState;
@@ -48,6 +49,7 @@ const makeActor = Effect.gen(function* () {
       "CREATE TABLE IF NOT EXISTS webhook_deliveries (id TEXT PRIMARY KEY,digest TEXT NOT NULL,body TEXT NOT NULL,at INTEGER NOT NULL)",
     );
     const raw = state.raw.storage.sql;
+    const help = makeHelpStore(state);
     // Hard cutover: old provider-owned Codex grants and active-attempt pointers
     // cannot remain usable through the generic OAuth callback after redeploy/PITR.
     raw.exec(
@@ -539,29 +541,9 @@ const makeActor = Effect.gen(function* () {
             id,
           );
         }),
-      decideHelp: (id: string, decision: string) =>
-        Effect.sync(() =>
-          state.raw.storage.transactionSync(() => {
-            const sql = state.raw.storage.sql,
-              saved = sql
-                .exec<{ body: string }>(
-                  "SELECT body FROM records WHERE kind='desktop-help' AND id=?",
-                  id,
-                )
-                .toArray()[0];
-            if (!saved) return false;
-            const row = JSON.parse(saved.body) as { status: string; expiresAt: number };
-            if (row.status === decision) return true;
-            if (row.status !== "pending" || row.expiresAt <= Date.now()) return false;
-            sql.exec(
-              "UPDATE records SET body=?,updated_at=? WHERE kind='desktop-help' AND id=?",
-              JSON.stringify({ ...row, status: decision }),
-              Date.now(),
-              id,
-            );
-            return true;
-          }),
-        ),
+      decideHelp: (id: string, decision: HelpDecision) =>
+        Effect.sync(() => help.decide(id, decision)),
+      completeHelp: (id: string) => Effect.sync(() => help.complete(id)),
       decideApproval: (id: string, decision: boolean, digest: string) =>
         Effect.sync(() =>
           state.raw.storage.transactionSync(() => {

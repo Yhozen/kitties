@@ -19,12 +19,13 @@ import {
   type ApprovalRecord,
 } from "./entities.ts";
 import { ComputerOp } from "./computer-definition.ts";
+import { makeComputerResume } from "./computer-resume.ts";
 import { Turn } from "./turn-definition.ts";
 import { DesktopAttempt } from "./desktop-definition.ts";
 import { Approval, ApprovalDecision } from "./approval-definition.ts";
 import { WorkflowEngine } from "effect/workflow";
 import { seal, open } from "./secrets.ts";
-import { providerBaseUrl } from "./providers.ts";
+import { providerBaseUrl, providerVerificationRequest } from "./providers.ts";
 import { allowedFetch } from "./outbound.ts";
 import { publicHttps } from "./outbound.ts";
 import { discoverTools } from "./tools.ts";
@@ -53,6 +54,7 @@ export const makeApplication = Effect.gen(function* () {
     kitties = yield* KittyDO,
     chats = yield* ChatDO;
   const computers = yield* Workflows.RunWorkflow(ComputerOp);
+  const resumeComputer = yield* makeComputerResume;
   const turns = yield* Workflows.RunWorkflow(Turn);
   const desktops = yield* Workflows.RunWorkflow(DesktopAttempt);
   const approvals = yield* Workflows.RunWorkflow(Approval);
@@ -122,14 +124,8 @@ export const makeApplication = Effect.gen(function* () {
             }),
           );
           if (computerRoute[2] === "resume") {
-            const saved = yield* home().read("computer-run", body.operationId);
-            if (!saved) return json({ code: "NOT_FOUND", params: {} }, 404);
-            const record = JSON.parse(saved) as { executionId: string; kittyId: string };
-            if (record.kittyId !== id) return json({ code: "NOT_FOUND", params: {} }, 404);
-            yield* ComputerOp.resume(record.executionId).pipe(
-              Effect.provideService(WorkflowEngine.WorkflowEngine, engine),
-            );
-            return json({ executionId: record.executionId }, 202);
+            const run = yield* resumeComputer(id, body.operationId);
+            return run ? json(run, 202) : json({ code: "NOT_FOUND", params: {} }, 404);
           }
           if (computerRoute[2] === "repair") {
             // Only a suspended run may be replaced; a live run keeps its operation.
@@ -316,15 +312,11 @@ export const makeApplication = Effect.gen(function* () {
             try: () => open(env.KITTIES_KEK, `providers:${id}:api-key`, provider.secret!),
             catch: () => "KEY_UNAVAILABLE",
           });
-          const base = providerBaseUrl(provider),
-            endpoint = base + "/models";
+          const { base, endpoint, headers } = providerVerificationRequest(provider, secret);
           const response = yield* Effect.tryPromise({
             try: () =>
               allowedFetch(endpoint, [new URL(base).hostname], {
-                headers:
-                  provider.kind === "anthropic"
-                    ? { "x-api-key": secret, "anthropic-version": "2023-06-01" }
-                    : { Authorization: `Bearer ${secret}` },
+                headers,
               }),
             catch: () => "PROVIDER_UNAVAILABLE",
           });
@@ -427,8 +419,12 @@ export const makeApplication = Effect.gen(function* () {
           return HttpServerResponse.empty({ status: 204 });
         }
         if (method === "GET" && chatRoute[2] === "replay") return json(yield* chat.replay());
-        if (method === "GET" && !chatRoute[2])
-          return json({ ...profile, ...(yield* chat.snapshot()) });
+        if (method === "GET" && !chatRoute[2]) {
+          const before = url.searchParams.get("before") ?? undefined;
+          if (before !== undefined && !/^[a-zA-Z0-9_-]{1,128}$/.test(before))
+            return json({ code: "INVALID_MESSAGE_ID", params: {} }, 400);
+          return json({ ...profile, ...(yield* chat.snapshot(before)) });
+        }
         if (method === "POST" && chatRoute[2] === "messages") {
           const body = yield* readBody(request, MessageInput);
           if (!profile.members.includes(body.kittyId))

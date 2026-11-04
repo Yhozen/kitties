@@ -12,8 +12,16 @@ readarray -t spec < <(python3 -c 'import json;v=json.load(open("voxl-version.jso
 curl --fail --silent --show-error --location "${spec[0]}" -o "$work/voxl.crate"
 printf '%s  %s\n' "${spec[1]}" "$work/voxl.crate" | sha256sum --check --status
 tar -xzf "$work/voxl.crate" -C "$work/source" --strip-components=1
+python3 - "$work/source" <<'PY'
+import hashlib,json,pathlib,subprocess,sys
+for name,expected in json.load(open('voxl-version.json')).get('patches',{}).items():
+    patch=pathlib.Path('patches')/name
+    if hashlib.sha256(patch.read_bytes()).hexdigest()!=expected:
+        raise SystemExit('voxl patch checksum mismatch')
+    subprocess.run(['patch','-d',sys.argv[1],'-p1','--batch','--forward','-i',str(patch.resolve())],check=True)
+PY
 # Ubuntu's libyuv-dev omits the pkg-config metadata. This only describes the
-# distribution library; no source or compiler flags are patched upstream.
+# distribution library; it does not change the upstream compiler flags.
 cat > "$work/pkgconfig/libyuv.pc" <<'PC'
 prefix=/usr
 libdir=/usr/lib/x86_64-linux-gnu
@@ -39,6 +47,7 @@ cargo "+${spec[2]}" vendor --locked --manifest-path "$work/source/Cargo.toml" "$
 # Use a relative directory when rebuilding the source bundle.
 sed -i "s|$work/source/vendor|vendor|" "$work/source/.cargo/config.toml"
 cp scripts/build-voxl.sh voxl-version.json "$work/source/"
+cp -r patches "$work/source/"
 cp /usr/share/common-licenses/GPL-2 "$work/source/COPYING-x264"
 cp /usr/share/doc/libx264-dev/copyright "$work/source/x264-copyright"
 cp /usr/share/doc/libyuv-dev/copyright "$work/source/libyuv-copyright"
@@ -46,7 +55,7 @@ cp "$work/source/LICENSE" dist/voxl-LICENSE
 cp "$work/source/COPYING-x264" dist/voxl-COPYING-x264
 cp "$work/source/x264-copyright" dist/voxl-x264-copyright
 cat > "$work/source/BUILD-KITTIES.txt" <<'NOTICE'
-Kitties builds this unmodified voxl source using the versions in voxl-version.json,
+Kitties builds this voxl source with the checksum-pinned patches in voxl-version.json,
 Ubuntu 24.04 x86_64, and the build-voxl.sh recipe. To rebuild this unpacked source:
 install the recipe's listed native dependencies, Rust and esbuild; create libyuv.pc
 as shown in the recipe; then run cargo build --release --locked --offline here.
@@ -56,6 +65,8 @@ than redistributed here. Their source is available from Ubuntu (apt-get source
 x264 libyuv opus pulseaudio). The voxl binary links x264 and is distributed under
 the GPL-2.0-or-later terms in COPYING-x264; voxl's MIT notice remains in LICENSE.
 Kitties only exposes its authenticated read-only video relay, not voxl's web UI.
+The private-shm patch adds ordinary X11 GetImage capture when a different-UID
+X server cannot attach voxl's private MIT-SHM segment. Memory permissions stay 0600.
 NOTICE
 tar --sort=name --mtime=2026-11-04 --owner=0 --group=0 --numeric-owner \
   -czf dist/voxl-source.tgz -C "$work/source" .
