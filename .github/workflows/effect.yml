@@ -29,6 +29,17 @@ jobs:
       - run: pnpm check
       - run: pnpm test
       - run: pnpm build
+      - name: Chat and desktop lifecycle browser regressions
+        timeout-minutes: 3
+        run: |
+          pnpm --filter @kitties/web exec vp preview --host 127.0.0.1 --port 4173 > /tmp/kitties-review-preview.log 2>&1 &
+          review_server_pid=$!
+          trap 'kill "$review_server_pid"' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:4173/ > /dev/null; then break; fi
+            sleep 1
+          done
+          KITTIES_TEST_URL=http://127.0.0.1:4173 pnpm --filter @kitties/web exec playwright test -c e2e-next/playwright.config.ts e2e-next/review-regressions.spec.ts --reporter=line
       - run: bun guest/kittyd/tests/jpeg-startup.ts
       - run: node guest/kittyd/tests/desktop-recovery-browser.mjs
       - name: Native desktop acceptance (Ubuntu / GTK / AT-SPI / voxl)
