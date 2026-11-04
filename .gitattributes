@@ -7,3 +7,6 @@ Makefile text eol=lf
 
 # Binaries must never be touched by the line-ending conversion.
 *.png binary
+
+repos/foldkit/** linguist-vendored
+FOLDKIT.md linguist-vendored
