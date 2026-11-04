@@ -399,7 +399,7 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
               readyState: ws.readyState,
               epoch: (ws.deserializeAttachment() as Session | null)?.epoch,
             })),
-            viewers: sockets("viewer").length,
+            viewers: sockets("viewer").length + sockets("video-viewer").length,
             videoViewers: sockets("video-viewer").length,
             grant: read<Grant>("grant"),
             pending: pending(),
@@ -562,6 +562,17 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
               request.headers.get("X-Kitty-Token-Version") !== String(c.tokenVersion)
             )
               return HttpServerResponse.empty({ status: 403 });
+            // Hash verification yields; reject credentials rotated while it was running.
+            const verified = config();
+            if (
+              !verified ||
+              verified.epoch !== c.epoch ||
+              verified.tokenHash !== c.tokenHash ||
+              verified.generation !== c.generation ||
+              verified.remoteId !== c.remoteId ||
+              verified.tokenVersion !== c.tokenVersion
+            )
+              return HttpServerResponse.empty({ status: 403 });
             if (!frames && !video) {
               bump();
               for (const old of [
@@ -581,11 +592,12 @@ export class KittyDO extends Cloudflare.DurableObject<KittyDO>()(
               sockets("viewer").length + sockets("video-viewer").length >= 4)
           )
             return HttpServerResponse.empty({ status: 429 });
+          const admissionEpoch = config()!.epoch;
           const [response, ws] = yield* Cloudflare.upgrade({ tags: [role] });
           const session: Session = {
             role,
             clientId: crypto.randomUUID(),
-            epoch: config()!.epoch,
+            epoch: admissionEpoch,
             ...(role === "video-viewer" ? { video: freshVideoFlow() } : {}),
           };
           ws.serializeAttachment(session);

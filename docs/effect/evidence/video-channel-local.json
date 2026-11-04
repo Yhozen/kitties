@@ -2,6 +2,8 @@
   "status": "passed",
   "scope": "local workerd, synthetic H264 packets",
   "checks": [
+    "video viewers prevent idle sleep",
+    "foreign Origin rejected",
     "slow viewer isolation",
     "keyframe after dropped delta",
     "video cannot grant or input",

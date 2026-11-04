@@ -95,6 +95,10 @@ try {
   const slow = new Peer(route("video"), { Origin: base });
   await slow.open;
   await slow.wait((value) => value.type === "video_ready");
+  const status = await (await fetch(`${base}/v1/kitties/${kittyId}/desktop`)).json();
+  assert.equal(status.viewers, 2, "video viewers must keep the desktop active");
+  const foreign = new Peer(route("video"), { Origin: "https://unrelated.invalid" });
+  await assert.rejects(foreign.open);
   for (let seq = 1; seq <= 9; seq++) {
     video.ws.send(packet(seq, seq === 1));
     const bytes = await fast.wait(binary);
@@ -145,6 +149,8 @@ try {
       status: "passed",
       scope: "local workerd, synthetic H264 packets",
       checks: [
+        "video viewers prevent idle sleep",
+        "foreign Origin rejected",
         "slow viewer isolation",
         "keyframe after dropped delta",
         "video cannot grant or input",
