@@ -6,7 +6,8 @@ fn fixture(name: &str) -> (tauri::App<MockRuntime>, std::path::PathBuf) {
         std::env::temp_dir().join(format!("kitties-host-{}-{name}", std::process::id()));
     std::fs::create_dir_all(&directory).unwrap();
     // Use the real generated command manifest and capability, never an allow-all test ACL.
-    let mut context = tauri::generate_context!();
+    // The official test flag omits runtime plist embedding on macOS.
+    let mut context = tauri::generate_context!(test = true);
     context.config_mut().app.app_directories_override = Some(
         tauri::utils::config::AppDirectoriesOverride::Root(directory.clone()),
     );
