@@ -12,9 +12,6 @@ peerDependencyRules:
   allowedVersions:
     vite: "1.4.0"
     capnp-es>typescript: "7.0.2"
-patchedDependencies:
-  "@alchemy.run/cloudflare@2.0.0-beta.84": patches/@alchemy.run__cloudflare@2.0.0-beta.84.patch
-  alchemy@2.0.0-beta.84: patches/alchemy@2.0.0-beta.84.patch
 minimumReleaseAgeExclude:
   - "@effect/tsgo-darwin-arm64@0.67.1"
   - "@effect/tsgo-darwin-x64@0.67.1"
@@ -24,3 +21,5 @@ minimumReleaseAgeExclude:
   - "@effect/tsgo-win32-arm64@0.67.1"
   - "@effect/tsgo-win32-x64@0.67.1"
   - "@effect/tsgo@0.67.1"
+patchedDependencies:
+  "@alchemy.run/cloudflare@2.0.0-beta.85": patches/@alchemy.run__cloudflare@2.0.0-beta.85.patch

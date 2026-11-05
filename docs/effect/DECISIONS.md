@@ -75,6 +75,7 @@ small, proven and local to the guest:
 | T4 | The effect ledger lives in the actor that performs the effect, and `kittyd` keeps its own intent log. | Every deploy resets DOs and sockets. Reconciling after reconnect avoids asking the owner about every in-flight action. | — |
 | T5 | Perception uses agent-browser for web pages and agent-desktop for native apps, with pixel tools as the fallback. | Most kitty work happens in the browser. agent-desktop needs AT-SPI work on our guest. | The Phase 7 A/B decides the default. |
 | T6 | Whether frames move to a separate `KittyStreamDO` is decided by spike 4. | Frame fan-out must not slow input acknowledgements. | — |
+| T7 | Pin Alchemy, Cloudflare and Domain at `2.0.0-beta.85`, retaining Effect `4.1.1`. Supersedes T2's Alchemy pin. | The published Domain integration requires the matching family. Retain the workflow recovery patch; upstream now supplies the crypto compatibility fix. See [upgrade guidance](../ALCHEMY_UPGRADE.md). | Local workerd regression failures block the upgrade; cloud rollout also needs staging and authorized state-store migration. |
 
 ## D16 — 2026-11-01: Hard cutover, fresh data
 

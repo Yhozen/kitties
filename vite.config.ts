@@ -166,7 +166,9 @@ export default defineConfig({
       "README.md",
       "LICENSE",
       "SECURITY.md",
-      "scripts/**",
+      "scripts/chatgpt-connect.mjs",
+      "scripts/configure-hooks-rate.mjs",
+      "scripts/publish-app.mjs",
     ],
   },
   test: {
@@ -214,6 +216,7 @@ export default defineConfig({
   run: {
     tasks: {
       verify: { command: "vp check && vp test run", cache: true },
+      "workflow-check": { command: "node scripts/testing/workflows/run.mjs", cache: false },
     },
   },
 });

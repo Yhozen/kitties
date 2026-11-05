@@ -1,0 +1,430 @@
+diff --git a/src/Workflows/DurableObjectEngine.ts b/src/Workflows/DurableObjectEngine.ts
+index 6a3f952..022dfac 100644
+--- a/src/Workflows/DurableObjectEngine.ts
++++ b/src/Workflows/DurableObjectEngine.ts
+@@ -152,7 +152,7 @@ const makeEngine = (
+             : Effect.die(new Error(`Workflow ${workflowName} is not registered`));
+         });
+       const stubOf = (workflowName: string, executionId: string) =>
+-        Effect.map(namespaceOf(workflowName), (namespace) => namespace.getByName(executionId));
++        Effect.map(namespaceOf(workflowName), (namespace) => namespace.getByName(executionId, { locationHint: "weur" }));
+ 
+       const engine: WorkflowEngine.WorkflowEngine["Service"] = WorkflowEngine.makeUnsafe({
+         register: (workflow, execute) =>
+@@ -226,8 +226,12 @@ const makeEngine = (
+             if (stored.length > 0) {
+               return new Workflow.Complete({ exit: yield* decodeExit(stored[0]!.exit) });
+             }
++            // Activity failures are journaled outcomes; only the parent may suspend on failure.
++            const activityWorkflow = Object.assign(function () {}, instance.workflow, {
++              annotations: Context.add(instance.workflow.annotations, Workflow.SuspendOnFailure, false),
++            });
+             const activityInstance = WorkflowEngine.WorkflowInstance.initial(
+-              instance.workflow,
++              activityWorkflow,
+               instance.executionId,
+             );
+             activityInstance.interrupted = instance.interrupted;
+@@ -309,10 +313,32 @@ const makeEngine = (
+           }),
+       });
+ 
+-      return engine;
++      const administration: Administration = {
++        adminCall: (workflowName, executionId, method, args) =>
++          adminMethods.has(method)
++            ? Effect.flatMap(stubOf(workflowName, executionId), (stub) =>
++                call(stub[method](...args)),
++              )
++            : Effect.die(new Error("INVALID_WORKFLOW_ADMIN_METHOD")),
++      };
++      return Object.assign(engine, administration);
+     }),
+   );
+ 
++interface Administration {
++  readonly adminCall: (
++    workflowName: string,
++    executionId: string,
++    method: string,
++    args: ReadonlyArray<unknown>,
++  ) => Effect.Effect<unknown>;
++}
++
++const adminMethods = new Set([
++  "adminSummary", "adminBookmark", "adminPrepareRestore", "adminEvict",
++  "adminCapture", "adminReadPart", "adminPurge",
++]);
++
+ // ---------------------------------------------------------------- the execution object
+ 
+ type AnyWorkflow = Workflow.AnyWithProps;
+@@ -368,7 +394,21 @@ const currentExecution = (operation: string) =>
+         ),
+   );
+ 
++const StartedAt = Context.Reference<number>(
++  "alchemy/Cloudflare/Workflows/DurableObjectEngine/StartedAt",
++  { defaultValue: () => 0 },
++);
++
++const ADMIN_TABLES = [
++  "workflow_execution", "workflow_activity", "workflow_deferred", "workflow_clock",
++  "workflow_meta", "workflow_progress", "alchemy_alarm_callbacks",
++  "alchemy_alarm_schema", "alchemy_scheduled_events",
++];
++const EXPORT_PART_CHARACTERS = 32768;
++const EXPORT_MAX_PARTS = 1000;
++
+ const SCHEMA = `
++CREATE TABLE IF NOT EXISTS workflow_meta (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
+ CREATE TABLE IF NOT EXISTS workflow_execution (
+   id INTEGER PRIMARY KEY CHECK (id = 1),
+   execution_id TEXT NOT NULL,
+@@ -513,6 +553,11 @@ const executionObject = (registration: Registration) =>
+             Layer.mergeAll(
+               Layer.succeed(WorkflowEngine.WorkflowInstance, instance),
+               Layer.succeed(WorkflowEngine.WorkflowEngine, registration.engine()),
++              Layer.succeed(StartedAt,
++                (yield* query<{ value: number }>(
++                  "SELECT value FROM workflow_meta WHERE key = 'started_at'",
++                ))[0]?.value ?? 0,
++              ),
+               Layer.succeed(CurrentExecution, {
+                 workflowName: workflow._tag,
+                 executionId: row.execution_id,
+@@ -525,29 +570,112 @@ const executionObject = (registration: Registration) =>
+         );
+         // Suspended: a clock or a completed deferred wakes it again.
+         if (result._tag === "Suspended") return;
+-        yield* query(
+-          "UPDATE workflow_execution SET result = ?",
+-          yield* encodeResult(workflow, result.exit),
+-        );
++        yield* finish(yield* encodeResult(workflow, result.exit));
+         if (row.parent !== null) yield* resumeParent(registration, JSON.parse(row.parent));
+       });
+ 
+       const result = Effect.map(readExecution, (row) => row?.result ?? null);
++      const finish = (encoded: string, interrupted = false) => transaction(Effect.gen(function* () {
++        if (interrupted) yield* query("UPDATE workflow_execution SET interrupted = 1 WHERE result IS NULL");
++        const completed = yield* query(
++          "UPDATE workflow_execution SET result = ? WHERE result IS NULL RETURNING id",
++          encoded,
++        );
++        if (completed.length > 0) {
++          yield* query(
++            "INSERT OR IGNORE INTO workflow_meta VALUES ('completed_at', ?)",
++            Date.now(),
++          );
++        }
++      }));
++      const raw = state.raw.storage.sql;
+ 
+       return {
++        adminSummary: () => Effect.promise(async () => ({
++          meta: raw.exec("SELECT key, value FROM workflow_meta").toArray(),
++          activities: raw.exec("SELECT key FROM workflow_activity").toArray(),
++          execution: raw.exec("SELECT interrupted, result IS NOT NULL AS completed FROM workflow_execution").toArray(),
++          progress: raw.exec("SELECT seq FROM workflow_progress").toArray(),
++          callbacks: raw.exec("SELECT callback, attempts, parked, retry_at FROM alchemy_alarm_callbacks").toArray(),
++          alarm: await state.raw.storage.getAlarm(),
++        })),
++        adminBookmark: (at?: number) => Effect.tryPromise(() => at === undefined
++          ? state.raw.storage.getCurrentBookmark()
++          : state.raw.storage.getBookmarkForTime(at)),
++        adminPrepareRestore: (bookmark: string) => Effect.tryPromise(() =>
++          state.raw.storage.onNextSessionRestoreBookmark(bookmark)),
++        adminEvict: () => Effect.sync(() => state.raw.abort("Operator recovery restart")),
++        adminCapture: (id: string) => Effect.sync(() => state.raw.storage.transactionSync(() => {
++          if (typeof id !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(id)) {
++            throw new Error("INVALID_EXPORT_ID");
++          }
++          raw.exec("CREATE TABLE IF NOT EXISTS admin_exports (id TEXT NOT NULL, table_name TEXT NOT NULL, row_number INTEGER NOT NULL, body TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY(id, table_name, row_number))");
++          raw.exec("CREATE TABLE IF NOT EXISTS admin_captures (id TEXT PRIMARY KEY, body TEXT NOT NULL)");
++          const saved = raw.exec<{ body: string }>("SELECT body FROM admin_captures WHERE id = ?", id).toArray()[0];
++          if (saved) return saved.body;
++          const at = Date.now();
++          const tables = ADMIN_TABLES.flatMap((table) => {
++            const columns = raw.exec<{ name: string }>(`PRAGMA table_info(${table})`).toArray().map(({ name }) => name);
++            if (columns.length === 0) return [];
++            if (columns.some((name) => !/^[a-z_]+$/.test(name))) {
++              throw new Error("INVALID_COLUMN");
++            }
++            const pairs = columns.map((name) =>
++              `'${name}', CASE WHEN typeof("${name}") = 'blob' THEN json_object('$blob', hex("${name}")) ELSE "${name}" END`,
++            ).join(",");
++            raw.exec(`INSERT INTO admin_exports SELECT ?, ?, ROW_NUMBER() OVER (), json_object(${pairs}), ? FROM "${table}"`, id, table, at);
++            const rows = raw.exec<{ n: number }>("SELECT COUNT(*) AS n FROM admin_exports WHERE id = ? AND table_name = ?", id, table).toArray()[0]!.n;
++            return [{ table, rows }];
++          });
++          const body = JSON.stringify({ id, at, tables });
++          raw.exec("INSERT INTO admin_captures VALUES (?, ?)", id, body);
++          return body;
++        })),
++        adminReadPart: (id: string, table: string, row: number, part: number) => Effect.sync(() => {
++          if (!Number.isSafeInteger(row) || row < 1 || !Number.isSafeInteger(part) || part < 0 || part >= EXPORT_MAX_PARTS || !ADMIN_TABLES.includes(table)) {
++            throw new Error("INVALID_EXPORT_PART");
++          }
++          const value = raw.exec<{ chunk: string; length: number }>(
++            "SELECT substr(body, ?, ?) AS chunk, length(body) AS length FROM admin_exports WHERE id = ? AND table_name = ? AND row_number = ?",
++            part * EXPORT_PART_CHARACTERS + 1, EXPORT_PART_CHARACTERS, id, table, row,
++          ).toArray()[0];
++          if (!value || part * EXPORT_PART_CHARACTERS >= value.length) {
++            throw new Error("EXPORT_UNAVAILABLE");
++          }
++          return { body: JSON.stringify({ table, row, part, chunk: value.chunk }), last: (part + 1) * EXPORT_PART_CHARACTERS >= value.length };
++        }),
++        adminPurge: (before: number) => Effect.sync(() => state.raw.storage.transactionSync(() => {
++          if (!Number.isSafeInteger(before) || before < 0) throw new Error("INVALID_PURGE_TIME");
++          if (raw.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'admin_exports'").toArray().length > 0) {
++            raw.exec("DELETE FROM admin_captures WHERE id IN (SELECT DISTINCT id FROM admin_exports WHERE at < ?)", before);
++            raw.exec("DELETE FROM admin_exports WHERE at < ?", before);
++          }
++          const done = raw.exec<{ value: number }>("SELECT value FROM workflow_meta WHERE key = 'completed_at'").toArray()[0];
++          const completed = raw.exec("SELECT 1 FROM workflow_execution WHERE result IS NOT NULL").toArray();
++          if (!done || done.value >= before || completed.length === 0) return false;
++          // Keep execution/result, timestamps, monotonic progress and callback bookkeeping.
++          for (const table of ["workflow_activity", "workflow_deferred", "workflow_clock"]) {
++            raw.exec(`DELETE FROM ${table}`);
++          }
++          raw.exec("INSERT OR IGNORE INTO workflow_meta VALUES ('purged_at', ?)", Date.now());
++          return true;
++        })),
+         /** Create the execution if it's new, and return its result once it has one. */
+         start: (executionId: string, payload: string, parent: string) =>
+           reportDefects(
+             Effect.gen(function* () {
+               const existing = yield* readExecution;
+               if (existing === undefined) {
+-                yield* query(
+-                  "INSERT INTO workflow_execution (id, execution_id, payload, parent) VALUES (1, ?, ?, ?)",
+-                  executionId,
+-                  payload,
+-                  parent === "null" ? null : parent,
+-                );
+-                yield* wake();
++                yield* transaction(Effect.gen(function* () {
++                  yield* query(
++                    "INSERT INTO workflow_execution (id, execution_id, payload, parent) VALUES (1, ?, ?, ?)",
++                    executionId,
++                    payload,
++                    parent === "null" ? null : parent,
++                  );
++                  yield* query("INSERT OR IGNORE INTO workflow_meta VALUES ('started_at', ?)", Date.now());
++                  yield* wake();
++                }));
+               }
+               return yield* result;
+             }),
+@@ -573,10 +701,7 @@ const executionObject = (registration: Registration) =>
+           reportDefects(
+             Effect.gen(function* () {
+               yield* runs.cancel(RUN).pipe(Effect.orDie, Effect.provide(context));
+-              yield* query(
+-                "UPDATE workflow_execution SET interrupted = 1, result = ? WHERE result IS NULL",
+-                yield* encodeResult(registration.workflow, Exit.interrupt()),
+-              );
++              yield* finish(yield* encodeResult(registration.workflow, Exit.interrupt()), true);
+             }),
+           ),
+       };
+@@ -630,7 +755,7 @@ interface Stub {
+ }
+ 
+ interface Namespace {
+-  readonly getByName: (name: string) => Stub;
++  readonly getByName: (name: string, options?: { readonly locationHint: "weur" }) => Stub;
+   readonly jurisdiction: (jurisdiction: DurableObjectJurisdiction) => Namespace;
+ }
+ 
+diff --git a/lib/Workflows/DurableObjectEngine.js b/lib/Workflows/DurableObjectEngine.js
+index af9dc73..aac79bb 100644
+--- a/lib/Workflows/DurableObjectEngine.js
++++ b/lib/Workflows/DurableObjectEngine.js
+@@ -107,7 +107,7 @@ const makeEngine = (jurisdiction) => Layer.effect(WorkflowEngine.WorkflowEngine,
+             ? Effect.succeed(namespace)
+             : Effect.die(new Error(`Workflow ${workflowName} is not registered`));
+     });
+-    const stubOf = (workflowName, executionId) => Effect.map(namespaceOf(workflowName), (namespace) => namespace.getByName(executionId));
++    const stubOf = (workflowName, executionId) => Effect.map(namespaceOf(workflowName), (namespace) => namespace.getByName(executionId, { locationHint: "weur" }));
+     const engine = WorkflowEngine.makeUnsafe({
+         register: (workflow, execute) => Effect.gen(function* () {
+             if (namespaces.has(workflow._tag))
+@@ -153,7 +153,11 @@ const makeEngine = (jurisdiction) => Layer.effect(WorkflowEngine.WorkflowEngine,
+             if (stored.length > 0) {
+                 return new Workflow.Complete({ exit: yield* decodeExit(stored[0].exit) });
+             }
+-            const activityInstance = WorkflowEngine.WorkflowInstance.initial(instance.workflow, instance.executionId);
++            // Activity failures are journaled outcomes; only the parent may suspend on failure.
++            const activityWorkflow = Object.assign(function () { }, instance.workflow, {
++                annotations: Context.add(instance.workflow.annotations, Workflow.SuspendOnFailure, false),
++            });
++            const activityInstance = WorkflowEngine.WorkflowInstance.initial(activityWorkflow, instance.executionId);
+             activityInstance.interrupted = instance.interrupted;
+             const result = yield* activity.executeEncoded.pipe(Workflow.intoResult, Effect.provide(Layer.mergeAll(Layer.succeed(WorkflowEngine.WorkflowInstance, activityInstance), Layer.succeed(CurrentActivity, makeCurrentActivity(instance.workflow._tag, instance.executionId, activity.name)))));
+             if (result._tag === "Complete") {
+@@ -191,8 +195,17 @@ const makeEngine = (jurisdiction) => Layer.effect(WorkflowEngine.WorkflowEngine,
+             yield* execution.scheduleClock(options.clock.name, options.clock.deferred.name, clock.due);
+         }),
+     });
+-    return engine;
++    const administration = {
++        adminCall: (workflowName, executionId, method, args) => adminMethods.has(method)
++            ? Effect.flatMap(stubOf(workflowName, executionId), (stub) => call(stub[method](...args)))
++            : Effect.die(new Error("INVALID_WORKFLOW_ADMIN_METHOD")),
++    };
++    return Object.assign(engine, administration);
+ }));
++const adminMethods = new Set([
++    "adminSummary", "adminBookmark", "adminPrepareRestore", "adminEvict",
++    "adminCapture", "adminReadPart", "adminPurge",
++]);
+ /**
+  * The execution a run belongs to. The engine's in-run operations (activities,
+  * deferreds, clocks) read and write its journal through this.
+@@ -202,7 +215,16 @@ class CurrentExecution extends Context.Service()("alchemy/Cloudflare/Workflows/D
+ const currentExecution = (operation) => Effect.flatMap(Effect.serviceOption(CurrentExecution), (current) => Option.isSome(current)
+     ? Effect.succeed(current.value)
+     : Effect.die(new Error(`DurableObjectEngine: ${operation} only runs inside a workflow execution`)));
++const StartedAt = Context.Reference("alchemy/Cloudflare/Workflows/DurableObjectEngine/StartedAt", { defaultValue: () => 0 });
++const ADMIN_TABLES = [
++    "workflow_execution", "workflow_activity", "workflow_deferred", "workflow_clock",
++    "workflow_meta", "workflow_progress", "alchemy_alarm_callbacks",
++    "alchemy_alarm_schema", "alchemy_scheduled_events",
++];
++const EXPORT_PART_CHARACTERS = 32768;
++const EXPORT_MAX_PARTS = 1000;
+ const SCHEMA = `
++CREATE TABLE IF NOT EXISTS workflow_meta (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
+ CREATE TABLE IF NOT EXISTS workflow_execution (
+   id INTEGER PRIMARY KEY CHECK (id = 1),
+   execution_id TEXT NOT NULL,
+@@ -292,7 +314,7 @@ const executionObject = (registration) => Effect.gen(function* () {
+                 instance.interrupted = true;
+                 instance.suspended = false;
+                 return Effect.withFiber((fiber) => fiber.pipe(Fiber.interrupt, Effect.interruptible));
+-            }), Workflow.intoResult, Effect.provide(Layer.mergeAll(Layer.succeed(WorkflowEngine.WorkflowInstance, instance), Layer.succeed(WorkflowEngine.WorkflowEngine, registration.engine()), Layer.succeed(CurrentExecution, {
++            }), Workflow.intoResult, Effect.provide(Layer.mergeAll(Layer.succeed(WorkflowEngine.WorkflowInstance, instance), Layer.succeed(WorkflowEngine.WorkflowEngine, registration.engine()), Layer.succeed(StartedAt, (yield* query("SELECT value FROM workflow_meta WHERE key = 'started_at'"))[0]?.value ?? 0), Layer.succeed(CurrentExecution, {
+                 workflowName: workflow._tag,
+                 executionId: row.execution_id,
+                 query,
+@@ -302,18 +324,97 @@ const executionObject = (registration) => Effect.gen(function* () {
+             // Suspended: a clock or a completed deferred wakes it again.
+             if (result._tag === "Suspended")
+                 return;
+-            yield* query("UPDATE workflow_execution SET result = ?", yield* encodeResult(workflow, result.exit));
++            yield* finish(yield* encodeResult(workflow, result.exit));
+             if (row.parent !== null)
+                 yield* resumeParent(registration, JSON.parse(row.parent));
+         });
+         const result = Effect.map(readExecution, (row) => row?.result ?? null);
++        const finish = (encoded, interrupted = false) => transaction(Effect.gen(function* () {
++            if (interrupted)
++                yield* query("UPDATE workflow_execution SET interrupted = 1 WHERE result IS NULL");
++            const completed = yield* query("UPDATE workflow_execution SET result = ? WHERE result IS NULL RETURNING id", encoded);
++            if (completed.length > 0) {
++                yield* query("INSERT OR IGNORE INTO workflow_meta VALUES ('completed_at', ?)", Date.now());
++            }
++        }));
++        const raw = state.raw.storage.sql;
+         return {
++            adminSummary: () => Effect.promise(async () => ({
++                meta: raw.exec("SELECT key, value FROM workflow_meta").toArray(),
++                activities: raw.exec("SELECT key FROM workflow_activity").toArray(),
++                execution: raw.exec("SELECT interrupted, result IS NOT NULL AS completed FROM workflow_execution").toArray(),
++                progress: raw.exec("SELECT seq FROM workflow_progress").toArray(),
++                callbacks: raw.exec("SELECT callback, attempts, parked, retry_at FROM alchemy_alarm_callbacks").toArray(),
++                alarm: await state.raw.storage.getAlarm(),
++            })),
++            adminBookmark: (at) => Effect.tryPromise(() => at === undefined
++                ? state.raw.storage.getCurrentBookmark()
++                : state.raw.storage.getBookmarkForTime(at)),
++            adminPrepareRestore: (bookmark) => Effect.tryPromise(() => state.raw.storage.onNextSessionRestoreBookmark(bookmark)),
++            adminEvict: () => Effect.sync(() => state.raw.abort("Operator recovery restart")),
++            adminCapture: (id) => Effect.sync(() => state.raw.storage.transactionSync(() => {
++                if (typeof id !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(id)) {
++                    throw new Error("INVALID_EXPORT_ID");
++                }
++                raw.exec("CREATE TABLE IF NOT EXISTS admin_exports (id TEXT NOT NULL, table_name TEXT NOT NULL, row_number INTEGER NOT NULL, body TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY(id, table_name, row_number))");
++                raw.exec("CREATE TABLE IF NOT EXISTS admin_captures (id TEXT PRIMARY KEY, body TEXT NOT NULL)");
++                const saved = raw.exec("SELECT body FROM admin_captures WHERE id = ?", id).toArray()[0];
++                if (saved)
++                    return saved.body;
++                const at = Date.now();
++                const tables = ADMIN_TABLES.flatMap((table) => {
++                    const columns = raw.exec(`PRAGMA table_info(${table})`).toArray().map(({ name }) => name);
++                    if (columns.length === 0)
++                        return [];
++                    if (columns.some((name) => !/^[a-z_]+$/.test(name))) {
++                        throw new Error("INVALID_COLUMN");
++                    }
++                    const pairs = columns.map((name) => `'${name}', CASE WHEN typeof("${name}") = 'blob' THEN json_object('$blob', hex("${name}")) ELSE "${name}" END`).join(",");
++                    raw.exec(`INSERT INTO admin_exports SELECT ?, ?, ROW_NUMBER() OVER (), json_object(${pairs}), ? FROM "${table}"`, id, table, at);
++                    const rows = raw.exec("SELECT COUNT(*) AS n FROM admin_exports WHERE id = ? AND table_name = ?", id, table).toArray()[0].n;
++                    return [{ table, rows }];
++                });
++                const body = JSON.stringify({ id, at, tables });
++                raw.exec("INSERT INTO admin_captures VALUES (?, ?)", id, body);
++                return body;
++            })),
++            adminReadPart: (id, table, row, part) => Effect.sync(() => {
++                if (!Number.isSafeInteger(row) || row < 1 || !Number.isSafeInteger(part) || part < 0 || part >= EXPORT_MAX_PARTS || !ADMIN_TABLES.includes(table)) {
++                    throw new Error("INVALID_EXPORT_PART");
++                }
++                const value = raw.exec("SELECT substr(body, ?, ?) AS chunk, length(body) AS length FROM admin_exports WHERE id = ? AND table_name = ? AND row_number = ?", part * EXPORT_PART_CHARACTERS + 1, EXPORT_PART_CHARACTERS, id, table, row).toArray()[0];
++                if (!value || part * EXPORT_PART_CHARACTERS >= value.length) {
++                    throw new Error("EXPORT_UNAVAILABLE");
++                }
++                return { body: JSON.stringify({ table, row, part, chunk: value.chunk }), last: (part + 1) * EXPORT_PART_CHARACTERS >= value.length };
++            }),
++            adminPurge: (before) => Effect.sync(() => state.raw.storage.transactionSync(() => {
++                if (!Number.isSafeInteger(before) || before < 0)
++                    throw new Error("INVALID_PURGE_TIME");
++                if (raw.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'admin_exports'").toArray().length > 0) {
++                    raw.exec("DELETE FROM admin_captures WHERE id IN (SELECT DISTINCT id FROM admin_exports WHERE at < ?)", before);
++                    raw.exec("DELETE FROM admin_exports WHERE at < ?", before);
++                }
++                const done = raw.exec("SELECT value FROM workflow_meta WHERE key = 'completed_at'").toArray()[0];
++                const completed = raw.exec("SELECT 1 FROM workflow_execution WHERE result IS NOT NULL").toArray();
++                if (!done || done.value >= before || completed.length === 0)
++                    return false;
++                // Keep execution/result, timestamps, monotonic progress and callback bookkeeping.
++                for (const table of ["workflow_activity", "workflow_deferred", "workflow_clock"]) {
++                    raw.exec(`DELETE FROM ${table}`);
++                }
++                raw.exec("INSERT OR IGNORE INTO workflow_meta VALUES ('purged_at', ?)", Date.now());
++                return true;
++            })),
+             /** Create the execution if it's new, and return its result once it has one. */
+             start: (executionId, payload, parent) => reportDefects(Effect.gen(function* () {
+                 const existing = yield* readExecution;
+                 if (existing === undefined) {
+-                    yield* query("INSERT INTO workflow_execution (id, execution_id, payload, parent) VALUES (1, ?, ?, ?)", executionId, payload, parent === "null" ? null : parent);
+-                    yield* wake();
++                    yield* transaction(Effect.gen(function* () {
++                        yield* query("INSERT INTO workflow_execution (id, execution_id, payload, parent) VALUES (1, ?, ?, ?)", executionId, payload, parent === "null" ? null : parent);
++                        yield* query("INSERT OR IGNORE INTO workflow_meta VALUES ('started_at', ?)", Date.now());
++                        yield* wake();
++                    }));
+                 }
+                 return yield* result;
+             })),
+@@ -329,7 +430,7 @@ const executionObject = (registration) => Effect.gen(function* () {
+             // Stop without running compensations.
+             interruptUnsafe: () => reportDefects(Effect.gen(function* () {
+                 yield* runs.cancel(RUN).pipe(Effect.orDie, Effect.provide(context));
+-                yield* query("UPDATE workflow_execution SET interrupted = 1, result = ? WHERE result IS NULL", yield* encodeResult(registration.workflow, Exit.interrupt()));
++                yield* finish(yield* encodeResult(registration.workflow, Exit.interrupt()), true);
+             })),
+         };
+     });
+diff --git a/lib/Workflows/DurableObjectEngine.js.map b/lib/Workflows/DurableObjectEngine.js.map
+index b25d22a..fc88782 100644
+--- a/lib/Workflows/DurableObjectEngine.js.map
++++ b/lib/Workflows/DurableObjectEngine.js.map
+@@ -1 +1 @@
+-{"version":3,"file":"DurableObjectEngine.js","sourceRoot":"","sources":["../../src/Workflows/DurableObjectEngine.ts"],"names":[],"mappings":"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"}
+\ No newline at end of file
++{"version":3,"file":"DurableObjectEngine.js","sourceRoot":"","sources":["../../src/Workflows/DurableObjectEngine.ts"],"names":[],"mappings":"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"}
+\ No newline at end of file

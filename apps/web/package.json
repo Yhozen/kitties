@@ -7,6 +7,7 @@
     "build": "vp build"
   },
   "dependencies": {
+    "@alchemy.run/domain": "2.0.0-beta.85",
     "@effect/platform-browser": "4.1.1",
     "@foldkit/ui": "0.170.0",
     "@kitties/api": "workspace:*",
