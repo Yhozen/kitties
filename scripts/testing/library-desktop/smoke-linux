@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+run_key=${3:?Supply a fresh run key as the third argument}
+[[ "$run_key" =~ ^[a-zA-Z0-9_-]+$ ]] || exit 2
+profile_dir="/research/runtime/$run_key"
+[[ ! -e "$profile_dir" ]] || { echo "Refusing to reuse an existing smoke profile" >&2; exit 2; }
+mkdir -p "$profile_dir"/{home,run,data,config,cache} /research/logs
+chown -R native-test:native-test "$profile_dir" /research/logs
+chmod 700 "$profile_dir/run"
+exec runuser -u native-test -- env -i \
+  PATH=/opt/node/bin:/usr/bin:/bin HOME="$profile_dir/home" LANG=C.UTF-8 \
+  XDG_DATA_HOME="$profile_dir/data" XDG_CONFIG_HOME="$profile_dir/config" \
+  XDG_CACHE_HOME="$profile_dir/cache" XDG_RUNTIME_DIR="$profile_dir/run" \
+  LIBGL_ALWAYS_SOFTWARE=1 GDK_BACKEND=x11 \
+  dbus-run-session -- xvfb-run -a -s '-screen 0 1280x960x24 -nolisten tcp' \
+  /opt/node/bin/node /research/inputs/workspace/scripts/testing/library-desktop/run.mjs "$1" "$2"

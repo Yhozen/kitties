@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -euo pipefail
+repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)
+proof_dir="$repo_dir/.context/library-desktop"
+if [[ "${1:-}" != --private ]]; then
+  exec sudo -n unshare --mount --pid --fork --kill-child=TERM "$0" --private "$@"
+fi
+shift
+source_overlay=true
+fixture_trust=false
+while [[ "${1:-}" == --runtime || "${1:-}" == --fixture ]]; do
+  case "$1" in
+    --runtime) source_overlay=false ;;
+    --fixture) fixture_trust=true ;;
+  esac
+  shift
+done
+rootfs_dir="$repo_dir/.context/cross-platform-native-env/rootfs"
+mount --make-rprivate /
+mount --bind "$rootfs_dir" "$rootfs_dir"
+mount -o remount,bind,ro "$rootfs_dir"
+mount -t proc proc "$rootfs_dir/proc" -o nosuid,nodev,noexec
+mount -t tmpfs tmpfs "$rootfs_dir/dev" -o mode=755,nosuid,size=1m
+for device in null:1:3 zero:1:5 full:1:7 random:1:8 urandom:1:9 tty:5:0; do
+  IFS=: read -r device_name device_major device_minor <<< "$device"
+  mknod -m 666 "$rootfs_dir/dev/$device_name" c "$device_major" "$device_minor"
+done
+mkdir -p "$rootfs_dir/dev/shm" "$rootfs_dir/dev/pts"
+mount -t tmpfs tmpfs "$rootfs_dir/dev/shm" -o mode=1777,nosuid,nodev,size=256m
+mount -t devpts devpts "$rootfs_dir/dev/pts" -o newinstance,ptmxmode=0666,mode=0620,nosuid,noexec
+ln -s /proc/self/fd "$rootfs_dir/dev/fd"
+ln -s /proc/self/fd/0 "$rootfs_dir/dev/stdin"
+ln -s /proc/self/fd/1 "$rootfs_dir/dev/stdout"
+ln -s /proc/self/fd/2 "$rootfs_dir/dev/stderr"
+ln -s pts/ptmx "$rootfs_dir/dev/ptmx"
+mount -t tmpfs tmpfs "$rootfs_dir/run" -o mode=755,nosuid,nodev,size=64m
+mount -t tmpfs tmpfs "$rootfs_dir/tmp" -o mode=1777,nosuid,nodev,size=256m
+mount --bind "$proof_dir" "$rootfs_dir/research"
+mount --bind "$proof_dir/inputs" "$rootfs_dir/research/inputs"
+mount -o remount,bind,ro "$rootfs_dir/research/inputs"
+if [[ "$fixture_trust" == true ]]; then
+  # Explicit local issuer testing only. No on-disk host/rootfs trust changes.
+  fixture_ca="$proof_dir/local-fixture/certs/ca.pem"
+  [[ -f "$fixture_ca" ]]
+  mkdir -p "$proof_dir/runtime/fixture-trust"
+  cat "$rootfs_dir/etc/ssl/certs/ca-certificates.crt" "$fixture_ca" > "$proof_dir/runtime/fixture-trust/ca-certificates.crt"
+  cat "$rootfs_dir/etc/hosts" > "$proof_dir/runtime/fixture-trust/hosts"
+  printf '\n127.0.0.1 app.kitties.test issuer.kitties.test\n' >> "$proof_dir/runtime/fixture-trust/hosts"
+  mount --bind "$proof_dir/runtime/fixture-trust/ca-certificates.crt" "$rootfs_dir/etc/ssl/certs/ca-certificates.crt"
+  mount -o remount,bind,ro "$rootfs_dir/etc/ssl/certs/ca-certificates.crt"
+  mount --bind "$proof_dir/runtime/fixture-trust/hosts" "$rootfs_dir/etc/hosts"
+  mount -o remount,bind,ro "$rootfs_dir/etc/hosts"
+fi
+if [[ "$source_overlay" == true ]]; then
+  mkdir -p "$proof_dir/target/source-upper" "$proof_dir/target/source-work"
+  mount -t overlay overlay -o "lowerdir=$proof_dir/inputs/workspace/apps/desktop/src-tauri,upperdir=$proof_dir/target/source-upper,workdir=$proof_dir/target/source-work" "$rootfs_dir/research/inputs/workspace/apps/desktop/src-tauri"
+fi
+mount --bind "$repo_dir/scripts/testing/library-desktop" "$rootfs_dir/research/inputs/workspace/scripts/testing/library-desktop"
+mount -o remount,bind,ro "$rootfs_dir/research/inputs/workspace/scripts/testing/library-desktop"
+mount --bind "$repo_dir/node_modules" "$rootfs_dir/research/inputs/workspace/node_modules"
+mount -o remount,bind,ro "$rootfs_dir/research/inputs/workspace/node_modules"
+mount --bind "$repo_dir/apps/desktop/node_modules" "$rootfs_dir/research/inputs/workspace/apps/desktop/node_modules"
+mount -o remount,bind,ro "$rootfs_dir/research/inputs/workspace/apps/desktop/node_modules"
+mount --bind /sys "$rootfs_dir/sys"
+mount -o remount,bind,ro,nosuid,nodev,noexec "$rootfs_dir/sys"
+# This VM denies user namespaces. Use the already proven private setuid bwrap
+# route; the on-disk rootfs/host helper stays untouched and WebKit keeps its sandbox.
+mount -t tmpfs tmpfs "$rootfs_dir/opt/sandbox-bwrap" -o mode=755,size=1m
+cp "$rootfs_dir/usr/bin/bwrap" "$rootfs_dir/opt/sandbox-bwrap/bwrap"
+chown 0:0 "$rootfs_dir/opt/sandbox-bwrap/bwrap"
+chmod 4755 "$rootfs_dir/opt/sandbox-bwrap/bwrap"
+mount --bind "$rootfs_dir/opt/sandbox-bwrap/bwrap" "$rootfs_dir/usr/bin/bwrap"
+exec chroot "$rootfs_dir" /usr/bin/env -i \
+  PATH=/opt/node/bin:/opt/rust/bin:/research/cargo-home/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+  LANG=C.UTF-8 HOME=/research/runtime CARGO_HOME=/research/cargo-home \
+  CARGO_TARGET_DIR=/research/target CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0 \
+  CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 "$@"

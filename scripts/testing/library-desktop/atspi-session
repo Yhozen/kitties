@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# Private session and accessibility buses; no host user service is contacted.
+dbus-daemon --session --fork --print-address > "$2/a11y-address"
+export AT_SPI_BUS_ADDRESS
+AT_SPI_BUS_ADDRESS=$(cat "$2/a11y-address")
+/research/tools/atspi/usr/libexec/at-spi2-registryd > "$2/registry.log" 2>&1 &
+registry_pid=$!
+trap 'kill "$registry_pid" 2>/dev/null || true' EXIT
+if [[ "$KITTIES_NATIVE_TEST_MODE" == auth ]]; then
+  mkdir -p "$XDG_DATA_HOME/applications"
+  cat > "$XDG_DATA_HOME/applications/kitties-fixture-browser.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Local fixture WebKit browser
+Exec=/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/MiniBrowser --private --cookies-policy=never --enable-sandbox %u
+MimeType=x-scheme-handler/https;x-scheme-handler/http;
+NoDisplay=true
+DESKTOP
+  xdg-mime default kitties-fixture-browser.desktop x-scheme-handler/https
+  xdg-mime default kitties-fixture-browser.desktop x-scheme-handler/http
+  node /research/inputs/workspace/scripts/testing/library-desktop/run-atspi-auth.mjs "$1" "$2"
+else
+  node /research/inputs/workspace/scripts/testing/library-desktop/run-atspi.mjs "$1" "$2" "$KITTIES_NATIVE_TEST_MODE"
+fi

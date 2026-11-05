@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+label=${1:?Supply an artifact label}
+[[ "$label" =~ ^[a-zA-Z0-9_-]+$ ]] || exit 2
+[[ ! -e "/research/artifacts/$label.deb" && ! -e "/research/artifacts/$label-extracted" ]] || exit 2
+cd /research/inputs/workspace/apps/desktop
+node node_modules/@tauri-apps/cli/tauri.js build --bundles deb --ci -- --locked
+package_file=/research/target/release/bundle/deb/Kitties_0.1.0_amd64.deb
+[[ -f "$package_file" ]]
+cp "$package_file" "/research/artifacts/$label.deb"
+dpkg-deb -x "/research/artifacts/$label.deb" "/research/artifacts/$label-extracted"
+dpkg-deb --info "/research/artifacts/$label.deb" > "/research/artifacts/$label-info.txt"
+sha256sum "/research/artifacts/$label.deb" "/research/artifacts/$label-extracted/usr/bin/kitties-desktop" > "/research/artifacts/$label-sha256.txt"
+# Official CLI updates manifest feature arrays. Keep that exact overlay delta.
+diff -u /research/inputs/candidate-Cargo.toml \
+  /research/target/source-upper/Cargo.toml > "/research/artifacts/$label-cli-manifest.diff" || [[ $? == 1 ]]
