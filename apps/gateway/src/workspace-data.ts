@@ -1,3 +1,4 @@
+import { LibraryCatalogue } from "./library-snapshot.ts";
 import { stored } from "./stored-records.ts";
 import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
@@ -7,7 +8,7 @@ import * as Schema from "effect/Schema";
 import { Distill } from "./workflows/distill.ts";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import { HomeDO, ChatDO } from "./actors.ts";
-import { MemoryNoteInput, MemoryProfileInput, SkillInput, FeedbackInput } from "./entities.ts";
+import { MemoryNoteInput, MemoryProfileInput, FeedbackInput } from "./entities.ts";
 import { readBody } from "./request.ts";
 import { validScope } from "./memory.ts";
 
@@ -19,6 +20,8 @@ const json = <Value>(value: Value, status = 200) =>
 const makeWorkspaceData = Effect.gen(function* () {
   const homes = yield* HomeDO,
     chats = yield* ChatDO;
+
+  const catalogue = yield* LibraryCatalogue;
 
   const distill = yield* Workflows.RunWorkflow(Distill);
 
@@ -141,38 +144,38 @@ const makeWorkspaceData = Effect.gen(function* () {
         );
       }
 
+      const skillRoute = path.match(/^\/v1\/skills\/([a-zA-Z0-9_-]{1,128})(?:\/(accept))?$/);
+
+      if (path === "/v1/skills" || skillRoute !== null) {
+        if (method !== "GET")
+          return json({ code: "LIBRARY_API_REQUIRED", params: { path: "/v1/library/rpc" } }, 409);
+        const status = yield* home.libraryLegacyStatus();
+
+        if (status.authority?.phase === "ready") {
+          const current = yield* catalogue.read();
+
+          if (skillRoute !== null) {
+            const skill = current.skills.find((value) => value.id === skillRoute[1]);
+
+            return skill === undefined ? json({ code: "NOT_FOUND", params: {} }, 404) : json(skill);
+          }
+
+          return json(current.skills);
+        }
+
+        if (status.authority !== null || status.frozen)
+          return json({ code: "LIBRARY_UNAVAILABLE", params: {} }, 503);
+      }
+
       if (path === "/v1/skills" && method === "GET")
         return json((yield* home.list("skill")).map((row) => JSON.parse(row.body)));
-      const skillRoute = path.match(/^\/v1\/skills\/([a-zA-Z0-9_-]{1,128})(?:\/(accept))?$/);
 
       if (skillRoute) {
         const id = skillRoute[1]!;
 
-        if (method === "PUT" && !skillRoute[2]) {
-          const body = yield* readBody(request, SkillInput),
-            skill = { ...body, id, updatedAt: Date.now() };
-
-          yield* home.write("skill", id, JSON.stringify(skill));
-
-          return json(skill);
-        }
-
-        if (method === "DELETE" && !skillRoute[2]) {
-          yield* home.remove("skill", id);
-
-          return HttpServerResponse.empty({ status: 204 });
-        }
-
         const saved = yield* home.read("skill", id);
 
         if (!saved) return json({ code: "NOT_FOUND", params: {} }, 404);
-
-        if (method === "POST" && skillRoute[2] === "accept") {
-          const skill = { ...JSON.parse(saved), status: "accepted", updatedAt: Date.now() };
-          yield* home.write("skill", id, JSON.stringify(skill));
-
-          return json(skill);
-        }
 
         if (method === "GET") return json(JSON.parse(saved));
       }

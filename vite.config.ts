@@ -216,6 +216,12 @@ export default defineConfig({
   run: {
     tasks: {
       verify: { command: "vp check && vp test run", cache: true },
+      "library-check": { command: "node scripts/testing/library/run.mjs", cache: false },
+      "library-bundle-check": {
+        command: "node scripts/testing/library/bundle-gateway.mjs",
+        cache: false,
+      },
+      "library-http-check": { command: "node scripts/testing/library-http/run.mjs", cache: false },
       "workflow-check": { command: "node scripts/testing/workflows/run.mjs", cache: false },
     },
   },

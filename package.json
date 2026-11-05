@@ -11,7 +11,10 @@
     "test": "vp test run",
     "test:watch": "vp test watch",
     "test:coverage": "vp test run --coverage",
-    "test:workflows": "vp run workflow-check"
+    "test:workflows": "vp run workflow-check",
+    "test:library": "vp run library-check",
+    "test:library-bundle": "vp run library-bundle-check",
+    "test:library-http": "vp run library-http-check"
   },
   "dependencies": {
     "@alchemy.run/cloudflare": "2.0.0-beta.85",
@@ -22,6 +25,7 @@
   },
   "devDependencies": {
     "@alchemy.run/cloudflare-runtime": "2.0.0-beta.85",
+    "@alchemy.run/domain": "2.0.0-beta.85",
     "@cloudflare/workers-types": "5.20261027.1",
     "@effect/tsgo": "0.67.1",
     "@effect/vitest": "4.1.1",

@@ -20,6 +20,15 @@ isolates. The object hook receives both initialization phases; application
 admission can precede either phase and any callback registration. The original
 aggregate, view, queue and backfill storage algorithms are unchanged.
 
+Two provider helpers adapt its erased native member/transport types at that
+boundary. `scopeRecoveryMembers` preserves each Effect's success, error and
+service requirements while supplying an application scope; effects stay lazy
+and member receivers/descriptors are retained. `recoveryNamespaceCalls` awaits
+selection and registration before obtaining a stub, retaining the distinct
+HTTP response type. Raw transport failures follow the existing provider's
+defect semantics. Application code supplies the actual authority and scope;
+these helpers do not authenticate calls or remove Effect requirements.
+
 An explicit, pure `backfillInput(model)` supplies JSON in the native Workflow's
 creation parameters. Reconciliation retains those exact parameters on every
 creation attempt and notices configuration changes. The body rejects missing
@@ -82,7 +91,7 @@ cross-object arbitrary-time PITR, Access login, or a deployed migration.
 
 Installed patch SHA-256 values:
 
-- Cloudflare: `b8dc8a14dd24a18dc5822682846d4a70578e764b8c780f7a12d5653e0fffc257`.
+- Cloudflare: `0c0d99ba4fcf574ac1397285c852ad7217df1333394026b0f9389a50baf8240f`.
 - Domain: `56208771ea8fd614f0bd9f7ce8a629ea2523beb4d9a1fdab4027724d406e189f`.
 
 No remote state initialization, infrastructure application or production data

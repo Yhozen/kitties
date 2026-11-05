@@ -13,6 +13,13 @@ const stage = process.argv[2];
 assert(["next", "prod"].includes(stage), "Usage: node scripts/publish-app.mjs next|prod [--dry-run]");
 
 const dry = process.argv.includes("--dry-run");
+const specs = JSON.parse(fs.readFileSync("apps/gateway/deployment.json", "utf8"));
+
+// This uploader only reconciles existing Durable Object bindings. Native
+// Workflow exports also require Alchemy's resource lifecycle and binding plan.
+assert(Object.values(specs).every((spec) => !(spec.workflows?.length)),
+  "This release includes native Workflows; use the reviewed Alchemy deployment process. Application-only publishing is disabled.");
+
 const token = process.env.CLOUDFLARE_WORKER_DEPLOY_TOKEN;
 const account = process.env.CLOUDFLARE_ACCOUNT_ID;
 
@@ -36,7 +43,6 @@ const request = async (endpoint, options = {}, bearer = token) => {
 
 const json = (body) => ({ headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 const run = (effect) => Effect.runPromise(effect.pipe(Effect.provide(NodeServices.layer)));
-const specs = JSON.parse(fs.readFileSync("apps/gateway/deployment.json", "utf8"));
 const scripts = await request("/workers/scripts");
 const prepared = [];
 

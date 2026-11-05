@@ -958,14 +958,15 @@ index f8cc897..5689614 100644
 \ No newline at end of file
 diff --git a/src/Domain/RecoveryHooks.ts b/src/Domain/RecoveryHooks.ts
 new file mode 100644
-index 0000000..a72d4b0
+index 0000000..9195bda
 --- /dev/null
 +++ b/src/Domain/RecoveryHooks.ts
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,147 @@
 +import type { Json } from "@alchemy.run/domain/Platform";
 +import type { RuntimeContext } from "alchemy/RuntimeContext";
 +import * as Context from "effect/Context";
 +import * as Effect from "effect/Effect";
++import * as Predicate from "effect/Predicate";
 +import type { HttpServerRequest } from "effect/http/HttpServerRequest";
 +import type { HttpServerResponse } from "effect/http/HttpServerResponse";
 +import type * as Scope from "effect/Scope";
@@ -1045,14 +1046,78 @@ index 0000000..a72d4b0
 +  plans: input.plans ?? {},
 +  ...(input.recovery === undefined ? {} : { recovery: input.recovery }),
 +});
++
++/** Preserve every Effect's success, error and service requirements while supplying immutable host scope. */
++export type RecoveryEffectScope = <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
++
++/**
++ * Adapt the provider's erased native member record at its owning boundary.
++ * Effects remain lazy, function receivers and property descriptors are retained,
++ * and no error or service requirement is removed by this adaptation.
++ */
++export const scopeRecoveryMembers = (
++  members: Record<string, unknown>,
++  scope: RecoveryEffectScope,
++): Record<string, unknown> => {
++  const scoped: Record<string, unknown> = {};
++  for (const key of Reflect.ownKeys(members)) {
++    const property = Object.getOwnPropertyDescriptor(members, key)!;
++    if ("value" in property) {
++      const value: unknown = property.value;
++      property.value = Effect.isEffect(value)
++        ? scope(value)
++        : Predicate.isFunction(value)
++          ? (...args: ReadonlyArray<unknown>) => {
++              const result: unknown = Reflect.apply(value, members, args);
++              return Effect.isEffect(result) ? scope(result) : result;
++            }
++          : value;
++    }
++    Object.defineProperty(scoped, key, property);
++  }
++  return scoped;
++};
++
++/**
++ * Select and discover before even obtaining a native stub. Raw transport failures
++ * are defects, as in the provider's existing unwrap helpers. HTTP success stays typed.
++ */
++export interface RecoveryScopedStub {
++  readonly [method: string]: (...args: ReadonlyArray<unknown>) => Effect.Effect<unknown>;
++}
++
++export type RecoveryNamespaceCalls = (name: string) => RecoveryScopedStub & {
++  readonly fetch: (request: HttpServerRequest) => Effect.Effect<HttpServerResponse>;
++};
++
++export const recoveryNamespaceCalls = (
++  next: RecoveryNamespace,
++  select: (logicalName: string) => Effect.Effect<{
++    readonly physicalName: string;
++    readonly scope: RecoveryEffectScope;
++  }>,
++): RecoveryNamespaceCalls => (name) => {
++  const fetch = (request: HttpServerRequest): Effect.Effect<HttpServerResponse> => Effect.gen(function* () {
++    const selected = yield* select(name);
++    return yield* selected.scope(next.getByName(selected.physicalName).fetch(request).pipe(Effect.orDie));
++  });
++  // The native bridge exposes every string method as an Effect RPC; fetch retains its distinct HTTP signature.
++  return new Proxy({ fetch }, {
++    get: (target, key) => key === "fetch" ? target.fetch : Predicate.isString(key) ? (...args: ReadonlyArray<unknown>) => Effect.gen(function* () {
++      const selected = yield* select(name);
++      return yield* selected.scope(next.getByName(selected.physicalName)[key](...args).pipe(Effect.orDie));
++    }) : undefined,
++  }) as ReturnType<RecoveryNamespaceCalls>;
++};
 diff --git a/lib/Domain/RecoveryHooks.js b/lib/Domain/RecoveryHooks.js
 new file mode 100644
-index 0000000..292548f
+index 0000000..39926a5
 --- /dev/null
 +++ b/lib/Domain/RecoveryHooks.js
-@@ -0,0 +1,15 @@
+@@ -0,0 +1,53 @@
 +import * as Context from "effect/Context";
 +import * as Effect from "effect/Effect";
++import * as Predicate from "effect/Predicate";
 +/** Opt in with `layerDurableObjects({ recovery: hooksLayer })`; share that Layer per Worker. */
 +export class RecoveryHooks extends Context.Service()("alchemy/Cloudflare/Domain/RecoveryHooks") {
 +}
@@ -1065,22 +1130,59 @@ index 0000000..292548f
 +    plans: input.plans ?? {},
 +    ...(input.recovery === undefined ? {} : { recovery: input.recovery }),
 +});
++/**
++ * Adapt the provider's erased native member record at its owning boundary.
++ * Effects remain lazy, function receivers and property descriptors are retained,
++ * and no error or service requirement is removed by this adaptation.
++ */
++export const scopeRecoveryMembers = (members, scope) => {
++    const scoped = {};
++    for (const key of Reflect.ownKeys(members)) {
++        const property = Object.getOwnPropertyDescriptor(members, key);
++        if ("value" in property) {
++            const value = property.value;
++            property.value = Effect.isEffect(value)
++                ? scope(value)
++                : Predicate.isFunction(value)
++                    ? (...args) => {
++                        const result = Reflect.apply(value, members, args);
++                        return Effect.isEffect(result) ? scope(result) : result;
++                    }
++                    : value;
++        }
++        Object.defineProperty(scoped, key, property);
++    }
++    return scoped;
++};
++export const recoveryNamespaceCalls = (next, select) => (name) => {
++    const fetch = (request) => Effect.gen(function* () {
++        const selected = yield* select(name);
++        return yield* selected.scope(next.getByName(selected.physicalName).fetch(request).pipe(Effect.orDie));
++    });
++    // The native bridge exposes every string method as an Effect RPC; fetch retains its distinct HTTP signature.
++    return new Proxy({ fetch }, {
++        get: (target, key) => key === "fetch" ? target.fetch : Predicate.isString(key) ? (...args) => Effect.gen(function* () {
++            const selected = yield* select(name);
++            return yield* selected.scope(next.getByName(selected.physicalName)[key](...args).pipe(Effect.orDie));
++        }) : undefined,
++    });
++};
 +//# sourceMappingURL=RecoveryHooks.js.map
 \ No newline at end of file
 diff --git a/lib/Domain/RecoveryHooks.js.map b/lib/Domain/RecoveryHooks.js.map
 new file mode 100644
-index 0000000..3f396dd
+index 0000000..7000d8d
 --- /dev/null
 +++ b/lib/Domain/RecoveryHooks.js.map
 @@ -0,0 +1 @@
-+{"version":3,"file":"RecoveryHooks.js","sourceRoot":"","sources":["../../src/Domain/RecoveryHooks.ts"],"names":[],"mappings":"AAEA,OAAO,KAAK,OAAO,MAAM,gBAAgB,CAAC;AAC1C,OAAO,KAAK,MAAM,MAAM,eAAe,CAAC;AAqDxC,gGAAgG;AAChG,MAAM,OAAO,aAAc,SAAQ,OAAO,CAAC,OAAO,EAAuC,CACvF,yCAAyC,CAC1C;CAAG;AAEJ,4FAA4F;AAC5F,MAAM,CAAC,MAAM,oBAAoB,GAAG,CAClC,KAA2B,EAC3B,KAAoB,EACpB,KAAuB,EACvB,IAA4B,EACkB,EAAE,CAAC,KAAK,KAAK,SAAS;IACpE,CAAC,CAAC,MAAM,CAAC,GAAG,CAAC,IAAI,KAAK,CAAC,4BAA4B,CAAC,CAAC;IACrD,CAAC,CAAC,KAAK,CAAC,QAAQ,CAAC,KAAK,EAAE,KAAK,EAAE,IAAI,CAAC,CAAC;AASvC,MAAM,CAAC,MAAM,cAAc,GAAG,CAAC,KAAoB,EAAE,EAAE,CAAC,CAAC;IACvD,OAAO,EAAE,KAAK,CAAC,OAAO;IACtB,KAAK,EAAE,KAAK,CAAC,KAAK,IAAI,EAAE;IACxB,GAAG,CAAC,KAAK,CAAC,QAAQ,KAAK,SAAS,CAAC,CAAC,CAAC,EAAE,CAAC,CAAC,CAAC,EAAE,QAAQ,EAAE,KAAK,CAAC,QAAQ,EAAE,CAAC;CACtE,CAAC,CAAC"}
++{"version":3,"file":"RecoveryHooks.js","sourceRoot":"","sources":["../../src/Domain/RecoveryHooks.ts"],"names":[],"mappings":"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"}
 \ No newline at end of file
 diff --git a/lib/Domain/RecoveryHooks.d.ts b/lib/Domain/RecoveryHooks.d.ts
 new file mode 100644
-index 0000000..7760b6d
+index 0000000..4a23e03
 --- /dev/null
 +++ b/lib/Domain/RecoveryHooks.d.ts
-@@ -0,0 +1,68 @@
+@@ -0,0 +1,90 @@
 +import type { Json } from "@alchemy.run/domain/Platform";
 +import type { RuntimeContext } from "alchemy/RuntimeContext";
 +import * as Context from "effect/Context";
@@ -1147,14 +1249,36 @@ index 0000000..7760b6d
 +    }>>;
 +    recovery?: {} | null | undefined;
 +};
++/** Preserve every Effect's success, error and service requirements while supplying immutable host scope. */
++export type RecoveryEffectScope = <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
++/**
++ * Adapt the provider's erased native member record at its owning boundary.
++ * Effects remain lazy, function receivers and property descriptors are retained,
++ * and no error or service requirement is removed by this adaptation.
++ */
++export declare const scopeRecoveryMembers: (members: Record<string, unknown>, scope: RecoveryEffectScope) => Record<string, unknown>;
++/**
++ * Select and discover before even obtaining a native stub. Raw transport failures
++ * are defects, as in the provider's existing unwrap helpers. HTTP success stays typed.
++ */
++export interface RecoveryScopedStub {
++    readonly [method: string]: (...args: ReadonlyArray<unknown>) => Effect.Effect<unknown>;
++}
++export type RecoveryNamespaceCalls = (name: string) => RecoveryScopedStub & {
++    readonly fetch: (request: HttpServerRequest) => Effect.Effect<HttpServerResponse>;
++};
++export declare const recoveryNamespaceCalls: (next: RecoveryNamespace, select: (logicalName: string) => Effect.Effect<{
++    readonly physicalName: string;
++    readonly scope: RecoveryEffectScope;
++}>) => RecoveryNamespaceCalls;
 +export {};
 +//# sourceMappingURL=RecoveryHooks.d.ts.map
 \ No newline at end of file
 diff --git a/lib/Domain/RecoveryHooks.d.ts.map b/lib/Domain/RecoveryHooks.d.ts.map
 new file mode 100644
-index 0000000..e50a77c
+index 0000000..f2aeec1
 --- /dev/null
 +++ b/lib/Domain/RecoveryHooks.d.ts.map
 @@ -0,0 +1 @@
-+{"version":3,"file":"RecoveryHooks.d.ts","sourceRoot":"","sources":["../../src/Domain/RecoveryHooks.ts"],"names":[],"mappings":"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"}
++{"version":3,"file":"RecoveryHooks.d.ts","sourceRoot":"","sources":["../../src/Domain/RecoveryHooks.ts"],"names":[],"mappings":"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"}
 \ No newline at end of file
