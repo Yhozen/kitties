@@ -163,7 +163,8 @@ const makeVerifier = (fetcher: typeof fetch, cache: KeyCache): AccessJwtVerifier
     const load = Effect.tryPromise({
       try: async (signal) => {
         const response = await fetcher(`${issuer}/cdn-cgi/access/certs`, {
-          redirect: "error",
+          // Workers reject "error"; manual mode leaves any 3xx response for the ok check below.
+          redirect: "manual",
           signal,
         });
 
