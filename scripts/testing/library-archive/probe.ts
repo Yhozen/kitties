@@ -2,6 +2,27 @@ import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { ArchiveBoundary } from "./protocol.ts";
+import { LibraryCapturePruneReceipt } from "../../../apps/gateway/src/library-capture-prune-records.ts";
+
+const PruneReplies = Schema.fromJsonString(
+  Schema.Struct({
+    count: Schema.Int,
+    first: LibraryCapturePruneReceipt,
+    last: LibraryCapturePruneReceipt,
+  }),
+);
+
+const Protection = Schema.Struct({ digest: Schema.String, alarm: Schema.NullOr(Schema.Number) });
+
+const StepObservation = Schema.Struct({
+  kind: Schema.Literals(["prune", "stop"]),
+  before: Protection,
+  after: Protection,
+});
+
+const Observations = Schema.fromJsonString(
+  Schema.Array(StepObservation).check(Schema.isMaxLength(128)),
+);
 
 export class ArchiveDeliveryHeld extends Schema.TaggedError<
   ArchiveDeliveryHeld,
@@ -26,6 +47,56 @@ export class LibraryArchiveProbe extends Cloudflare.DurableObject<LibraryArchive
           ?.body;
 
       return {
+        observeStep: (nativeId: string, observation: typeof StepObservation.Type) =>
+          Effect.sync(() => {
+            const key = `step-observations:${nativeId}`;
+            const previous = read(key);
+
+            const entries =
+              previous === undefined ? [] : Schema.decodeUnknownSync(Observations)(previous);
+
+            if (entries.length >= 128) throw Error("Fixture native observation limit");
+            sql.exec(
+              "INSERT OR REPLACE INTO archive_probe VALUES (?,?)",
+              key,
+              JSON.stringify([...entries, observation]),
+            );
+          }),
+        stepObservations: (nativeId: string) =>
+          Effect.sync(() => {
+            const value = read(`step-observations:${nativeId}`);
+
+            return value === undefined ? [] : Schema.decodeUnknownSync(Observations)(value);
+          }),
+        recordPrune: (pruneId: string, nativeId: string, receipt: LibraryCapturePruneReceipt) =>
+          Effect.sync(() => {
+            const key = `prune-reply:${pruneId}:${nativeId}`;
+            const previous = read(key);
+
+            const history =
+              previous === undefined ? null : Schema.decodeUnknownSync(PruneReplies)(previous);
+
+            if (history !== null && history.count >= 64)
+              throw Error("Fixture prune observation limit");
+
+            const next = {
+              count: (history?.count ?? 0) + 1,
+              first: history?.first ?? receipt,
+              last: receipt,
+            };
+
+            sql.exec(
+              "INSERT OR REPLACE INTO archive_probe VALUES (?,?)",
+              key,
+              JSON.stringify(next),
+            );
+          }),
+        pruneReplies: (pruneId: string, nativeId: string) =>
+          Effect.sync(() => {
+            const value = read(`prune-reply:${pruneId}:${nativeId}`);
+
+            return value === undefined ? null : Schema.decodeUnknownSync(PruneReplies)(value);
+          }),
         arm: (boundary: typeof ArchiveBoundary.Type | null) =>
           Effect.sync(() => {
             sql.exec("DELETE FROM archive_probe WHERE key='armed'");
@@ -79,7 +150,7 @@ export class LibraryArchiveProbe extends Cloudflare.DurableObject<LibraryArchive
           Effect.suspend(() =>
             read("delivery") === key ? new ArchiveDeliveryHeld() : Effect.void,
           ),
-        count: (metric: "remote-get" | "remote-put" | "local-read") =>
+        count: (metric: "remote-get" | "remote-put" | "local-read" | "scheduled-discovery") =>
           Effect.sync(() => {
             sql.exec(
               "INSERT INTO archive_probe VALUES (?, '1') ON CONFLICT(key) DO UPDATE SET body=CAST(CAST(body AS INTEGER)+1 AS TEXT)",
@@ -91,6 +162,7 @@ export class LibraryArchiveProbe extends Cloudflare.DurableObject<LibraryArchive
             remoteGet: Number(read("metric:remote-get") ?? "0"),
             remotePut: Number(read("metric:remote-put") ?? "0"),
             localRead: Number(read("metric:local-read") ?? "0"),
+            scheduledDiscovery: Number(read("metric:scheduled-discovery") ?? "0"),
           })),
       };
     });

@@ -25,6 +25,7 @@ import {
 } from "./library-recovery-coordinator.ts";
 import { RecoveryDigest, RecoveryOperationId } from "./library-recovery-records.ts";
 import { libraryRecoveryFailures } from "./library-recovery-http.ts";
+import { LibraryCapturePruning, LibraryCapturePruneRequest } from "./library-capture-pruning.ts";
 
 const json = <Value>(body: Value, status = 200) =>
   HttpServerResponse.fromWeb(
@@ -42,6 +43,7 @@ const makeRecovery = Effect.gen(function* () {
   const libraryControl = yield* LibraryControl;
   const libraryRecovery = yield* LibraryRecoveryCoordinator;
   const libraryArchives = yield* LibraryArchiveOperations;
+  const libraryPruning = yield* LibraryCapturePruning;
   const engine = yield* WorkflowEngine.WorkflowEngine;
 
   const homes = yield* HomeDO,
@@ -86,6 +88,18 @@ const makeRecovery = Effect.gen(function* () {
         if (path.startsWith("/v1/recovery/library/") && request.method === "POST") {
           if (env.KITTIES_LIBRARY_CUTOVER_ENABLED !== "true")
             return json({ code: "LIBRARY_CUTOVER_DISABLED", params: {} }, 409);
+
+          if (path === "/v1/recovery/library/prune") {
+            const body = yield* readBody(request, LibraryCapturePruneRequest);
+
+            return json(yield* libraryPruning.prune(body));
+          }
+
+          if (path === "/v1/recovery/library/abandon-prune") {
+            const body = yield* readBody(request, LibraryCapturePruneRequest);
+
+            return json(yield* libraryPruning.abandon(body));
+          }
 
           if (!Schema.is(RecoveryDigest)(env.KITTIES_LIBRARY_CODE_DIGEST))
             return json({ code: "LIBRARY_CODE_UNAVAILABLE", params: {} }, 409);

@@ -1,4 +1,14 @@
 import { decodeLibraryControlReply } from "./library-control-wire.ts";
+import {
+  LibraryCapturePruneCandidatesPage,
+  LibraryCapturePrunePlan,
+  LibraryCapturePruneCompletion,
+  LibraryCapturePruneReceipt,
+  LibraryCapturePruneAuthorization,
+  LibraryCapturePruneStopAuthorization,
+  LibraryCapturePruneStopReceipt,
+  LibraryCapturePruneAbandonment,
+} from "./library-capture-prune-records.ts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -82,6 +92,44 @@ export class LibraryControl extends Context.Service<
         );
 
       return LibraryControl.of({
+        capturePruneCandidates: (request) =>
+          call(LibraryCapturePruneCandidatesPage, () =>
+            root().libraryCapturePruneCandidates(request),
+          ),
+        beginAbandonCapturePrune: (id) =>
+          call(LibraryCapturePrunePlan, () => root().libraryBeginAbandonCapturePrune(id)),
+        capturePruneStopInventory: (id, after) =>
+          call(Schema.mutable(Schema.Array(RegisteredLibraryObject)), () =>
+            root().libraryCapturePruneStopInventory(id, after),
+          ),
+        authorizeCapturePruneStop: (id, ordinal) =>
+          call(LibraryCapturePruneStopAuthorization, () =>
+            root().libraryAuthorizeCapturePruneStop(id, ordinal),
+          ),
+        acknowledgeCapturePruneStopped: (id, receipt) =>
+          call(LibraryCapturePruneStopReceipt, () =>
+            root().libraryAcknowledgeCapturePruneStopped(id, receipt),
+          ),
+        completeAbandonCapturePrune: (id) =>
+          call(LibraryCapturePruneAbandonment, () => root().libraryCompleteAbandonCapturePrune(id)),
+        capturePrune: (id) =>
+          call(Schema.NullOr(LibraryCapturePrunePlan), () => root().libraryCapturePrune(id)),
+        beginCapturePrune: (id) =>
+          call(LibraryCapturePrunePlan, () => root().libraryBeginCapturePrune(id)),
+        capturePruneInventory: (id, after) =>
+          call(Schema.mutable(Schema.Array(RegisteredLibraryObject)), () =>
+            root().libraryCapturePruneInventory(id, after),
+          ),
+        authorizeCapturePrune: (id, ordinal) =>
+          call(LibraryCapturePruneAuthorization, () =>
+            root().libraryAuthorizeCapturePrune(id, ordinal),
+          ),
+        acknowledgeCapturePrune: (id, receipt) =>
+          call(LibraryCapturePruneReceipt, () =>
+            root().libraryAcknowledgeCapturePrune(id, receipt),
+          ),
+        completeCapturePrune: (id) =>
+          call(LibraryCapturePruneCompletion, () => root().libraryCompleteCapturePrune(id)),
         status: call(Schema.NullOr(LibraryRecoveryState), () => root().libraryStatus()),
         initialize: (id) => call(LibraryRecoveryState, () => root().libraryInitialize(id)),
         finishImport: (id, floor) =>
@@ -188,6 +236,8 @@ export const LibraryControlAdapters = Layer.effectContext(
       lookup: control.lookup,
       authorizeCapture: control.authorizeCapture,
       authorizeExport: control.authorizeExport,
+      authorizePrune: control.authorizeCapturePrune,
+      authorizePruneStop: control.authorizeCapturePruneStop,
     }).pipe(
       Context.add(LibraryMigrationControl, {
         status: control.status,

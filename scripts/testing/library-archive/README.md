@@ -8,6 +8,10 @@ pnpm test:library-archive
 node scripts/testing/library-archive/run.mjs bundle
 # Capture/rearm only:
 node scripts/testing/library-archive/run.mjs capture
+# Guarded capture-buffer cleanup and expired-plan abandonment:
+node scripts/testing/library-archive/run.mjs prune
+# Server discovery and the exact production Library prune Activity program:
+node scripts/testing/library-archive/run.mjs scheduled
 ```
 
 Run native modes in a serial validation window, separately from full repository
@@ -43,6 +47,61 @@ fixture requires a completed capture and matching registered source lineage;
 it leaves native KV, scheduler SQL, held tables, guards and recovery metadata
 intact. This operation is confined to the test worker and is not added to the
 production admin interface.
+
+The separate `prune` mode uses the production `LibraryCapturePruning` service.
+It exercises incomplete upload, a pin on a second archive alias, and missing or
+corrupted real local R2 objects in isolated fresh namespaces. A damaged archive
+is never repaired by replacing its body or provider upload timestamp; its failed
+reservation remains on disk. The successful cleanup uses another fresh state.
+Verification calls assert at most eight real encrypted reads, durable failed-item
+cursors, and zero local deletion before the verified grant.
+
+A private per-run policy timestamp is bound by the local host. The fixture
+supplies `LibraryCapturePruneClock` during Worker construction, so the unchanged
+production RecoveryDO captures it before serving native RPCs. Only prune policy
+and retained verification use this wall time; capture timestamps, monotonic time,
+sleep and native alarms remain real. Tests use the exact 30-day age boundary and
+original 90-day expiry without rewriting capture or upload records.
+
+Read-only native snapshots cap each KV/table scan at 1024 rows and each encoded
+fingerprint at 4 MiB. The installed `scopeRecoveryMembers` helper preserves
+original member execution. Read-only snapshots are taken immediately around the
+original admin Effect within one RPC, outside its semaphore and transaction.
+They record native KV, scheduler, guard and alarm data; their equality does not
+claim general concurrent scheduler immutability. Buffer fingerprints
+compare the selected and other captures across restart; legitimate native
+callback completion is observed separately, without claiming scheduler byte
+identity over the whole restart. The controller then kills
+the owned host after a real completed prune step but before its coordinator ACK,
+and checks the original receipt is replayed after restart. Only the selected
+capture's three buffer tables become empty. Native capture stores inline image
+rows, so its part tables can already be empty; before counts distinguish observed
+row/image deletion from the separate unit evidence for part deletion. Production
+export replay and retained restore remain possible after cleanup; Native restore
+refuses before freezing.
+
+An independent partial-cleanup case advances policy time to expiry, then calls
+explicit production abandonment. It kills the host after a real `StopPrune`
+receipt before acknowledgement, resumes the same operation, and verifies every
+remaining buffer stays unchanged. Abandonment permanently refuses the old Native
+source/export without claiming successful deletion, and permits fresh capture
+while preserving global workflow state and prior-run permission.
+
+The independent `scheduled` mode uses four real captures and the server's
+`capturePruneCandidates` RPC. Alias-pinned, incomplete and young archives are
+excluded while an old committed archive is selected. A narrow native Workflow
+calls the production `LibraryPruneSweep.run()` Activity program; it does not
+reimplement discovery selection or pruning. The fixture records successful
+server-discovery calls separately from direct discovery probes.
+
+After a real prune receipt but before its acknowledgement, the controller kills
+the owned host. Policy time then admits the previously young archive. Same-ID
+Workflow replay must finish only its journaled selection, with no new discovery,
+and preserve that later archive's buffers. A new Workflow discovers the later
+eligibility, while a final empty sweep excludes both completed captures. Existing
+selected receipt, live state, pinned/incomplete buffers, global workflow state
+and prior-run permission remain observable. Empty 64-key page boundaries are
+covered separately by SQLite and Workflow tests, avoiding large native fixtures.
 
 The assertions cover unchanged global workflow epoch/uncached
 prior-run permission during capture, paused Library admission, fresh constructor

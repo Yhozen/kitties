@@ -9,6 +9,8 @@ import * as Schema from "effect/Schema";
 import * as Option from "effect/Option";
 import * as Data from "effect/Data";
 import { ArchiveResponse } from "./protocol.ts";
+import { runPrune } from "./prune.mjs";
+import { runScheduled } from "./scheduled.mjs";
 import { decodeLibraryValue } from "../../../apps/gateway/src/library-image.ts";
 
 /** @type {Data.TaggedEnum.Constructor<import('../../../apps/gateway/src/library-object-admin.ts').LibraryAdminRequest>} */
@@ -22,8 +24,8 @@ const root = resolve(directory, "../../..");
 const mode = process.argv[2] ?? "all";
 const mutant = process.env.LIBRARY_ARCHIVE_MUTANT;
 
-if (!["bundle", "capture", "all"].includes(mode))
-  throw Error("Usage: run.mjs [bundle|capture|all]");
+if (!["bundle", "capture", "all", "prune", "scheduled"].includes(mode))
+  throw Error("Usage: run.mjs [bundle|capture|all|prune|scheduled]");
 
 if (mutant !== undefined && mutant !== "destructive-capture") throw Error("Unknown archive mutant");
 
@@ -34,6 +36,8 @@ const output = join(
 );
 
 mkdirSync(output, { recursive: true });
+
+let stateDirectory = output;
 
 const hostPath = join(directory, "host.mjs");
 const events = [];
@@ -95,7 +99,7 @@ function launch(bundleOnly = false) {
 
   const child = spawn(
     process.execPath,
-    [hostPath, output, ...(bundleOnly ? ["--bundle-only"] : [])],
+    [hostPath, stateDirectory, ...(bundleOnly ? ["--bundle-only"] : [])],
     {
       cwd: root,
       detached: true,
@@ -167,7 +171,7 @@ function ownedSignal(signal) {
   assert.ok(host);
   const args = readFileSync(`/proc/${host.child.pid}/cmdline`, "utf8").split("\0");
   assert.equal(args[1], hostPath, "signal only the exact owned host executable");
-  assert.equal(args[2], output, "signal only this run's state directory");
+  assert.equal(args[2], stateDirectory, "signal only this run's state directory");
   process.kill(-host.child.pid, signal);
 }
 
@@ -378,7 +382,43 @@ async function nativeImage(ref, captureId) {
 let failure;
 
 try {
-  if (mode === "bundle") {
+  if (mode === "scheduled") {
+    await runScheduled({
+      good,
+      inventory,
+      pass,
+      start,
+      stop,
+      setPolicyTime: async (now) => {
+        assert.ok(Number.isSafeInteger(now) && now >= 0);
+        await stop();
+        writeFileSync(join(stateDirectory, "fixture-prune-now"), JSON.stringify(now));
+        await start();
+      },
+    });
+  } else if (mode === "prune") {
+    await runPrune({
+      api,
+      good,
+      inventory,
+      pass,
+      start,
+      stop,
+      isolate: async (name) => {
+        assert.match(name, /^[a-z0-9-]+$/);
+        await stop();
+        stateDirectory = join(output, name);
+        mkdirSync(stateDirectory, { recursive: true });
+        await start();
+      },
+      setPolicyTime: async (now) => {
+        assert.ok(Number.isSafeInteger(now) && now >= 0);
+        await stop();
+        writeFileSync(join(stateDirectory, "fixture-prune-now"), JSON.stringify(now));
+        await start();
+      },
+    });
+  } else if (mode === "bundle") {
     host = launch(true);
     const bundle = await host.event("bundle");
     await stop();

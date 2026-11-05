@@ -231,6 +231,14 @@ export default defineConfig({
         command: "node scripts/testing/library-archive/run.mjs",
         cache: false,
       },
+      "library-prune-check": {
+        command: "node scripts/testing/library-archive/run.mjs prune",
+        cache: false,
+      },
+      "library-prune-scheduled-check": {
+        command: "node scripts/testing/library-archive/run.mjs scheduled",
+        cache: false,
+      },
       "library-check": { command: "node scripts/testing/library/run.mjs", cache: false },
       "library-bundle-check": {
         command: "node scripts/testing/library/bundle-gateway.mjs",

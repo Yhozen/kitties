@@ -2,12 +2,16 @@ import * as Cloudflare from "@alchemy.run/cloudflare";
 import {
   RecoveryHooks,
   recoveryNamespaceCalls,
+  scopeRecoveryMembers,
   type RecoveryNamespace,
 } from "@alchemy.run/cloudflare/Domain/RecoveryHooks";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import * as Predicate from "effect/Predicate";
+import { LibraryAdminReply } from "../../../apps/gateway/src/library-object-admin.ts";
+import { observeNativeProtection } from "./protection.ts";
 import {
   LibraryObjectClass,
   LibraryObjectRef,
@@ -15,6 +19,11 @@ import {
 } from "../../../apps/gateway/src/library-recovery-records.ts";
 import { LibraryControl } from "../../../apps/gateway/src/library-control.ts";
 import { LibraryArchiveProbe } from "./probe.ts";
+import {
+  encodeLibraryValue,
+  libraryImageBytes,
+  libraryImageDigest,
+} from "../../../apps/gateway/src/library-image.ts";
 
 const Inspection = Schema.Struct({
   alarm: Schema.NullOr(Schema.Number),
@@ -23,11 +32,15 @@ const Inspection = Schema.Struct({
   localImages: Schema.Int,
   localRows: Schema.Int,
   localParts: Schema.Int,
+  protectedDigest: Schema.optionalKey(Schema.String),
+  otherCaptureDigest: Schema.optionalKey(Schema.String),
+  selectedDigest: Schema.optionalKey(Schema.String),
 });
 
 const NativeRequest = Schema.Union([
   Schema.Struct({ action: Schema.Literal("inspect"), captureId: Schema.String }),
   Schema.Struct({ action: Schema.Literal("drop-local-buffer"), captureId: Schema.String }),
+  Schema.Struct({ action: Schema.Literal("snapshot"), captureId: Schema.String }),
 ]);
 
 /** Fixture-only introspection/loss simulation; never added to production admin RPC. */
@@ -82,7 +95,35 @@ export const ArchiveFixtureHooks = Layer.effectContext(
 
           return first.pipe(
             Effect.map((members) => ({
-              ...members,
+              ...scopeRecoveryMembers(members, <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+                Effect.gen(function* () {
+                  const before = yield* observeNativeProtection(state.raw.storage).pipe(
+                    Effect.orDie,
+                  );
+
+                  const value = yield* effect;
+
+                  if (
+                    Schema.is(LibraryAdminReply)(value) &&
+                    (Predicate.isTagged(value, "PruneProgress") ||
+                      Predicate.isTagged(value, "PruneStopped"))
+                  ) {
+                    const after = yield* observeNativeProtection(state.raw.storage).pipe(
+                      Effect.orDie,
+                    );
+
+                    yield* probe()
+                      .observeStep(state.id.toString(), {
+                        kind: Predicate.isTagged(value, "PruneStopped") ? "stop" : "prune",
+                        before,
+                        after,
+                      })
+                      .pipe(Effect.orDie);
+                  }
+
+                  return value;
+                }),
+              ),
               archiveFixture: (request: typeof NativeRequest.Type) =>
                 Effect.gen(function* () {
                   const input = yield* Schema.decodeUnknownEffect(NativeRequest)(request).pipe(
@@ -127,7 +168,81 @@ export const ArchiveFixtureHooks = Layer.effectContext(
                     catch: invalid,
                   });
 
+                  const bounded = (text: string) => {
+                    if (libraryImageBytes(text) > 4 * 1024 * 1024)
+                      throw new LibraryRecoveryError({ reason: "exhausted" });
+
+                    return text;
+                  };
+
+                  const tableRows = (table: string, selection?: "other" | "selected") => {
+                    if (
+                      sql
+                        .exec("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", table)
+                        .toArray().length === 0
+                    )
+                      return [];
+
+                    const rows = sql
+                      .exec(
+                        `SELECT * FROM ${table}${selection ? ` WHERE id${selection === "other" ? "!=" : "="}?` : ""} ORDER BY rowid LIMIT 1025`,
+                        ...(selection ? [input.captureId] : []),
+                      )
+                      .toArray();
+
+                    if (rows.length > 1024) throw new LibraryRecoveryError({ reason: "exhausted" });
+
+                    return rows;
+                  };
+
+                  const hashes =
+                    input.action !== "snapshot"
+                      ? {}
+                      : yield* Effect.gen(function* () {
+                          const kv = [...state.raw.storage.kv.list({ limit: 1025 })];
+
+                          if (kv.length > 1024)
+                            return yield* new LibraryRecoveryError({ reason: "exhausted" });
+
+                          const protectedState = {
+                            kv,
+                            alarm,
+                            tables: [
+                              "alchemy_alarm_callbacks",
+                              "alchemy_alarm_schema",
+                              "alchemy_scheduled_events",
+                              "library_admin_guard",
+                              "library_admin_hold_alchemy_alarm_callbacks",
+                              "library_admin_hold_alchemy_alarm_schema",
+                              "library_admin_hold_alchemy_scheduled_events",
+                            ].map((table) => [table, tableRows(table)]),
+                          };
+
+                          const captures = (selection: "other" | "selected") =>
+                            [
+                              "library_admin_images",
+                              "library_admin_rows",
+                              "library_admin_parts",
+                            ].map((table) => [table, tableRows(table, selection)]);
+
+                          const digest = (text: string) =>
+                            libraryImageDigest(bounded(text)).pipe(
+                              Effect.mapError(
+                                () => new LibraryRecoveryError({ reason: "storage" }),
+                              ),
+                            );
+
+                          return {
+                            protectedDigest: yield* digest(encodeLibraryValue(protectedState)),
+                            otherCaptureDigest: yield* digest(
+                              encodeLibraryValue(captures("other")),
+                            ),
+                            selectedDigest: yield* digest(encodeLibraryValue(captures("selected"))),
+                          };
+                        });
+
                   return {
+                    ...hashes,
                     alarm,
                     callbacks: count("alchemy_alarm_callbacks", false),
                     scheduled: count("alchemy_scheduled_events", false),

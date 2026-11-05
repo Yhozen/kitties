@@ -3,8 +3,10 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Match from "effect/Match";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
+import { LibraryArchivePruneRequest } from "./library-capture-prune-records.ts";
 import { LibraryImagePart } from "./library-object-admin.ts";
 import {
   libraryImageBytes,
@@ -35,6 +37,7 @@ import {
 import { open, seal } from "./secrets.ts";
 
 export const LIBRARY_ARCHIVE_OBJECT_BYTES = 256 * 1024;
+export const LIBRARY_ARCHIVE_VERIFY_BATCH = 8;
 const ZERO = "0".repeat(64);
 const FORMAT = "kitties-library-archive-v1";
 const unavailable = () => new LibraryArchiveError({ reason: "storage" });
@@ -722,12 +725,99 @@ const makeArchive = Effect.gen(function* () {
     return { read: readPart } satisfies LibraryArchiveRestoreSource;
   });
 
+  const verifyPrune = Effect.fnUntraced(function* (input: LibraryArchivePruneRequest) {
+    const request = yield* decode(LibraryArchivePruneRequest, input);
+    let state = yield* journal.reservePrune(request, yield* Clock.currentTimeMillis);
+
+    for (let index = 0; index < LIBRARY_ARCHIVE_VERIFY_BATCH; index++) {
+      if (state.phase !== "verifying") return state;
+      const work = yield* journal.pruneNext(request.pruneId, yield* Clock.currentTimeMillis);
+
+      if (work === null) return yield* failed("incomplete");
+
+      const receipt = yield* Match.value(work).pipe(
+        Match.tagsExhaustive({
+          Manifest: (work) =>
+            Effect.gen(function* () {
+              const stored = yield* read(
+                manifestKey(request.archiveId),
+                LibraryArchiveManifest,
+                work.receipt,
+              );
+
+              if (!same(stored.value, work.manifest)) return yield* failed("conflict");
+
+              return stored.receipt;
+            }),
+          Page: (work) =>
+            Effect.gen(function* () {
+              const stored = yield* read(
+                pageKey(request.archiveId, work.receipt.page),
+                Page,
+                work.receipt,
+              );
+
+              const expected = Page.make({
+                format: FORMAT,
+                archiveId: request.archiveId,
+                page: work.receipt.page,
+                previousSha256: work.receipt.previousSha256,
+                objects: work.objects,
+              });
+
+              if (!same(stored.value, expected)) return yield* failed("conflict");
+
+              return stored.receipt;
+            }),
+          Part: (work) =>
+            Effect.gen(function* () {
+              const stored = yield* read(
+                partKey(
+                  request.archiveId,
+                  work.object.ordinal,
+                  work.receipt.row,
+                  work.receipt.part,
+                ),
+                Part,
+                work.receipt,
+              );
+
+              const status = yield* journal.status(request.archiveId);
+
+              if (
+                status === null ||
+                !same(stored.value, expectedPart(status.header, work.object, stored.value.value)) ||
+                !validatePart(stored.value.value, work.receipt.row, work.receipt.part) ||
+                stored.value.value.parts !== work.receipt.parts
+              )
+                return yield* failed("conflict");
+
+              return stored.receipt;
+            }),
+        }),
+      );
+
+      state = yield* journal.acknowledgePrune(
+        request.pruneId,
+        work.sequence,
+        receipt,
+        yield* Clock.currentTimeMillis,
+      );
+    }
+
+    return state;
+  });
+
   return {
     begin,
     status: journal.status,
     upload,
     retainedSource,
     finishRestore: journal.finishRestore,
+    verifyPrune,
+    pruneStatus: journal.pruneStatus,
+    finishPrune: journal.finishPrune,
+    finishAbandon: journal.finishAbandon,
   };
 });
 

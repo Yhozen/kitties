@@ -35,6 +35,10 @@ import {
   LibraryAdminReply,
 } from "./library-object-admin.ts";
 import { LibraryImageError } from "./library-image.ts";
+import {
+  LibraryCapturePruneAuthorization,
+  LibraryCapturePruneStopAuthorization,
+} from "./library-capture-prune-records.ts";
 import { LibraryRequestScope } from "./library-session.ts";
 
 /** Adapter supplied by RecoveryDO; all Effects must reach its authoritative journal. */
@@ -42,6 +46,14 @@ export class LibraryRecoveryControl extends Context.Service<
   LibraryRecoveryControl,
   {
     readonly status: Effect.Effect<LibraryRecoveryState | null, LibraryRecoveryError>;
+    readonly authorizePrune: (
+      pruneId: string,
+      ordinal: number,
+    ) => Effect.Effect<LibraryCapturePruneAuthorization, LibraryRecoveryError>;
+    readonly authorizePruneStop: (
+      pruneId: string,
+      ordinal: number,
+    ) => Effect.Effect<LibraryCapturePruneStopAuthorization, LibraryRecoveryError>;
     readonly authorizeCapture: (
       operationId: string,
       captureId: string,
@@ -255,6 +267,52 @@ export const libraryRecoveryHooksLayer = (rollout: LibraryBackfillScope) =>
                             }),
                         ),
                       );
+                  }),
+                authorizePrune: (pruneId, captureId) =>
+                  Effect.gen(function* () {
+                    const source = yield* inspect;
+
+                    if (source.identity === null)
+                      return yield* new LibraryImageError({ reason: "conflict" });
+
+                    const authorization = yield* control
+                      .authorizePrune(pruneId, source.identity.ordinal)
+                      .pipe(
+                        Effect.mapError(
+                          (error) =>
+                            new LibraryImageError({
+                              reason: error.reason === "storage" ? "storage" : "conflict",
+                            }),
+                        ),
+                      );
+
+                    if (authorization.request.captureId !== captureId)
+                      return yield* new LibraryImageError({ reason: "conflict" });
+
+                    return authorization;
+                  }),
+                authorizePruneStop: (pruneId, captureId) =>
+                  Effect.gen(function* () {
+                    const source = yield* inspect;
+
+                    if (source.identity === null)
+                      return yield* new LibraryImageError({ reason: "conflict" });
+
+                    const authorization = yield* control
+                      .authorizePruneStop(pruneId, source.identity.ordinal)
+                      .pipe(
+                        Effect.mapError(
+                          (error) =>
+                            new LibraryImageError({
+                              reason: error.reason === "storage" ? "storage" : "conflict",
+                            }),
+                        ),
+                      );
+
+                    if (authorization.request.captureId !== captureId)
+                      return yield* new LibraryImageError({ reason: "conflict" });
+
+                    return authorization;
                   }),
                 storage: {
                   sql: raw.sql,

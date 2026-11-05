@@ -1,4 +1,6 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
+import * as Workflows from "alchemy/Workflows";
+import { WorkflowEngine } from "effect/workflow";
 import * as DomainCloudflare from "@alchemy.run/cloudflare/Domain";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -8,6 +10,7 @@ import * as Option from "effect/Option";
 import * as Exit from "effect/Exit";
 import * as Cause from "effect/Cause";
 import * as Predicate from "effect/Predicate";
+import * as Clock from "effect/Clock";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import { LibraryModel } from "../../../packages/domain/src/Library.model.ts";
 import { Library } from "../../../packages/domain/src/Library/Library.aggregate.ts";
@@ -25,6 +28,8 @@ import {
 import { RecoveryDO } from "../../../apps/gateway/src/recovery-store.ts";
 import { LibraryRecoveryCoordinator } from "../../../apps/gateway/src/library-recovery-coordinator.ts";
 import { LibraryArchiveOperations } from "../../../apps/gateway/src/library-archive-operations.ts";
+import { LibraryCapturePruning } from "../../../apps/gateway/src/library-capture-pruning.ts";
+import { LibraryCapturePruneClock } from "../../../apps/gateway/src/library-capture-prune-clock.ts";
 import {
   LibraryRetainedArchiveJournal,
   LibraryArchiveError,
@@ -46,7 +51,9 @@ import {
 import { ArchiveRequest } from "./protocol.ts";
 import { LibraryArchiveProbe } from "./probe.ts";
 import { ArchiveFixtureHooks, ArchiveNativeObjects } from "./native.ts";
-import { ArchiveRetainedLive, archiveObjectEvidence } from "./retained.ts";
+import { ArchiveRetainedLive, ArchiveR2Faults, archiveObjectEvidence } from "./retained.ts";
+import { ArchivePruneClockLive } from "./clock.ts";
+import { ArchiveScheduledPrune, ArchiveScheduledSweepLive } from "./scheduled.ts";
 import { readBody } from "../../../apps/gateway/src/request.ts";
 
 const owner = LibraryId.make("owner");
@@ -90,6 +97,38 @@ const ObservedAdministration = Layer.effect(
           : admin.call(ref, request)
         ).pipe(
           Effect.tap((reply) => {
+            if (
+              Predicate.isTagged(request, "StopPrune") &&
+              Predicate.isTagged(reply, "PruneStopped")
+            )
+              return probe()
+                .hit("prune-stop", {
+                  nativeId: ref.nativeId,
+                  pruneId: request.pruneId,
+                  captureId: request.captureId,
+                  ...reply.value,
+                })
+                .pipe(Effect.orDie);
+
+            if (
+              Predicate.isTagged(request, "PruneCaptureStep") &&
+              Predicate.isTagged(reply, "PruneProgress") &&
+              reply.value.receipt !== null
+            )
+              return probe()
+                .recordPrune(request.pruneId, ref.nativeId, reply.value.receipt)
+                .pipe(
+                  Effect.andThen(
+                    probe().hit("prune-step", {
+                      nativeId: ref.nativeId,
+                      pruneId: request.pruneId,
+                      captureId: request.captureId,
+                      ...reply.value,
+                    }),
+                  ),
+                  Effect.orDie,
+                );
+
             if (Predicate.isTagged(request, "CaptureStep") && Predicate.isTagged(reply, "Progress"))
               return probe()
                 .hit("capture", {
@@ -146,9 +185,12 @@ const ServicesLive = Layer.merge(
   ArchiveRetainedLive.pipe(Layer.provideMerge(NativeLive)),
 );
 
-const ApplicationLive = LibraryArchiveOperations.layer.pipe(
+const OperationsLive = LibraryArchiveOperations.layer.pipe(
   Layer.provideMerge(Layer.merge(ServicesLive, ObservedRestoreIntent)),
 );
+
+const ApplicationLive = LibraryCapturePruning.layer.pipe(Layer.provideMerge(OperationsLive));
+const ScheduledLive = ArchiveScheduledSweepLive.pipe(Layer.provideMerge(ApplicationLive));
 
 export default class OwnedLibraryArchive extends Cloudflare.Worker<OwnedLibraryArchive>()(
   "OwnedLibraryArchive",
@@ -160,6 +202,11 @@ export default class OwnedLibraryArchive extends Cloudflare.Worker<OwnedLibraryA
     const objects = yield* LibraryArchiveObjects;
     const operations = yield* LibraryArchiveOperations;
     const journal = yield* LibraryRetainedArchiveJournal;
+    const pruning = yield* LibraryCapturePruning;
+    const scheduled = yield* Workflows.RunWorkflow(ArchiveScheduledPrune);
+    const engine = yield* WorkflowEngine.WorkflowEngine;
+    const pruneClock = yield* LibraryCapturePruneClock;
+    const r2Faults = yield* ArchiveR2Faults;
     const admin = yield* LibraryObjectAdministration;
     const native = yield* ArchiveNativeObjects;
     const admission = yield* LibraryAdmission;
@@ -196,6 +243,89 @@ export default class OwnedLibraryArchive extends Cloudflare.Worker<OwnedLibraryA
         const input = yield* readBody(request, ArchiveRequest).pipe(Effect.orDie);
 
         const action = Match.value(input)
+          .pipe(
+            Match.when({ action: "scheduled-start" }, ({ id }) =>
+              scheduled.start({ id }).pipe(Effect.map((run) => run.executionId)),
+            ),
+            Match.when({ action: "scheduled-result" }, ({ id }) =>
+              scheduled.get(id).result.pipe(Effect.timeout("120 seconds")),
+            ),
+            Match.when({ action: "scheduled-resume" }, ({ id }) =>
+              engine.resume(ArchiveScheduledPrune, id),
+            ),
+            Match.when({ action: "prune-candidates" }, ({ request }) =>
+              control.capturePruneCandidates(request),
+            ),
+            Match.when({ action: "prune-verify" }, ({ request }) =>
+              archive.verifyPrune(request).pipe(Effect.provideService(Clock.Clock, pruneClock)),
+            ),
+            Match.when({ action: "prune-status" }, ({ pruneId }) => archive.pruneStatus(pruneId)),
+            Match.when({ action: "prune-plan" }, ({ pruneId }) => control.capturePrune(pruneId)),
+            Match.when({ action: "prune-begin" }, ({ pruneId }) =>
+              control.beginCapturePrune(pruneId),
+            ),
+            Match.when({ action: "prune-replies" }, ({ pruneId, nativeId }) =>
+              probe().pruneReplies(pruneId, nativeId),
+            ),
+            Match.when({ action: "step-observations" }, ({ nativeId }) =>
+              probe().stepObservations(nativeId),
+            ),
+            Match.when({ action: "prune" }, (request) =>
+              pruning
+                .prune({
+                  operationId: request.operationId,
+                  captureId: request.captureId,
+                  archiveId: request.archiveId,
+                })
+                .pipe(Effect.provideService(Clock.Clock, pruneClock)),
+            ),
+            Match.when({ action: "archive-fault" }, ({ archiveId, key, mode }) =>
+              r2Faults.damage(archiveId, key, mode),
+            ),
+            Match.when({ action: "archive-begin" }, ({ archiveId, captureId }) =>
+              Effect.gen(function* () {
+                yield* control.grantExport(archiveId, captureId);
+
+                return yield* archive.begin({
+                  archiveId,
+                  captureId,
+                  grantId: archiveId,
+                  codeDigest,
+                });
+              }),
+            ),
+            Match.when({ action: "prune-abandon" }, (request) =>
+              pruning.abandon({
+                operationId: request.operationId,
+                captureId: request.captureId,
+                archiveId: request.archiveId,
+              }),
+            ),
+            Match.when({ action: "archive-alias" }, ({ archiveId, captureId }) =>
+              Effect.gen(function* () {
+                yield* control.grantExport(archiveId, captureId);
+
+                return yield* archive.upload({
+                  archiveId,
+                  captureId,
+                  grantId: archiveId,
+                  codeDigest,
+                });
+              }),
+            ),
+            Match.when({ action: "archive-pin" }, ({ archiveId, restoreId }) =>
+              archive
+                .retainedSource({
+                  archiveId,
+                  restoreId,
+                  codeDigest,
+                })
+                .pipe(Effect.andThen(journal.restorePin(restoreId))),
+            ),
+            Match.when({ action: "snapshot" }, ({ ref, captureId }) =>
+              native.call(ref, { action: "snapshot", captureId }),
+            ),
+          )
           .pipe(
             Match.when({ action: "initialize" }, () =>
               Effect.gen(function* () {
@@ -293,6 +423,9 @@ export default class OwnedLibraryArchive extends Cloudflare.Worker<OwnedLibraryA
             Match.when({ action: "archive" }, (input) =>
               operations.export({ operationId: input.operationId, codeDigest }),
             ),
+            Match.when({ action: "archive-mismatch" }, ({ operationId }) =>
+              operations.export({ operationId, codeDigest: "b".repeat(64) }),
+            ),
             Match.when({ action: "archive-status" }, ({ archiveId }) => archive.status(archiveId)),
             Match.when({ action: "restore-pin" }, ({ operationId }) =>
               journal.restorePin(operationId),
@@ -366,6 +499,9 @@ export default class OwnedLibraryArchive extends Cloudflare.Worker<OwnedLibraryA
               input.action === "capture" ||
                 input.action === "detail" ||
                 input.action === "archive" ||
+                input.action === "archive-alias" ||
+                input.action === "prune" ||
+                input.action === "prune-abandon" ||
                 input.action === "retained-restore"
                 ? "120 seconds"
                 : "10 seconds",
@@ -390,5 +526,5 @@ export default class OwnedLibraryArchive extends Cloudflare.Worker<OwnedLibraryA
         );
       }),
     };
-  }).pipe(Effect.provide(ApplicationLive)),
+  }).pipe(Effect.provide(ScheduledLive), Effect.provide(ArchivePruneClockLive)),
 ) {}

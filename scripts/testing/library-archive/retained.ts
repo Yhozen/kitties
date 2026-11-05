@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
+import * as Context from "effect/Context";
 import {
   LibraryArchiveCaptureSourceLive,
   LibraryArchiveJournalLive,
@@ -21,6 +22,18 @@ import { LibraryArchiveProbe } from "./probe.ts";
 const Envelope = Schema.fromJsonString(
   Schema.Struct({ kid: Schema.Literal("v1"), iv: Schema.String, ct: Schema.String }),
 );
+
+/** Actual local R2 loss/corruption, confined to a disposable negative case. */
+export class ArchiveR2Faults extends Context.Service<
+  ArchiveR2Faults,
+  {
+    readonly damage: (
+      archiveId: string,
+      key: string,
+      mode: "missing" | "corrupt",
+    ) => Effect.Effect<{ readonly key: string; readonly mode: string }, LibraryArchiveError>;
+  }
+>()("OwnedLibraryArchive/R2Faults") {}
 
 export const archiveObjectEvidence = Effect.fnUntraced(function* (key: string) {
   const objects = yield* LibraryArchiveObjects;
@@ -50,7 +63,7 @@ const StorageLive = Layer.unwrap(
     // SAFETY: owned host.mjs injects the native EXPORTS R2 binding and an explicit private KEK;
     // it allows no external bindings. The key is decoded before entering the encryption service.
     const env = (yield* Cloudflare.WorkerEnvironment) as {
-      readonly EXPORTS: Pick<cf.R2Bucket, "get" | "put">;
+      readonly EXPORTS: Pick<cf.R2Bucket, "get" | "put" | "delete">;
       readonly KITTIES_KEK: unknown;
     };
 
@@ -58,12 +71,56 @@ const StorageLive = Layer.unwrap(
       Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
     )(env.KITTIES_KEK).pipe(Effect.orDie);
 
-    return Layer.merge(
-      LibraryArchiveObjects.layerR2({
-        get: (key) => env.EXPORTS.get(key),
-        put: (key, body, options) => env.EXPORTS.put(key, body, options),
-      }),
+    const objects = LibraryArchiveObjects.layerR2({
+      get: (key) => env.EXPORTS.get(key),
+      put: (key, body, options) => env.EXPORTS.put(key, body, options),
+    });
+
+    return Layer.mergeAll(
+      objects,
       Layer.succeed(LibraryArchiveKey, { value: Redacted.make(key) }),
+      Layer.effect(
+        ArchiveR2Faults,
+        Effect.gen(function* () {
+          const storage = yield* LibraryArchiveObjects;
+
+          return ArchiveR2Faults.of({
+            damage: Effect.fnUntraced(function* (archiveId, key, mode) {
+              if (
+                !key.startsWith(`exports/library-v1/${archiveId}/`) ||
+                !/^exports\/library-v1\/[a-zA-Z0-9_-]{1,128}\/(?:parts\/[0-9]+\/[0-9]+\/[0-9]+|metadata\/[0-9]+|manifest)\.json$/.test(
+                  key,
+                )
+              )
+                return yield* new LibraryArchiveError({ reason: "invalid" });
+              const original = yield* storage.get(key, LIBRARY_ARCHIVE_OBJECT_BYTES);
+
+              if (original === null)
+                return yield* new LibraryArchiveError({ reason: "incomplete" });
+
+              const envelope = yield* Schema.decodeUnknownEffect(Envelope)(original.body).pipe(
+                Effect.mapError(() => new LibraryArchiveError({ reason: "invalid" })),
+              );
+
+              yield* Effect.tryPromise({
+                try: () =>
+                  mode === "missing"
+                    ? env.EXPORTS.delete(key)
+                    : env.EXPORTS.put(
+                        key,
+                        JSON.stringify({
+                          ...envelope,
+                          ct: (envelope.ct[0] === "A" ? "B" : "A") + envelope.ct.slice(1),
+                        }),
+                      ).then(() => undefined),
+                catch: () => new LibraryArchiveError({ reason: "storage" }),
+              });
+
+              return { key, mode };
+            }),
+          });
+        }),
+      ).pipe(Layer.provide(objects)),
     );
   }),
 );

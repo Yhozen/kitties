@@ -1,5 +1,6 @@
 import { LibraryArchiveLive, LibraryArchiveJournalLive } from "./library-archive.ts";
 import { LibraryArchiveOperations } from "./library-archive-operations.ts";
+import { LibraryCapturePruning } from "./library-capture-pruning.ts";
 import * as DomainCloudflare from "@alchemy.run/cloudflare/Domain";
 import { LibraryModel } from "@kitties/domain/Library.model";
 import * as Config from "effect/Config";
@@ -54,6 +55,7 @@ const LibraryServices = Layer.mergeAll(
   Layer.provideMerge(Layer.mergeAll(LibraryHosted, LibraryControlLive, LibraryRecoveryHooksLive)),
 );
 
-export const LibraryBackend = LibraryArchiveOperations.layer.pipe(
-  Layer.provideMerge(LibraryServices),
-);
+export const LibraryBackend = Layer.merge(
+  LibraryArchiveOperations.layer,
+  LibraryCapturePruning.layer,
+).pipe(Layer.provideMerge(LibraryServices));
