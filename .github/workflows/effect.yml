@@ -37,6 +37,12 @@ jobs:
       - name: Local Library capture and retained archive recovery
         run: pnpm test:library-archive
         timeout-minutes: 5
+      - name: Local Library capture-buffer cleanup and abandonment
+        run: pnpm test:library-prune
+        timeout-minutes: 5
+      - name: Scheduled Library pruning and durable workflow replay
+        run: pnpm test:library-prune-scheduled
+        timeout-minutes: 5
       - name: Test reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

@@ -9,10 +9,80 @@ import {
 } from "../../../apps/gateway/src/library-recovery-records.ts";
 import { LibraryArchiveError } from "../../../apps/gateway/src/library-retained-archive-store.ts";
 import { LibraryAdminRequest } from "../../../apps/gateway/src/library-object-admin.ts";
+import { LibraryArchivePruneRequest } from "../../../apps/gateway/src/library-capture-prune-records.ts";
+import { LibraryCapturePruneCandidatesRequest } from "../../../apps/gateway/src/library-capture-prune-records.ts";
 
-export const ArchiveBoundary = Schema.Literals(["capture", "rearm", "upload", "restore-intent"]);
+export const ArchiveBoundary = Schema.Literals([
+  "capture",
+  "rearm",
+  "upload",
+  "restore-intent",
+  "prune-step",
+  "prune-stop",
+]);
 
 export const ArchiveRequest = Schema.Union([
+  Schema.Struct({ action: Schema.Literal("scheduled-start"), id: RecoveryOperationId }),
+  Schema.Struct({
+    action: Schema.Literal("scheduled-result"),
+    id: Schema.String.check(Schema.isMaxLength(128)),
+  }),
+  Schema.Struct({
+    action: Schema.Literal("scheduled-resume"),
+    id: Schema.String.check(Schema.isMaxLength(128)),
+  }),
+  Schema.Struct({
+    action: Schema.Literal("prune-candidates"),
+    request: LibraryCapturePruneCandidatesRequest,
+  }),
+  Schema.Struct({ action: Schema.Literal("step-observations"), nativeId: Schema.String }),
+  Schema.Struct({ action: Schema.Literal("prune-verify"), request: LibraryArchivePruneRequest }),
+  Schema.Struct({ action: Schema.Literal("prune-status"), pruneId: RecoveryOperationId }),
+  Schema.Struct({ action: Schema.Literal("prune-plan"), pruneId: RecoveryOperationId }),
+  Schema.Struct({ action: Schema.Literal("prune-begin"), pruneId: RecoveryOperationId }),
+  Schema.Struct({
+    action: Schema.Literal("prune-replies"),
+    pruneId: RecoveryOperationId,
+    nativeId: Schema.String,
+  }),
+  Schema.Struct({
+    action: Schema.Literal("prune"),
+    operationId: RecoveryOperationId,
+    captureId: RecoveryOperationId,
+    archiveId: RecoveryOperationId,
+  }),
+  Schema.Struct({
+    action: Schema.Literal("prune-abandon"),
+    operationId: RecoveryOperationId,
+    captureId: RecoveryOperationId,
+    archiveId: RecoveryOperationId,
+  }),
+  Schema.Struct({
+    action: Schema.Literal("archive-begin"),
+    archiveId: RecoveryOperationId,
+    captureId: RecoveryOperationId,
+  }),
+  Schema.Struct({
+    action: Schema.Literal("archive-alias"),
+    archiveId: RecoveryOperationId,
+    captureId: RecoveryOperationId,
+  }),
+  Schema.Struct({
+    action: Schema.Literal("archive-pin"),
+    archiveId: RecoveryOperationId,
+    restoreId: RecoveryOperationId,
+  }),
+  Schema.Struct({
+    action: Schema.Literal("archive-fault"),
+    archiveId: RecoveryOperationId,
+    key: Schema.String.check(Schema.isMaxLength(512)),
+    mode: Schema.Literals(["missing", "corrupt"]),
+  }),
+  Schema.Struct({
+    action: Schema.Literal("snapshot"),
+    ref: LibraryObjectRef,
+    captureId: RecoveryOperationId,
+  }),
   Schema.Struct({ action: Schema.Literal("initialize") }),
   Schema.Struct({ action: Schema.Literal("status") }),
   Schema.Struct({ action: Schema.Literal("global") }),
@@ -60,6 +130,7 @@ export const ArchiveRequest = Schema.Union([
     action: Schema.Literal("archive"),
     operationId: RecoveryOperationId,
   }),
+  Schema.Struct({ action: Schema.Literal("archive-mismatch"), operationId: RecoveryOperationId }),
   Schema.Struct({ action: Schema.Literal("archive-status"), archiveId: RecoveryOperationId }),
   Schema.Struct({ action: Schema.Literal("restore-pin"), operationId: RecoveryOperationId }),
   Schema.Struct({ action: Schema.Literal("restore-intent"), operationId: RecoveryOperationId }),

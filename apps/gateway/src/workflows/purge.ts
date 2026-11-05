@@ -2,6 +2,7 @@ import { guardedActivities } from "../recovery-guard.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Workflows from "alchemy/Workflows";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
 import * as Schema from "effect/Schema";
 import { WorkflowEngine } from "effect/workflow";
@@ -9,12 +10,15 @@ import { HomeDO, ChatDO, KittyDO } from "../actors.ts";
 import { RecoveryDO } from "../recovery-store.ts";
 import { Purge } from "../recovery-definition.ts";
 import { workflowActor } from "../workflow-admin.ts";
+import { LibraryPruneSweep } from "./library-prune.ts";
 
 const activity = guardedActivities(Effect.void);
 
 export const PurgeLive = Workflows.layer(
   Purge,
   Effect.gen(function* () {
+    const libraryPrune = yield* LibraryPruneSweep;
+
     const roots = yield* RecoveryDO,
       homes = yield* HomeDO,
       chats = yield* ChatDO,
@@ -70,6 +74,8 @@ export const PurgeLive = Workflows.layer(
         });
       }
 
+      const library = yield* libraryPrune.run();
+
       yield* activity({
         name: "complete",
         error: Schema.String,
@@ -82,6 +88,7 @@ export const PurgeLive = Workflows.layer(
               before,
               executionId,
               objects: objects.length,
+              library,
               status: "completed",
               at: Date.now(),
             }),
@@ -92,4 +99,4 @@ export const PurgeLive = Workflows.layer(
       return objects.length;
     });
   }),
-);
+).pipe(Layer.provide(LibraryPruneSweep.layer));

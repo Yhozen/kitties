@@ -11,6 +11,7 @@ import { DurableObjectState } from "@alchemy.run/cloudflare/Workers/DurableObjec
 import { ensureAlarmTables } from "@alchemy.run/cloudflare/Workers/DurableObjectAlarmStorage";
 import { task } from "@alchemy.run/cloudflare/Workflows/Workflow";
 import type { CallbackFactory, CallbackOptions } from "alchemy/Callback";
+import { ALCHEMY_PHASE } from "alchemy";
 import { RuntimeContext } from "alchemy/RuntimeContext";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -35,6 +36,10 @@ import {
   LibraryAdminReply,
 } from "./library-object-admin.ts";
 import { LibraryImageError } from "./library-image.ts";
+import {
+  LibraryCapturePruneAuthorization,
+  LibraryCapturePruneStopAuthorization,
+} from "./library-capture-prune-records.ts";
 import { LibraryRequestScope } from "./library-session.ts";
 
 /** Adapter supplied by RecoveryDO; all Effects must reach its authoritative journal. */
@@ -42,6 +47,14 @@ export class LibraryRecoveryControl extends Context.Service<
   LibraryRecoveryControl,
   {
     readonly status: Effect.Effect<LibraryRecoveryState | null, LibraryRecoveryError>;
+    readonly authorizePrune: (
+      pruneId: string,
+      ordinal: number,
+    ) => Effect.Effect<LibraryCapturePruneAuthorization, LibraryRecoveryError>;
+    readonly authorizePruneStop: (
+      pruneId: string,
+      ordinal: number,
+    ) => Effect.Effect<LibraryCapturePruneStopAuthorization, LibraryRecoveryError>;
     readonly authorizeCapture: (
       operationId: string,
       captureId: string,
@@ -202,6 +215,12 @@ export const libraryRecoveryHooksLayer = (rollout: LibraryBackfillScope) =>
       const objectHook: RecoveryHooksService["object"] = (object, next) =>
         Effect.gen(function* () {
           const className = objectDescriptor(object);
+
+          // Alchemy evaluates constructors against a mock state during plan to discover bindings.
+          // Bundling folds the runtime flag to true, removing this branch from deployed Workers.
+          if (!globalThis.__ALCHEMY_RUNTIME__ && (yield* ALCHEMY_PHASE) === "plan")
+            return yield* next;
+
           const state = yield* DurableObjectState;
           const nativeId = state.id.toString();
 
@@ -255,6 +274,52 @@ export const libraryRecoveryHooksLayer = (rollout: LibraryBackfillScope) =>
                             }),
                         ),
                       );
+                  }),
+                authorizePrune: (pruneId, captureId) =>
+                  Effect.gen(function* () {
+                    const source = yield* inspect;
+
+                    if (source.identity === null)
+                      return yield* new LibraryImageError({ reason: "conflict" });
+
+                    const authorization = yield* control
+                      .authorizePrune(pruneId, source.identity.ordinal)
+                      .pipe(
+                        Effect.mapError(
+                          (error) =>
+                            new LibraryImageError({
+                              reason: error.reason === "storage" ? "storage" : "conflict",
+                            }),
+                        ),
+                      );
+
+                    if (authorization.request.captureId !== captureId)
+                      return yield* new LibraryImageError({ reason: "conflict" });
+
+                    return authorization;
+                  }),
+                authorizePruneStop: (pruneId, captureId) =>
+                  Effect.gen(function* () {
+                    const source = yield* inspect;
+
+                    if (source.identity === null)
+                      return yield* new LibraryImageError({ reason: "conflict" });
+
+                    const authorization = yield* control
+                      .authorizePruneStop(pruneId, source.identity.ordinal)
+                      .pipe(
+                        Effect.mapError(
+                          (error) =>
+                            new LibraryImageError({
+                              reason: error.reason === "storage" ? "storage" : "conflict",
+                            }),
+                        ),
+                      );
+
+                    if (authorization.request.captureId !== captureId)
+                      return yield* new LibraryImageError({ reason: "conflict" });
+
+                    return authorization;
                   }),
                 storage: {
                   sql: raw.sql,

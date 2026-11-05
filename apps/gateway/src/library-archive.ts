@@ -25,6 +25,8 @@ import {
   LibraryArchivePageReceipt,
   LibraryArchivePartReceipt,
   LibraryArchivePin,
+  LibraryArchivePruneVerification,
+  LibraryArchivePruneWork,
   LibraryArchiveStatus,
   LibraryRetainedArchiveJournal,
 } from "./library-retained-archive-store.ts";
@@ -66,6 +68,24 @@ export const LibraryArchiveJournalLive = Layer.effect(
       );
 
     return LibraryRetainedArchiveJournal.of({
+      reservePrune: (request, now) =>
+        call(LibraryArchivePruneVerification, () =>
+          root().libraryArchiveReservePrune(request, now),
+        ),
+      pruneStatus: (id) =>
+        call(Schema.NullOr(LibraryArchivePruneVerification), () =>
+          root().libraryArchivePruneStatus(id),
+        ),
+      pruneNext: (id, now) =>
+        call(Schema.NullOr(LibraryArchivePruneWork), () => root().libraryArchivePruneNext(id, now)),
+      acknowledgePrune: (id, sequence, receipt, now) =>
+        call(LibraryArchivePruneVerification, () =>
+          root().libraryArchiveAcknowledgePrune(id, sequence, receipt, now),
+        ),
+      finishPrune: (id) =>
+        call(LibraryArchivePruneVerification, () => root().libraryArchiveFinishPrune(id)),
+      finishAbandon: (id) =>
+        call(LibraryArchivePruneVerification, () => root().libraryArchiveFinishAbandon(id)),
       setup: call(Schema.Undefined, () => root().libraryArchiveSetup()),
       begin: (header) => call(LibraryArchiveStatus, () => root().libraryArchiveBegin(header)),
       status: (id) =>

@@ -10,6 +10,14 @@ import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Struct from "effect/Struct";
 import {
+  LIBRARY_CAPTURE_PRUNE_BATCH_SIZE,
+  LibraryCapturePruneAuthorization,
+  LibraryCapturePruneProgress,
+  LibraryCapturePruneReceipt,
+  LibraryCapturePruneStopAuthorization,
+  LibraryCapturePruneStopReceipt,
+} from "./library-capture-prune-records.ts";
+import {
   LibraryExportAuthorization,
   LibraryObjectRef,
   LibraryObjectImage,
@@ -56,6 +64,14 @@ export type LibraryImagePart = typeof LibraryImagePart.Type;
 
 export const LibraryAdminRequest = Schema.Union([
   Schema.Struct({ _tag: Schema.Literal("Status") }),
+  Schema.TaggedStruct("PruneCaptureStep", {
+    pruneId: RecoveryOperationId,
+    captureId: RecoveryOperationId,
+  }),
+  Schema.TaggedStruct("StopPrune", {
+    pruneId: RecoveryOperationId,
+    captureId: RecoveryOperationId,
+  }),
   Schema.Struct({ _tag: Schema.Literal("ReadAllocatorFloor"), operationId: RecoveryOperationId }),
   Schema.Struct({ _tag: Schema.Literal("Freeze"), operationId: RecoveryOperationId }),
   Schema.Struct({ _tag: Schema.Literal("Evict"), operationId: RecoveryOperationId }),
@@ -199,6 +215,8 @@ export const LibraryAdminProgress = Schema.Struct({
 });
 
 export const LibraryAdminReply = Schema.Union([
+  Schema.TaggedStruct("PruneStopped", { value: LibraryCapturePruneStopReceipt }),
+  Schema.TaggedStruct("PruneProgress", { value: LibraryCapturePruneProgress }),
   Schema.Struct({ _tag: Schema.Literal("AllocatorFloor"), value: RecoveryOrdinal }),
   Schema.Struct({ _tag: Schema.Literal("Status"), value: LibraryAdminStatus }),
   Schema.Struct({ _tag: Schema.Literal("Progress"), value: LibraryAdminProgress }),
@@ -261,6 +279,14 @@ export interface LibraryObjectEnvironment {
     grantId: string,
     captureId: string,
   ) => Effect.Effect<LibraryExportAuthorization, LibraryImageError>;
+  readonly authorizePrune?: (
+    pruneId: string,
+    captureId: string,
+  ) => Effect.Effect<LibraryCapturePruneAuthorization, LibraryImageError>;
+  readonly authorizePruneStop?: (
+    pruneId: string,
+    captureId: string,
+  ) => Effect.Effect<LibraryCapturePruneStopAuthorization, LibraryImageError>;
   readonly closeSockets: () => void;
   readonly evict: () => void;
 }
@@ -272,6 +298,12 @@ export interface LibraryObjectInspection {
 
 const tables = Table.literals;
 const seed = "kitties-library-image-v1";
+
+const LocalPrune = Schema.Struct({
+  authorization: LibraryCapturePruneAuthorization,
+  stage: Schema.Literals([0, 1, 2, 3]),
+  removedRows: RecoveryOrdinal,
+});
 
 const fail = (reason: LibraryImageError["reason"]): never => {
   throw new LibraryImageError({ reason });
@@ -298,6 +330,12 @@ const makeLibraryObjectAdmin = (environment: LibraryObjectEnvironment) =>
     );
     sql.exec(
       "CREATE TABLE IF NOT EXISTS library_admin_parts (id TEXT NOT NULL,row_number INTEGER NOT NULL,part INTEGER NOT NULL,body TEXT NOT NULL,PRIMARY KEY(id,row_number,part))",
+    );
+    sql.exec(
+      "CREATE TABLE IF NOT EXISTS library_admin_prunes (id TEXT PRIMARY KEY,capture_id TEXT NOT NULL UNIQUE,body TEXT NOT NULL)",
+    );
+    sql.exec(
+      "CREATE TABLE IF NOT EXISTS library_admin_prune_stops (id TEXT PRIMARY KEY,capture_id TEXT NOT NULL UNIQUE,body TEXT NOT NULL)",
     );
 
     const read = <S extends Schema.ConstraintDecoder<unknown>>(
@@ -686,6 +724,173 @@ const makeLibraryObjectAdmin = (environment: LibraryObjectEnvironment) =>
       request: LibraryAdminRequest,
     ): Effect.Effect<LibraryAdminReply, LibraryImageError> =>
       Match.value(request).pipe(
+        Match.tag("StopPrune", (input) =>
+          Effect.gen(function* () {
+            if (identity === null || environment.authorizePruneStop === undefined)
+              return Reply.Rejected({ reason: "fenced" });
+            const source = identity;
+
+            const authorization = yield* environment.authorizePruneStop(
+              input.pruneId,
+              input.captureId,
+            );
+
+            if (
+              authorization.request.pruneId !== input.pruneId ||
+              authorization.request.captureId !== input.captureId ||
+              authorization.ordinal !== source.ordinal ||
+              Struct.keys(LibraryObjectRef.fields).some(
+                (key) => authorization.source[key] !== source[key],
+              )
+            )
+              return Reply.Rejected({ reason: "fenced" });
+
+            return storage.transaction(() => {
+              const previous = record(
+                LibraryCapturePruneStopReceipt,
+                "SELECT body FROM library_admin_prune_stops WHERE id=?",
+                input.pruneId,
+              );
+
+              const receipt = LibraryCapturePruneStopReceipt.make({ authorization });
+
+              if (previous !== undefined) {
+                if (!Schema.toEquivalence(LibraryCapturePruneStopReceipt)(previous, receipt))
+                  return fail("conflict");
+
+                return Reply.PruneStopped({ value: previous });
+              }
+
+              const progress = record(
+                LocalPrune,
+                "SELECT body FROM library_admin_prunes WHERE id=?",
+                input.pruneId,
+              );
+
+              if (
+                progress !== undefined &&
+                !Schema.toEquivalence(LibraryCapturePruneAuthorization)(
+                  progress.authorization,
+                  authorization,
+                )
+              )
+                return fail("conflict");
+              sql.exec(
+                "INSERT INTO library_admin_prune_stops VALUES (?,?,?)",
+                input.pruneId,
+                input.captureId,
+                JSON.stringify(receipt),
+              );
+
+              return Reply.PruneStopped({ value: receipt });
+            });
+          }),
+        ),
+        Match.tag("PruneCaptureStep", (input) =>
+          Effect.gen(function* () {
+            if (identity === null || environment.authorizePrune === undefined)
+              return Reply.Rejected({ reason: "fenced" });
+            const source = identity;
+            const authorization = yield* environment.authorizePrune(input.pruneId, input.captureId);
+
+            if (
+              authorization.request.pruneId !== input.pruneId ||
+              authorization.request.captureId !== input.captureId ||
+              authorization.ordinal !== source.ordinal ||
+              Struct.keys(LibraryObjectRef.fields).some(
+                (key) => authorization.source[key] !== source[key],
+              )
+            )
+              return Reply.Rejected({ reason: "fenced" });
+
+            return storage.transaction(() => {
+              if (
+                record(
+                  LibraryCapturePruneStopReceipt,
+                  "SELECT body FROM library_admin_prune_stops WHERE capture_id=?",
+                  input.captureId,
+                ) !== undefined
+              )
+                return Reply.Rejected({ reason: "fenced" });
+
+              let progress = record(
+                LocalPrune,
+                "SELECT body FROM library_admin_prunes WHERE id=?",
+                input.pruneId,
+              );
+
+              if (progress === undefined) {
+                const captured = journal(input.captureId);
+
+                if (
+                  captured?.mode !== "capture" ||
+                  captured.stage !== 5 ||
+                  !sameImage(manifest(captured), authorization.image)
+                )
+                  return fail("conflict");
+                progress = { authorization, stage: 0, removedRows: 0 };
+                sql.exec(
+                  "INSERT INTO library_admin_prunes VALUES (?,?,?)",
+                  input.pruneId,
+                  input.captureId,
+                  JSON.stringify(progress),
+                );
+              } else if (
+                !Schema.toEquivalence(LibraryCapturePruneAuthorization)(
+                  progress.authorization,
+                  authorization,
+                )
+              ) {
+                return fail("conflict");
+              }
+
+              let remaining = LIBRARY_CAPTURE_PRUNE_BATCH_SIZE;
+
+              for (const [stage, table, next] of [
+                [0, "library_admin_parts", 1],
+                [1, "library_admin_rows", 2],
+                [2, "library_admin_images", 3],
+              ] as const) {
+                if (progress.stage !== stage || remaining === 0) continue;
+
+                const removed = sql
+                  .exec(
+                    `DELETE FROM ${table} WHERE rowid IN (SELECT rowid FROM ${table} WHERE id=? LIMIT ?) RETURNING rowid`,
+                    input.captureId,
+                    remaining,
+                  )
+                  .toArray().length;
+
+                remaining -= removed;
+                progress = { ...progress, removedRows: progress.removedRows + removed };
+
+                if (
+                  sql.exec(`SELECT 1 FROM ${table} WHERE id=? LIMIT 1`, input.captureId).toArray()
+                    .length === 0
+                )
+                  progress = { ...progress, stage: next };
+              }
+
+              sql.exec(
+                "UPDATE library_admin_prunes SET body=? WHERE id=?",
+                JSON.stringify(progress),
+                input.pruneId,
+              );
+              const done = progress.stage === 3;
+
+              const receipt = done
+                ? LibraryCapturePruneReceipt.make({
+                    authorization: progress.authorization,
+                    removedRows: progress.removedRows,
+                  })
+                : null;
+
+              return Reply.PruneProgress({
+                value: { done, removedRows: progress.removedRows, receipt },
+              });
+            });
+          }),
+        ),
         Match.tag("ReadAllocatorFloor", (input) =>
           Effect.sync(() => {
             if (

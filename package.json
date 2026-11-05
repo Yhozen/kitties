@@ -16,7 +16,9 @@
     "test:library-bundle": "vp run library-bundle-check",
     "test:library-http": "vp run library-http-check",
     "test:library-browser": "vp run library-browser-check",
-    "test:library-archive": "vp run library-archive-check"
+    "test:library-archive": "vp run library-archive-check",
+    "test:library-prune": "vp run library-prune-check",
+    "test:library-prune-scheduled": "vp run library-prune-scheduled-check"
   },
   "dependencies": {
     "@alchemy.run/cloudflare": "2.0.0-beta.85",

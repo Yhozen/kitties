@@ -135,6 +135,16 @@ const kek = readFileSync(keyPath, "utf8");
 
 if (!/^[a-f0-9]{64}$/.test(kek)) throw Error("Invalid local fixture key");
 
+let pruneNow = null;
+
+try {
+  pruneNow = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Int))(
+    readFileSync(join(stateDir, "fixture-prune-now"), "utf8"),
+  );
+} catch (error) {
+  if (!Schema.is(Schema.Struct({ code: Schema.Literal("ENOENT") }))(error)) throw error;
+}
+
 const mutant = process.env.LIBRARY_ARCHIVE_MUTANT;
 
 if (mutant !== undefined && mutant !== "destructive-capture") throw Error("Unknown archive mutant");
@@ -187,6 +197,7 @@ const build = Effect.gen(function* () {
   const classes = [
     "RecoveryDO",
     "LibraryArchiveProbe",
+    "OwnedLibraryPruneSweepWorkflow",
     "LibraryModel.DomainDirectory",
     "LibraryModel.LibraryAggregate",
     "LibraryModel.SkillDetailViewV1",
@@ -253,6 +264,7 @@ const native = Effect.gen(function* () {
     ],
     bindings: [
       JsonBinding.local("KITTIES_KEK", kek),
+      JsonBinding.local("LIBRARY_ARCHIVE_FIXTURE_NOW", pruneNow),
       R2.local({ binding: "EXPORTS", id: "owned-library-archive-retained" }),
       ...classes.map((className) => DO.local({ binding: className, className })),
       NativeWorkflows.local({

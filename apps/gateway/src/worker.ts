@@ -6,6 +6,7 @@ import { verifiedAccessIdentity } from "./access-jwt.ts";
 import { Recovery } from "./recovery.ts";
 import { PurgeLive } from "./workflows/purge.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
+import { ALCHEMY_PHASE } from "alchemy";
 import { Stage } from "alchemy/Stage";
 import * as Config from "effect/Config";
 import * as Cause from "effect/Cause";
@@ -39,7 +40,11 @@ import * as Clock from "effect/Clock";
 import { accessJwtLayer } from "./access-jwt.ts";
 import { LibraryBackend } from "./library-backend.ts";
 import { LibraryHttp, libraryHttpLayer } from "./library-http.ts";
-import { libraryAuthenticationLayer, localLibraryAuthenticationLayer } from "./library-session.ts";
+import {
+  libraryAuthenticationLayer,
+  localLibraryAuthenticationLayer,
+  planLibraryAuthenticationLayer,
+} from "./library-session.ts";
 
 const props = Effect.gen(function* () {
   const stage = yield* Stage;
@@ -170,8 +175,13 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
         Response.json(body, { status, headers: { "Cache-Control": "no-store" } }),
       );
 
-    const authentication =
-      env.STAGE === "local"
+    // Alchemy evaluates this constructor without bindings during plan. Bundling folds the runtime
+    // flag to true, removing the plan branch from deployed Workers.
+    const planning = !globalThis.__ALCHEMY_RUNTIME__ && (yield* ALCHEMY_PHASE) === "plan";
+
+    const authentication = planning
+      ? planLibraryAuthenticationLayer
+      : env.STAGE === "local"
         ? localLibraryAuthenticationLayer(
             env.PUBLIC_URL,
             (yield* Clock.currentTimeMillis) + 86400000,

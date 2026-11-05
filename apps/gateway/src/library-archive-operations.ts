@@ -71,6 +71,19 @@ export class LibraryArchiveOperations extends Context.Service<
             Effect.mapError(() => new LibraryArchiveError({ reason: "invalid" })),
           );
 
+          const previous = yield* archive.status(request.operationId);
+
+          if (previous !== null) {
+            if (
+              previous.header.grantId !== request.operationId ||
+              previous.header.set.id !== request.operationId ||
+              previous.header.set.codeDigest !== request.codeDigest
+            )
+              return yield* new LibraryArchiveError({ reason: "conflict" });
+
+            if (previous.commit !== null) return previous;
+          }
+
           yield* coordinator.capture(request).pipe(Effect.mapError(fromRecovery));
           yield* control
             .grantExport(request.operationId, request.operationId)

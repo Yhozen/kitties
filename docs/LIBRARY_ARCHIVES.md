@@ -79,6 +79,72 @@ require `KITTIES_LIBRARY_CODE_DIGEST`, a reviewed SHA256 of the compatible deplo
 code/layout; the request must match that deployment input. Missing configuration
 fails closed. This change supplies no deployed value or provider modification.
 
+## Capture-buffer cleanup
+
+`LibraryCapturePruning.prune` accepts an operation ID, capture ID and archive ID.
+The server derives the code and manifest digests from the committed archive. A
+capture must be at least 30 days old and its original archive expiry must still
+be in the future. The first reservation atomically binds those identities and
+creates a permanent source barrier in the same database transaction. Active
+upload/restore pins on any archive alias and existing Native consumers prevent
+reservation. The barrier prevents new capture/destructive maintenance and use of
+the selected Native image without changing ordinary traffic, workflow epoch or
+permission.
+
+The verifier reads and authenticates the actual encrypted manifest, metadata
+pages and every part against their original receipts. Each call reads at most
+eight bounded objects and journals its cursor after each success. A failed read
+leaves that item pending and the reservation held. Deletion starts only after the
+durable verification is complete; neither HEAD nor an old upload acknowledgement
+is a fresh verification.
+
+Each object deletes at most 64 rows per step, restricted to the selected capture
+in `library_admin_parts`, `library_admin_rows` and `library_admin_images`, in that
+order. The deletion cursor and terminal receipt commit with the deletion. Other
+captures, live KV, events, command receipts, scheduler rows, alarms, holds, guards
+and permanent source metadata remain. Exact per-object acknowledgements precede
+the permanent completion proof and retained reservation release. A lost reply is
+retried with the same operation ID. Completed export replay reads the committed
+archive; it does not require deleted Native buffers.
+
+Expiry refuses further deletion grants and unrecorded delete acknowledgements.
+An expired partial operation can be explicitly abandoned with the same request.
+It first enters `stopping`, then sends a stop-only request to every sealed member
+through the same object semaphore as deletion. Each durable stop tombstone drains
+an admitted delete and blocks stale grants. Only all exact stop acknowledgements
+permit `abandoned` and release the maintenance barrier. Retained aliases release
+their reservation only when both journals have matching terminal states and the
+exact permanent proof. No automatic abandonment or expiry extension occurs.
+
+Abandonment does not claim a successful backup or complete deletion. Remaining
+buffers stay permanently unavailable through Native/export authorization. A
+valid, unexpired retained alias can still be used after abandonment; the selected
+expired archive remains expired. New captures can proceed once stopping finishes.
+
+Owner-only POST routes `/v1/recovery/library/prune` and
+`/v1/recovery/library/abandon-prune` use `{operationId, captureId, archiveId}` and
+remain behind disabled Library cutover. They derive identity from historical
+archive metadata rather than requiring its digest to match the current deploy.
+The application exposes no timestamp, age override or verification flag.
+
+The private policy clock is selected in RecoveryDO construction and explicitly
+provided to its prune-policy methods; an RPC caller's ambient clock does not
+cross the native boundary. Capture timestamps and native scheduling keep their
+ordinary clock. The native pruning run below exercises that clock across actual
+RPCs, exact age/expiry boundaries and process restarts.
+
+The existing Purge workflow has a separate Library section. Discovery examines
+at most 64 permanent capture keys per page before filtering, so an empty eligible
+page still advances its cursor. It selects a matching committed, unexpired
+archive, excludes active pins across aliases, and preserves interrupted plans'
+original request IDs. New IDs are deterministic hashes of capture/archive identity.
+Each selection page is recorded as an Activity result before cleanup begins;
+replay uses that selection even if another capture becomes eligible meanwhile.
+Expected refusals are reported separately from successful cleanup, with at most
+64 detailed refusals in the summary. Storage errors suspend for retry with the
+same identities. Expired/stopping plans are reported for explicit abandonment.
+No Library object is passed to the legacy object-kind purge dispatch.
+
 ## Validation
 
 Use Node 26 and the repository's pinned dependencies:
@@ -87,6 +153,8 @@ Use Node 26 and the repository's pinned dependencies:
 pnpm check
 pnpm test
 pnpm test:library-archive
+pnpm test:library-prune
+pnpm test:library-prune-scheduled
 ```
 
 The maintained [native harness](../scripts/testing/library-archive/README.md)
@@ -106,6 +174,35 @@ part reads, publishes lineage 2, preserves the original receipt and allocates
 the next skill above the outgoing floor. Same-ID replay survives another process
 restart and preserves later writes. All seven owned host process groups are clean.
 
-Guarded administrative-buffer pruning, owner reset and retired-object erasure
-are separate work. Authoritative live event and deduplication history are retained;
+The separate native prune run at
+`.context/library-archive-check/1793851811791-ef6e80f2/results.json` passes eight
+scenarios. Incomplete upload, an alias restore pin, and missing/corrupt encrypted
+objects refuse cleanup. The successful case verifies 79 encrypted objects in
+calls of at most eight, prunes 11 sealed members while protecting a larger live
+registry and another capture, replays a lost delete receipt, then restores from
+retained storage into epoch 2. Native capture rows/images existed and were removed;
+the separate part table was already empty. SQLite tests exercise nonempty parts
+and the 64-row deletion bound.
+
+Expired partial cleanup survives a stop-acknowledgement crash, abandons without
+deleting the ten remaining members' buffers, permanently refuses the old Native
+source, and permits a fresh capture with the prior workflow permission intact.
+Twelve prune and twelve stop observations found protected KV/scheduler/guard
+state unchanged immediately around each admin Effect in one native RPC, outside
+its semaphore and transaction. Across restarts, four legitimate callback
+completions were recorded separately; scheduler byte identity across restart is
+not claimed. All 25 owned host process groups are clean.
+
+The final scheduled run at
+`.context/library-archive-check/1793852626797-686e404c/results.json` passes three
+cases with the native Workflow engine and four real captures. Server discovery
+excludes pinned, incomplete and young captures. After a successful prune step
+loses its acknowledgement, the restarted Workflow reuses the exact request and
+receipt and performs no second discovery, even though another capture has become
+eligible. A later sweep selects that capture; a final sweep excludes both completed
+plans. All four owned process groups are clean. SQLite tests cover the 64-key
+page boundary; the Workflow regression proves empty-page continuation and the
+literal `start` cursor that exposed an Activity-name collision during review.
+
+Owner reset and retired-object erasure remain open. Authoritative live event and deduplication history are retained;
 the published Domain API has no supported atomic live-history compaction contract.

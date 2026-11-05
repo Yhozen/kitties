@@ -34,14 +34,17 @@ export default class OAuthIngress extends Cloudflare.Worker<OAuthIngress>()(
   Effect.gen(function* () {
     const gateway = yield* binding;
 
-    const { STAGE: stage } = Schema.decodeUnknownSync(Schema.Struct({ STAGE: Schema.String }))(
-      yield* Cloudflare.WorkerEnvironment,
-    );
-
-    const origin = oauthOrigin(stage);
+    // Plan-time construction has no bindings; decode them when a request runs.
+    const bindings = yield* Cloudflare.WorkerEnvironment;
 
     return {
       fetch: Effect.gen(function* () {
+        const { STAGE: stage } = yield* Schema.decodeUnknownEffect(
+          Schema.Struct({ STAGE: Schema.String }),
+        )(bindings).pipe(Effect.orDie);
+
+        const origin = oauthOrigin(stage);
+
         const request = yield* Cloudflare.Request,
           url = new URL(request.url);
 

@@ -18,11 +18,14 @@ export const NotifyLive = Workflows.layer(
 
     const homes = yield* HomeDO;
 
-    const env = Schema.decodeUnknownSync(Schema.Struct({ KITTIES_KEK: Schema.String }))(
-      yield* Cloudflare.WorkerEnvironment,
-    );
+    // Plan-time construction has no bindings; decode them when an execution runs.
+    const bindings = yield* Cloudflare.WorkerEnvironment;
 
     return Effect.fn(function* ({ id }, executionId) {
+      const env = yield* Schema.decodeUnknownEffect(Schema.Struct({ KITTIES_KEK: Schema.String }))(
+        bindings,
+      ).pipe(Effect.orDie);
+
       yield* recovery(Notify._tag, executionId);
       const home = homes.getByName("owner", { locationHint: "weur" });
 

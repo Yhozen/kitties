@@ -1,15 +1,38 @@
 import type * as Cloudflare from "@cloudflare/workers-types";
 import * as Context from "effect/Context";
 import * as Clock from "effect/Clock";
+import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 import * as Struct from "effect/Struct";
 import type {
   LibraryRecoveryAccess,
   LibraryRecoveryAuthority,
 } from "./library-recovery-authority.ts";
+import {
+  assertLibraryCaptureAvailable,
+  assertNoLibraryCapturePrune,
+  setupLibraryCapturePrunes,
+} from "./library-recovery-authority.ts";
+import {
+  LIBRARY_CAPTURE_PRUNE_BATCH_SIZE,
+  LIBRARY_CAPTURE_PRUNE_MIN_AGE_MS,
+  LibraryArchivePruneRequest,
+  LibraryCapturePruneAbandonment,
+  LibraryCapturePruneAuthorization,
+  LibraryCapturePruneCompletion,
+  LibraryCapturePruneCandidate,
+  LibraryCapturePruneCandidatesPage,
+  LibraryCapturePruneCandidatesRequest,
+  LibraryCapturePrunePlan,
+  LibraryCapturePruneReceipt,
+  LibraryCapturePruneStopAuthorization,
+  LibraryCapturePruneStopReceipt,
+  LibraryCapturePruneVerification,
+} from "./library-capture-prune-records.ts";
 import {
   LibraryLineage,
   LibraryCaptureOperation,
@@ -61,6 +84,15 @@ const RestoreOperation = Schema.Struct({
 
 const Operation = Schema.Union([LibraryCaptureOperation, RestoreOperation]);
 const sameRestoreIntent = Schema.toEquivalence(LibraryRestoreIntent);
+const Candidate = Data.taggedEnum<LibraryCapturePruneCandidate>();
+const SetRow = Schema.Struct({ id: RecoveryOperationId, body: Schema.String });
+
+const CandidateCommit = Schema.Struct({
+  manifest: Schema.Struct({
+    header: Schema.Struct({ archiveId: RecoveryOperationId, set: LibraryRecoverySet }),
+    expiresAt: RecoveryOrdinal,
+  }),
+});
 
 const increment = (value: number) => {
   if (value >= Number.MAX_SAFE_INTEGER) throw new LibraryRecoveryError({ reason: "exhausted" });
@@ -206,9 +238,109 @@ const makeLibraryRecoveryStore = (
   const validateRef = (ref: LibraryObjectRef) =>
     Schema.is(LibraryObjectRef)(ref) && ref.physicalName === `r:${ref.lineage}:${ref.logicalName}`;
 
+  const prunePlan = (id: string) => {
+    if (!Schema.is(RecoveryOperationId)(id)) return fail("invalid");
+
+    return read(LibraryCapturePrunePlan, "SELECT body FROM library_capture_prunes WHERE id=?", id);
+  };
+
+  const verifiedPrune = (id: string, now: number) => {
+    const plan = prunePlan(id) ?? fail("incomplete");
+
+    if (plan.phase !== "reserved" && plan.phase !== "deleting") return fail("fenced");
+
+    if (!Number.isSafeInteger(now) || now < plan.reservedAt || now >= plan.expiresAt)
+      return fail("fenced");
+
+    const verification = read(
+      LibraryCapturePruneVerification,
+      "SELECT body FROM library_retained_prunes WHERE id=?",
+      id,
+    );
+
+    if (
+      verification === undefined ||
+      verification.phase !== "verified" ||
+      verification.verifiedAt === null
+    )
+      return fail("incomplete");
+
+    if (
+      !Schema.toEquivalence(LibraryArchivePruneRequest)(verification.request, plan.request) ||
+      verification.reservedAt !== plan.reservedAt ||
+      verification.expiresAt !== plan.expiresAt ||
+      verification.verifiedAt < plan.reservedAt ||
+      verification.verifiedAt > now
+    )
+      return fail("conflict");
+
+    if (current().phase !== "ready") return fail("fenced");
+
+    return plan;
+  };
+
+  const pruneAuthorization = (plan: LibraryCapturePrunePlan, ordinal: number) => {
+    if (!Schema.is(RecoveryOrdinal)(ordinal)) return fail("invalid");
+    const source = refAt(ordinal);
+
+    const set =
+      read(
+        LibraryRecoverySet,
+        "SELECT body FROM library_journal WHERE kind='set' AND id=?",
+        plan.request.captureId,
+      ) ?? fail("incomplete");
+
+    if (
+      source.lineage !== set.sourceLineage ||
+      set.codeDigest !== plan.request.codeDigest ||
+      set.objectCount !== plan.objectCount
+    )
+      return fail("conflict");
+
+    const image =
+      read(
+        LibraryObjectImage,
+        "SELECT body FROM library_images WHERE set_id=? AND ordinal=?",
+        plan.request.captureId,
+        ordinal,
+      ) ?? fail("incomplete");
+
+    return LibraryCapturePruneAuthorization.make({ request: plan.request, ordinal, source, image });
+  };
+
+  const stoppingTime = (plan: LibraryCapturePrunePlan) => {
+    if (
+      (plan.phase !== "stopping" && plan.phase !== "abandoned") ||
+      plan.stoppingAt === undefined ||
+      !Number.isSafeInteger(plan.stoppingAt) ||
+      plan.stoppingAt < plan.expiresAt ||
+      plan.stoppingAt < plan.reservedAt
+    )
+      return fail("fenced");
+
+    return plan.stoppingAt;
+  };
+
+  const pruneStopAuthorization = (plan: LibraryCapturePrunePlan, ordinal: number) =>
+    LibraryCapturePruneStopAuthorization.make({
+      ...pruneAuthorization(plan, ordinal),
+      stoppingAt: stoppingTime(plan),
+    });
+
+  const stoppingPrune = (plan: LibraryCapturePrunePlan, now: number) => {
+    const started = stoppingTime(plan);
+
+    if (plan.phase !== "stopping" || !Number.isSafeInteger(now) || now < started)
+      return fail("fenced");
+    authority.authorize({ kind: "normal" });
+
+    if (current().phase !== "ready") return fail("fenced");
+  };
+
   return {
     setup: attempt(
       () => {
+        setupLibraryCapturePrunes(database);
         query(
           "CREATE TABLE IF NOT EXISTS library_control (id INTEGER PRIMARY KEY,body TEXT NOT NULL)",
         );
@@ -237,6 +369,484 @@ const makeLibraryRecoveryStore = (
       { kind: "read" },
     ),
     status: attempt(() => status() ?? null, { kind: "read" }),
+    capturePrune: (id: string) => attempt(() => prunePlan(id) ?? null, { kind: "read" }),
+    capturePruneCandidates: Effect.fnUntraced(function* (
+      input: LibraryCapturePruneCandidatesRequest,
+    ) {
+      const request = yield* Schema.decodeUnknownEffect(LibraryCapturePruneCandidatesRequest, {
+        onExcessProperty: "error",
+      })(input).pipe(Effect.mapError(() => new LibraryRecoveryError({ reason: "invalid" })));
+
+      const now = yield* Clock.currentTimeMillis;
+
+      return yield* attempt(
+        () => {
+          if (!Number.isSafeInteger(now) || now < 0) return fail("invalid");
+
+          // Bound the examined keys before eligibility filtering so an empty page advances.
+          const examined = query(
+            "SELECT id,body FROM library_journal WHERE kind='set' AND id>? ORDER BY id LIMIT 64",
+            request.after ?? "",
+          ).map((value) => Schema.decodeUnknownSync(SetRow)(value));
+
+          const items: LibraryCapturePruneCandidate[] = [];
+
+          for (const entry of examined) {
+            const plan = read(
+              LibraryCapturePrunePlan,
+              "SELECT body FROM library_capture_prunes WHERE capture_id=?",
+              entry.id,
+            );
+
+            if (plan !== undefined) {
+              if (plan.phase === "complete" || plan.phase === "abandoned") continue;
+
+              const identity = {
+                operationId: plan.request.pruneId,
+                captureId: plan.request.captureId,
+                archiveId: plan.request.archiveId,
+              };
+
+              items.push(
+                plan.phase === "stopping" || now >= plan.expiresAt
+                  ? Candidate.BlockedExpired(identity)
+                  : Candidate.Resume(identity),
+              );
+              continue;
+            }
+
+            const set = Schema.decodeUnknownSync(Schema.fromJsonString(LibraryRecoverySet))(
+              entry.body,
+            );
+
+            const operation = read(
+              Operation,
+              "SELECT body FROM library_journal WHERE kind='operation' AND id=?",
+              entry.id,
+            );
+
+            const completed = read(
+              LibraryRecoveryState,
+              "SELECT body FROM library_journal WHERE kind='capture-complete' AND id=?",
+              entry.id,
+            );
+
+            if (
+              set.id !== entry.id ||
+              set.capturedAt === undefined ||
+              now - set.capturedAt < LIBRARY_CAPTURE_PRUNE_MIN_AGE_MS ||
+              operation?.kind !== "capture" ||
+              operation.codeDigest !== set.codeDigest ||
+              completed?.phase !== "ready" ||
+              completed.lineage !== set.sourceLineage ||
+              completed.inventoryId !== set.inventoryId
+            )
+              continue;
+
+            const archive = row(
+              Schema.Struct({ id: RecoveryOperationId, body: Schema.String }),
+              `SELECT c.archive_id AS id,c.body FROM library_retained_commits c JOIN library_retained_archives a ON a.id=c.archive_id WHERE json_extract(c.body,'$.manifest.header.archiveId')=c.archive_id AND json_extract(a.body,'$.archiveId')=c.archive_id AND json_extract(c.body,'$.manifest.expiresAt')>? AND ${Struct.keys(
+                LibraryRecoverySet.fields,
+              )
+                .map(
+                  (key) =>
+                    `json_extract(c.body,'$.manifest.header.set.${key}') IS ? AND json_extract(a.body,'$.set.${key}') IS ?`,
+                )
+                .join(
+                  " AND ",
+                )} AND NOT EXISTS (SELECT 1 FROM library_retained_pins p JOIN library_retained_archives alias ON alias.id=p.archive_id WHERE json_extract(alias.body,'$.set.id')=? AND json_extract(p.body,'$.completed') IS NOT 1) ORDER BY c.archive_id LIMIT 1`,
+              now,
+              ...Struct.keys(LibraryRecoverySet.fields).flatMap((key) => [
+                set[key] ?? null,
+                set[key] ?? null,
+              ]),
+              entry.id,
+            );
+
+            if (archive === undefined) continue;
+
+            const commit = Schema.decodeUnknownSync(Schema.fromJsonString(CandidateCommit))(
+              archive.body,
+            );
+
+            if (
+              commit.manifest.header.archiveId !== archive.id ||
+              !Schema.toEquivalence(LibraryRecoverySet)(commit.manifest.header.set, set) ||
+              now >= commit.manifest.expiresAt
+            )
+              return fail("conflict");
+            items.push(Candidate.New({ captureId: entry.id, archiveId: archive.id }));
+          }
+
+          return LibraryCapturePruneCandidatesPage.make({
+            items,
+            next:
+              examined.length === LIBRARY_CAPTURE_PRUNE_BATCH_SIZE
+                ? (examined.at(-1)?.id ?? null)
+                : null,
+          });
+        },
+        { kind: "read" },
+      );
+    }),
+    beginAbandonCapturePrune: Effect.fnUntraced(function* (id: string) {
+      const now = yield* Clock.currentTimeMillis;
+
+      return yield* attempt(
+        () => {
+          const plan = prunePlan(id) ?? fail("incomplete");
+
+          if (plan.phase === "complete") return fail("conflict");
+
+          if (plan.phase === "stopping" || plan.phase === "abandoned") {
+            stoppingTime(plan);
+
+            return plan;
+          }
+
+          if (!Number.isSafeInteger(now) || now < plan.expiresAt || now < plan.reservedAt)
+            return fail("fenced");
+          authority.authorize({ kind: "normal" });
+
+          if (current().phase !== "ready") return fail("fenced");
+
+          const verification = read(
+            LibraryCapturePruneVerification,
+            "SELECT body FROM library_retained_prunes WHERE id=?",
+            id,
+          );
+
+          if (verification === undefined) return fail("incomplete");
+
+          if (
+            !Schema.toEquivalence(LibraryArchivePruneRequest)(verification.request, plan.request) ||
+            verification.reservedAt !== plan.reservedAt ||
+            verification.expiresAt !== plan.expiresAt ||
+            verification.phase === "complete" ||
+            verification.phase === "abandoned"
+          )
+            return fail("conflict");
+
+          const next = LibraryCapturePrunePlan.make({
+            ...plan,
+            phase: "stopping",
+            stoppingAt: now,
+          });
+
+          query(
+            "UPDATE library_capture_prunes SET phase=?,body=? WHERE id=?",
+            next.phase,
+            JSON.stringify(next),
+            id,
+          );
+
+          return next;
+        },
+        { kind: "read" },
+      );
+    }),
+    capturePruneStopInventory: (id: string, after = 0) =>
+      attempt(
+        () => {
+          const plan = prunePlan(id) ?? fail("incomplete");
+          stoppingTime(plan);
+
+          if (!Schema.is(RecoveryOrdinal)(after)) return fail("invalid");
+
+          return query(
+            "SELECT o.ordinal,o.body FROM library_images i JOIN library_objects o ON o.ordinal=i.ordinal WHERE i.set_id=? AND o.ordinal>? AND NOT EXISTS (SELECT 1 FROM library_capture_prune_stops a WHERE a.prune_id=? AND a.ordinal=o.ordinal) ORDER BY o.ordinal LIMIT 64",
+            plan.request.captureId,
+            after,
+            id,
+          ).map((value) => {
+            const item = Schema.decodeUnknownSync(
+              Schema.Struct({ ordinal: RecoveryOrdinal, body: Schema.String }),
+            )(value);
+
+            const ref = Schema.decodeUnknownSync(Schema.fromJsonString(LibraryObjectRef))(
+              item.body,
+            );
+
+            return RegisteredLibraryObject.make({
+              ...ref,
+              ordinal: item.ordinal,
+              phase: phaseOf(ref.lineage),
+            });
+          });
+        },
+        { kind: "read" },
+      ),
+    authorizeCapturePruneStop: Effect.fnUntraced(function* (id: string, ordinal: number) {
+      const now = yield* Clock.currentTimeMillis;
+
+      return yield* attempt(
+        () => {
+          const plan = prunePlan(id) ?? fail("incomplete");
+
+          if (plan.phase !== "abandoned") stoppingPrune(plan, now);
+
+          return pruneStopAuthorization(plan, ordinal);
+        },
+        { kind: "read" },
+      );
+    }),
+    acknowledgeCapturePruneStopped: Effect.fnUntraced(function* (
+      id: string,
+      input: LibraryCapturePruneStopReceipt,
+    ) {
+      const now = yield* Clock.currentTimeMillis;
+
+      return yield* attempt(
+        () => {
+          if (!Schema.is(LibraryCapturePruneStopReceipt)(input)) return fail("invalid");
+          const plan = prunePlan(id) ?? fail("incomplete");
+          const expected = pruneStopAuthorization(plan, input.authorization.ordinal);
+
+          if (
+            !Schema.toEquivalence(LibraryCapturePruneStopAuthorization)(
+              expected,
+              input.authorization,
+            )
+          )
+            return fail("conflict");
+
+          const previous = read(
+            LibraryCapturePruneStopReceipt,
+            "SELECT body FROM library_capture_prune_stops WHERE prune_id=? AND ordinal=?",
+            id,
+            expected.ordinal,
+          );
+
+          if (previous !== undefined) {
+            if (!Schema.toEquivalence(LibraryCapturePruneStopReceipt)(previous, input))
+              return fail("conflict");
+
+            return previous;
+          }
+
+          stoppingPrune(plan, now);
+          const receipt = LibraryCapturePruneStopReceipt.make(input);
+          query(
+            "INSERT INTO library_capture_prune_stops VALUES (?,?,?)",
+            id,
+            expected.ordinal,
+            JSON.stringify(receipt),
+          );
+
+          return receipt;
+        },
+        { kind: "read" },
+      );
+    }),
+    completeAbandonCapturePrune: Effect.fnUntraced(function* (id: string) {
+      const now = yield* Clock.currentTimeMillis;
+
+      return yield* attempt(
+        () => {
+          const plan = prunePlan(id) ?? fail("incomplete");
+          const started = stoppingTime(plan);
+
+          if (plan.phase === "abandoned") {
+            const previous =
+              read(
+                LibraryCapturePruneAbandonment,
+                "SELECT body FROM library_journal WHERE kind='capture-prune-abandoned' AND id=?",
+                id,
+              ) ?? fail("incomplete");
+
+            if (
+              !Schema.toEquivalence(LibraryArchivePruneRequest)(previous.request, plan.request) ||
+              previous.objectCount !== plan.objectCount ||
+              previous.abandonedAt < started
+            )
+              return fail("conflict");
+
+            return previous;
+          }
+
+          stoppingPrune(plan, now);
+
+          if (
+            count(
+              "SELECT COUNT(*) AS count FROM library_capture_prune_stops WHERE prune_id=?",
+              id,
+            ) !== plan.objectCount ||
+            count(
+              "SELECT COUNT(*) AS count FROM library_images i WHERE i.set_id=? AND NOT EXISTS (SELECT 1 FROM library_capture_prune_stops a WHERE a.prune_id=? AND a.ordinal=i.ordinal)",
+              plan.request.captureId,
+              id,
+            ) !== 0
+          )
+            return fail("incomplete");
+
+          const proof = LibraryCapturePruneAbandonment.make({
+            request: plan.request,
+            objectCount: plan.objectCount,
+            abandonedAt: now,
+          });
+
+          immutable("capture-prune-abandoned", id, JSON.stringify(proof));
+          const next = LibraryCapturePrunePlan.make({ ...plan, phase: "abandoned" });
+          query(
+            "UPDATE library_capture_prunes SET phase=?,body=? WHERE id=?",
+            next.phase,
+            JSON.stringify(next),
+            id,
+          );
+
+          return proof;
+        },
+        { kind: "read" },
+      );
+    }),
+    beginCapturePrune: Effect.fnUntraced(function* (id: string) {
+      const now = yield* Clock.currentTimeMillis;
+
+      return yield* attempt(() => {
+        const existing = prunePlan(id) ?? fail("incomplete");
+
+        if (existing.phase === "complete") return existing;
+        const plan = verifiedPrune(id, now);
+
+        if (plan.phase === "deleting") return plan;
+        const next = LibraryCapturePrunePlan.make({ ...plan, phase: "deleting" });
+        query(
+          "UPDATE library_capture_prunes SET phase=?,body=? WHERE id=?",
+          next.phase,
+          JSON.stringify(next),
+          id,
+        );
+
+        return next;
+      });
+    }),
+    capturePruneInventory: (id: string, after = 0) =>
+      attempt(
+        () => {
+          const plan = prunePlan(id) ?? fail("incomplete");
+
+          if (!Schema.is(RecoveryOrdinal)(after)) return fail("invalid");
+
+          return query(
+            "SELECT o.ordinal,o.body FROM library_images i JOIN library_objects o ON o.ordinal=i.ordinal WHERE i.set_id=? AND o.ordinal>? AND NOT EXISTS (SELECT 1 FROM library_capture_prune_acks a WHERE a.prune_id=? AND a.ordinal=o.ordinal) ORDER BY o.ordinal LIMIT 64",
+            plan.request.captureId,
+            after,
+            id,
+          ).map((value) => {
+            const item = Schema.decodeUnknownSync(
+              Schema.Struct({ ordinal: RecoveryOrdinal, body: Schema.String }),
+            )(value);
+
+            const ref = Schema.decodeUnknownSync(Schema.fromJsonString(LibraryObjectRef))(
+              item.body,
+            );
+
+            return RegisteredLibraryObject.make({
+              ...ref,
+              ordinal: item.ordinal,
+              phase: phaseOf(ref.lineage),
+            });
+          });
+        },
+        { kind: "read" },
+      ),
+    authorizeCapturePrune: Effect.fnUntraced(function* (id: string, ordinal: number) {
+      const now = yield* Clock.currentTimeMillis;
+
+      return yield* attempt(() => {
+        const plan = verifiedPrune(id, now);
+
+        if (plan.phase !== "deleting") return fail("fenced");
+
+        return pruneAuthorization(plan, ordinal);
+      });
+    }),
+    acknowledgeCapturePrune: Effect.fnUntraced(function* (
+      id: string,
+      input: LibraryCapturePruneReceipt,
+    ) {
+      const now = yield* Clock.currentTimeMillis;
+
+      return yield* attempt(() => {
+        if (!Schema.is(LibraryCapturePruneReceipt)(input)) return fail("invalid");
+        const plan = verifiedPrune(id, now);
+
+        if (plan.phase !== "deleting") return fail("fenced");
+        const expected = pruneAuthorization(plan, input.authorization.ordinal);
+
+        if (!Schema.toEquivalence(LibraryCapturePruneAuthorization)(expected, input.authorization))
+          return fail("conflict");
+
+        const previous = read(
+          LibraryCapturePruneReceipt,
+          "SELECT body FROM library_capture_prune_acks WHERE prune_id=? AND ordinal=?",
+          id,
+          expected.ordinal,
+        );
+
+        if (previous !== undefined) {
+          if (!Schema.toEquivalence(LibraryCapturePruneReceipt)(previous, input))
+            return fail("conflict");
+
+          return previous;
+        }
+
+        const receipt = LibraryCapturePruneReceipt.make(input);
+        query(
+          "INSERT INTO library_capture_prune_acks VALUES (?,?,?)",
+          id,
+          expected.ordinal,
+          JSON.stringify(receipt),
+        );
+
+        return receipt;
+      });
+    }),
+    completeCapturePrune: Effect.fnUntraced(function* (id: string) {
+      const now = yield* Clock.currentTimeMillis;
+
+      return yield* attempt(() => {
+        const existing = prunePlan(id) ?? fail("incomplete");
+
+        const completed = read(
+          LibraryCapturePruneCompletion,
+          "SELECT body FROM library_journal WHERE kind='capture-prune-complete' AND id=?",
+          id,
+        );
+
+        if (existing.phase === "complete") return completed ?? fail("incomplete");
+        const plan = verifiedPrune(id, now);
+
+        if (
+          plan.phase !== "deleting" ||
+          count("SELECT COUNT(*) AS count FROM library_capture_prune_acks WHERE prune_id=?", id) !==
+            plan.objectCount ||
+          count(
+            "SELECT COUNT(*) AS count FROM library_images i WHERE i.set_id=? AND NOT EXISTS (SELECT 1 FROM library_capture_prune_acks a WHERE a.prune_id=? AND a.ordinal=i.ordinal)",
+            plan.request.captureId,
+            id,
+          ) !== 0
+        )
+          return fail("incomplete");
+
+        const proof = LibraryCapturePruneCompletion.make({
+          request: plan.request,
+          objectCount: plan.objectCount,
+          completedAt: now,
+        });
+
+        immutable("capture-prune-complete", id, JSON.stringify(proof));
+        const next = LibraryCapturePrunePlan.make({ ...plan, phase: "complete" });
+        query(
+          "UPDATE library_capture_prunes SET phase=?,body=? WHERE id=?",
+          next.phase,
+          JSON.stringify(next),
+          id,
+        );
+
+        return proof;
+      });
+    }),
     recoverySet: (id: string) =>
       attempt(
         () =>
@@ -326,6 +936,12 @@ const makeLibraryRecoveryStore = (
           const source = refAt(ordinal);
 
           if (
+            operation.intent === undefined ||
+            !Predicate.isTagged(operation.intent.source, "Retained")
+          )
+            assertLibraryCaptureAvailable(database, captureId);
+
+          if (
             selected === undefined ||
             selected.sourceLineage !== source.lineage ||
             selected.inventoryId !== state.inventoryId ||
@@ -348,6 +964,9 @@ const makeLibraryRecoveryStore = (
       attempt(
         () => {
           if (!Schema.is(LibraryExportGrant)({ grantId, captureId })) return fail("invalid");
+          assertLibraryCaptureAvailable(database, captureId);
+
+          if (prunePlan(grantId) !== undefined) return fail("conflict");
 
           const completed = read(
             LibraryRecoveryState,
@@ -377,6 +996,8 @@ const makeLibraryRecoveryStore = (
             !Schema.is(RecoveryOrdinal)(ordinal)
           )
             return fail("invalid");
+
+          assertLibraryCaptureAvailable(database, captureId);
 
           const grant = read(
             LibraryExportGrant,
@@ -642,6 +1263,8 @@ const makeLibraryRecoveryStore = (
     beginCapture: (operationId: string, codeDigest: string) =>
       attempt(
         () => {
+          assertNoLibraryCapturePrune(database, operationId);
+
           if (
             !Schema.is(RecoveryOperationId)(operationId) ||
             !Schema.is(RecoveryDigest)(codeDigest)
@@ -844,6 +1467,8 @@ const makeLibraryRecoveryStore = (
     beginRestore: (operationId: string, input: LibraryRestoreIntent) =>
       attempt(
         () => {
+          assertNoLibraryCapturePrune(database, operationId);
+
           if (!Schema.is(RecoveryOperationId)(operationId)) return fail("invalid");
 
           const decoded = Schema.decodeUnknownOption(LibraryRestoreIntent, {
@@ -853,6 +1478,9 @@ const makeLibraryRecoveryStore = (
           if (Option.isNone(decoded)) return fail("invalid");
 
           const intent = decoded.value;
+
+          if (Predicate.isTagged(intent.source, "Native"))
+            assertLibraryCaptureAvailable(database, intent.setId);
 
           const operation = read(
             Operation,
@@ -889,6 +1517,8 @@ const makeLibraryRecoveryStore = (
     beginFreeze: (operationId: string) =>
       attempt(
         () => {
+          assertNoLibraryCapturePrune(database, operationId);
+
           if (!Schema.is(RecoveryOperationId)(operationId)) return fail("invalid");
           const state = current();
 
@@ -1071,6 +1701,12 @@ const makeLibraryRecoveryStore = (
             "SELECT body FROM library_journal WHERE kind='operation' AND id=?",
             operationId,
           )!;
+
+          if (
+            operation.intent === undefined ||
+            !Predicate.isTagged(operation.intent.source, "Retained")
+          )
+            assertLibraryCaptureAvailable(database, setId);
 
           if (operation.setId !== null && operation.setId !== setId) return fail("conflict");
 

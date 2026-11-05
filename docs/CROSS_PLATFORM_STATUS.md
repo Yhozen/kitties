@@ -5,7 +5,7 @@ assets in Chromium and a normal release Tauri Debian package. Native preferences
 survive process restart. A local HTTPS issuer proves the packaged system-browser
 OAuth flow, commands, live views, expiry and reconnection. **The overall release
 gate is incomplete:** live Cloudflare Access, prompt idle cancellation,
-reset/purge integration and other desktop GUI platforms remain open. No merge,
+owner reset and other desktop GUI platforms remain open. No merge,
 deployment, production migration or provider configuration was performed.
 
 ## Review stack
@@ -42,6 +42,8 @@ pnpm build
 pnpm --filter @kitties/kittyd check
 pnpm test:library
 pnpm test:library-archive
+pnpm test:library-prune
+pnpm test:library-prune-scheduled
 pnpm test:library-bundle
 pnpm test:library-browser
 pnpm test:library-browser development
@@ -69,12 +71,15 @@ resource, state and PKCE checks remain. Fixtures do not mount in the application
 | Exact shared-client snapshot | Frozen install, Vite+ check, 324 tests in 31 files with coverage floors; all three recursive builds pass. |
 | Pre-archive repository snapshot | Effect CI `41960681861` at `7624c92` passes frozen install, Vite+ formatting/lint/types (0 errors, 633 advisory warnings), all 336 tests in 32 files with coverage floors, local workflow/recovery/browser gates, all three recursive builds and guest typecheck. Archive additions require separate final validation. |
 | Archive repository validation | Vite+ formatting/lint/types pass with 0 errors and 689 advisory warnings; all 381 tests in 36 files pass with coverage floors. Three recursive builds, guest typecheck, four gateway bundles, 12 native Library/Home cases and eight native workflow cases pass. |
+| Pruning repository validation | Vite+ formatting/lint/types pass with 0 errors and 728 advisory warnings; all 419 tests in 37 files pass with coverage floors. Three recursive builds, guest typecheck, four gateway bundles, 12 native Library/Home cases and all four existing archive scenarios pass. |
 | Native crate | 19 actual tests pass: fixed Store/ACL, public OAuth callback protocol, exact HTTP scopes, redirects/cookies and cancellation before headers. |
 | Browser production and development | Five cases pass in each mode; development requires the actual Vite client and source entry. Cases cover commands and source barriers, another tab's live view, acknowledged Preact/Foldkit preferences, mobile/keyboard and expiry/reconnect. |
 | Packaged Linux, no configuration | Four cases pass: shared UI, fail-closed sign-in, es/light native save and a new process loading the record. |
 | Tauri development | Five cases pass using official CLI `dev --no-watch`, real Vite, stock incognito/CSP, native preferences and a new process. |
 | Packaged Linux, local issuer | Eleven cases pass: real external browser Deny/Allow and loopback callback, native trust/handshake, proposal/review/accept/remove, peer catalogue and selected-detail updates, expiry, same-authority reauthentication, credentials absent after relaunch, committed response loss with stable-intent retry, and valid-token Domain command denial. |
 | Library retained archives | Four native workerd/R2 scenarios pass: capture/rearm crashes preserve workflow permission and pending callbacks; lost upload acknowledgement reuses the encrypted winner; retained restore works after all local image buffers are removed; same-ID replay preserves later writes and the allocator floor. |
+| Capture-buffer cleanup | Eight native workerd/R2 scenarios pass: incomplete/pinned/corrupt archives refuse cleanup; authenticated verification is bounded to eight reads per call; delete and stop acknowledgement loss resume across crashes; retained restore succeeds after exact cleanup; expired partial cleanup can be explicitly abandoned without deleting the remaining buffers. |
+| Scheduled capture pruning | Three native Workflow scenarios pass with actual server discovery, persisted deterministic selection, lost delete acknowledgement and restart, later eligibility, and completed-plan exclusion. Four owned host groups are clean. |
 | Workerd prompt idle abort | Two strict failures remain. A plain-JS control sees no abort/cancel until a body chunk is written. Absolute expiry passes separately. |
 | Native plugin prompt idle-body cancel | Stock 2.8.3: one control passes, two strict regressions fail. Resource-table removal does not settle a pending read or close its socket until output/EOF. |
 | Platform CI | Run `41960681826` at `7624c92` built the actual executables on macOS, Windows and Ubuntu. Native tests pass: 19 on macOS and Ubuntu, 18 on Windows (the filesystem-permission case is Unix-only). The Windows test target now receives the standard Common Controls v6 manifest through the pinned resource library's supported API. |
@@ -137,6 +142,26 @@ Evidence lives in gitignored `.context/`; commands above recreate it. Key runs:
   archives before freeze, cancel stalled R2 bodies, and retain expected HTTP refusal
   meanings. Natural red/green proof covers the stale freeze token found by the
   native run; earlier failed runs remain under `library-archive-check/`.
+- Capture pruning: `.context/library-archive-check/1793851811791-ef6e80f2/results.json`;
+  eight cases, 25 clean owned host groups, three deliberate crash boundaries.
+  `.context/library-prune-native-HANDOFF.md` and `library-prune-final-receipt.json`
+  record source hashes, two corrected fixture assumptions and the exact observation
+  scope. Native source parts were already empty; image/row deletion is observed.
+  Nonempty part deletion and the 64-row bound have separate SQLite proof.
+  Protected-state snapshots surround an admin Effect within one native RPC,
+  outside its semaphore/transaction; legitimate callback progress across restart
+  is recorded separately.
+- Scheduled pruning: `.context/library-archive-check/1793852626797-686e404c/results.json`,
+  `.context/library-prune-scheduled-HANDOFF.md` and
+  `library-scheduled-final-receipt.json`. All three native scenarios pass on the
+  final source, including exact persisted selection after process death.
+  `.context/library-prune-scheduled-cursor-{red,green}.log` records the real
+  Activity-name collision found during review and its fix. Candidate query and
+  empty-page mutants were rejected and restored exactly.
+- Pruning repository checks: `.context/library-prune-final-{check,coverage,build,guest,bundle,library,archive}.log`.
+  The 12 native Library/Home regression cases are recorded in
+  `.context/library-check/all-1793852820988-ad2f6438/`; the four existing archive
+  scenarios pass again at `.context/library-archive-check/1793852902877-3845549b/`.
 - Mutation logs cover Domain, migration/recovery, snapshot coherence, leaf/host,
   connection classification/lifecycle, device/native ACL and fixture OAuth.
   Each targeted bug failed an independent assertion and original bytes were restored.
@@ -152,7 +177,8 @@ The isolated client build reproduces both exactly.
 restore preserve raw receipts, projections, pending delivery and allocator floors;
 see [Library archives](LIBRARY_ARCHIVES.md). The permanent archive/recovery journal
 must survive. Local R2 does not establish cloud lock/lifecycle enforcement.
-Owner reset, administrative-buffer pruning and retired-object erasure remain open.
+Guarded administrative-buffer pruning and explicit expired-plan abandonment are
+implemented; owner reset and retired-object erasure remain open.
 Authoritative live Domain event/deduplication history has no supported compaction API.
 Arbitrary independent per-object PITR is unsupported. An old Worker that reopens
 legacy writes is not a safe rollback after new Domain writes.

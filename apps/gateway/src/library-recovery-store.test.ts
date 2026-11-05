@@ -7,10 +7,23 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
+import * as Clock from "effect/Clock";
+import {
+  GlobalRecoveryAuthority,
+  reserveLibraryCapturePrune,
+} from "./library-recovery-authority.ts";
+import {
+  LIBRARY_CAPTURE_PRUNE_MIN_AGE_MS,
+  LibraryArchivePruneRequest,
+  type LibraryCapturePruneCandidate,
+  LibraryCapturePruneCandidatesPage,
+  LibraryCapturePruneVerification,
+} from "./library-capture-prune-records.ts";
 import {
   LibraryObjectImage,
   LibraryObjectRef,
   LibraryRecoveryError,
+  LibraryRecoverySet,
   LibraryRestoreIntent,
   type LibraryRestoreSource,
 } from "./library-recovery-records.ts";
@@ -19,6 +32,7 @@ import { LibraryRecoveryStore, type LibraryControlDatabase } from "./library-rec
 const CODE = "a".repeat(64);
 const IMAGE = LibraryObjectImage.make({ digest: "b".repeat(64), kvCount: 12, sqlCount: 3 });
 const RestoreSources = Data.taggedEnum<LibraryRestoreSource>();
+const Candidates = Data.taggedEnum<LibraryCapturePruneCandidate>();
 
 const retainedIntent = LibraryRestoreIntent.make({
   setId: "restore",
@@ -85,6 +99,956 @@ const databaseFixture = Effect.gen(function* () {
     }),
   };
 });
+
+// These tests supply the retained journal's trusted verified record. Encrypted
+// provider verification is exercised separately by the retained archive tests.
+const pruneFixture = Effect.fnUntraced(function* (members = 2) {
+  const base = yield* databaseFixture;
+  const { port } = base;
+  port.query(
+    "CREATE TABLE recovery_control (id INTEGER PRIMARY KEY,epoch INTEGER,operation_id TEXT,mode TEXT)",
+  );
+  port.query("INSERT INTO recovery_control VALUES (1,7,NULL,'ready')");
+  port.query("CREATE TABLE recovery_runs (id TEXT,epoch INTEGER,review INTEGER)");
+  port.query("INSERT INTO recovery_runs VALUES ('live',7,0)");
+  port.query("CREATE TABLE library_retained_archives (id TEXT PRIMARY KEY,body TEXT)");
+  port.query("CREATE TABLE library_retained_commits (archive_id TEXT PRIMARY KEY,body TEXT)");
+  port.query(
+    "CREATE TABLE library_retained_pins (kind TEXT,id TEXT,archive_id TEXT,body TEXT,PRIMARY KEY(kind,id))",
+  );
+  port.query(
+    "CREATE TABLE library_retained_prunes (id TEXT PRIMARY KEY,archive_id TEXT,capture_id TEXT,body TEXT)",
+  );
+
+  const authority = yield* GlobalRecoveryAuthority.pipe(
+    Effect.provide(GlobalRecoveryAuthority.layer(port, () => 100)),
+  );
+
+  const restart = LibraryRecoveryStore.pipe(
+    Effect.provide(LibraryRecoveryStore.layer(port, authority)),
+  );
+
+  const store = yield* restart;
+  yield* ready(store);
+
+  for (let ordinal = 2; ordinal <= members; ordinal++)
+    yield* store.register(objectRef("library-1", ordinal, `member-${ordinal}`));
+  yield* store.beginCapture("backup", CODE);
+
+  for (let ordinal = 1; ordinal <= members; ordinal++) {
+    yield* store.acknowledgeFreeze("backup", ordinal, "running", null);
+    yield* store.acknowledgeFreeze("backup", ordinal, "running", "held");
+    yield* store.recordImage("backup", ordinal, IMAGE);
+  }
+
+  const set = yield* store.seal("backup", 8, CODE);
+  yield* store.beginCaptureResume("backup");
+
+  for (let ordinal = 1; ordinal <= members; ordinal++) {
+    yield* store.acknowledgeResumed("backup", ordinal, "release", null);
+    yield* store.acknowledgeResumed("backup", ordinal, "release", "fresh");
+  }
+
+  yield* store.completeCapture("backup");
+  const expiresAt = 90 * 86400000;
+  const header = { archiveId: "archive", grantId: "upload", set, capturedAt: 0 };
+  port.query(
+    "INSERT INTO library_retained_archives VALUES (?,?)",
+    "archive",
+    JSON.stringify(header),
+  );
+  port.query(
+    "INSERT INTO library_retained_commits VALUES (?,?)",
+    "archive",
+    JSON.stringify({ manifest: { header, expiresAt }, receipt: { plainSha256: "c".repeat(64) } }),
+  );
+
+  const request = LibraryArchivePruneRequest.make({
+    pruneId: "prune",
+    archiveId: "archive",
+    captureId: "backup",
+    codeDigest: CODE,
+    manifestDigest: "c".repeat(64),
+  });
+
+  const attempt = <A>(body: () => A) =>
+    Effect.try({
+      try: () => port.transaction(body),
+      catch: (cause) =>
+        Schema.is(LibraryRecoveryError)(cause)
+          ? cause
+          : new LibraryRecoveryError({ reason: "storage" }),
+    });
+
+  const reserve = Effect.fnUntraced(function* (input = request, expiry = expiresAt) {
+    const now = yield* Clock.currentTimeMillis;
+
+    return yield* attempt(() => {
+      const plan = reserveLibraryCapturePrune(port, input, expiry, now);
+
+      if (
+        port.query("SELECT id FROM library_retained_prunes WHERE id=?", input.pruneId)[0] ===
+        undefined
+      ) {
+        const proof = LibraryCapturePruneVerification.make({
+          request: input,
+          phase: "verifying",
+          reservedAt: plan.reservedAt,
+          expiresAt: expiry,
+          verifiedAt: null,
+        });
+
+        port.query(
+          "INSERT INTO library_retained_prunes VALUES (?,?,?,?)",
+          input.pruneId,
+          input.archiveId,
+          input.captureId,
+          JSON.stringify(proof),
+        );
+      }
+
+      return plan;
+    });
+  });
+
+  const markVerified = Effect.fnUntraced(function* () {
+    const now = yield* Clock.currentTimeMillis;
+    const plan = yield* store.capturePrune("prune");
+
+    if (plan === null) return yield* Effect.die("Missing fixture reservation");
+
+    const proof = LibraryCapturePruneVerification.make({
+      request,
+      phase: "verified",
+      reservedAt: plan.reservedAt,
+      expiresAt,
+      verifiedAt: now,
+    });
+
+    port.query(
+      "INSERT OR REPLACE INTO library_retained_prunes VALUES (?,?,?,?)",
+      "prune",
+      "archive",
+      "backup",
+      JSON.stringify(proof),
+    );
+  });
+
+  return {
+    ...base,
+    store,
+    restart,
+    request,
+    reserve,
+    markVerified,
+    expiresAt,
+    set,
+    header,
+    beginGlobal: (id: string) => attempt(() => authority.beginGlobal(id)),
+  };
+});
+
+// Discovery reads durable metadata only; these rows do not claim encrypted I/O verification.
+const candidateFixture = Effect.gen(function* () {
+  const f = yield* pruneFixture(1);
+  const completed = yield* f.store.status;
+
+  if (completed === null) return yield* Effect.die("Missing fixture control");
+
+  const archive = (id: string, set = f.set, expiresAt = f.expiresAt) => {
+    const header = { ...f.header, archiveId: id, set };
+    f.port.query(
+      "INSERT OR REPLACE INTO library_retained_archives VALUES (?,?)",
+      id,
+      JSON.stringify(header),
+    );
+    f.port.query(
+      "INSERT OR REPLACE INTO library_retained_commits VALUES (?,?)",
+      id,
+      JSON.stringify({ manifest: { header, expiresAt } }),
+    );
+  };
+
+  const capture = (id: string) => {
+    const set = LibraryRecoverySet.make({ ...f.set, id });
+    f.port.query("INSERT INTO library_journal VALUES ('set',?,?)", id, JSON.stringify(set));
+    f.port.query(
+      "INSERT INTO library_journal VALUES ('operation',?,?)",
+      id,
+      JSON.stringify({ kind: "capture", setId: null, codeDigest: CODE }),
+    );
+    f.port.query(
+      "INSERT INTO library_journal VALUES ('capture-complete',?,?)",
+      id,
+      JSON.stringify(completed),
+    );
+    archive(`archive-${id}`, set);
+  };
+
+  return { ...f, archive, capture };
+});
+
+it.effect(
+  "candidate discovery advances over sixty-four ineligible keys without changing authority",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* candidateFixture;
+      yield* TestClock.adjust("30 days");
+
+      for (let index = 0; index < 64; index++) {
+        const id = `a${String(index).padStart(3, "0")}`;
+        f.port.query(
+          "INSERT INTO library_journal VALUES ('set',?,?)",
+          id,
+          JSON.stringify({ ...f.set, id }),
+        );
+      }
+
+      const changes = f.port.query("SELECT total_changes() AS value");
+      const library = yield* f.store.status;
+      const global = f.port.query("SELECT * FROM recovery_control");
+      const permits = f.port.query("SELECT * FROM recovery_runs");
+      expect(yield* f.store.capturePruneCandidates({ after: null })).toEqual({
+        items: [],
+        next: "a063",
+      });
+      const fresh = yield* f.restart;
+      expect(yield* fresh.capturePruneCandidates({ after: "a063" })).toEqual({
+        items: [Candidates.New({ captureId: "backup", archiveId: "archive" })],
+        next: null,
+      });
+      expect(f.port.query("SELECT total_changes() AS value")).toEqual(changes);
+      expect(yield* fresh.status).toEqual(library);
+      expect(f.port.query("SELECT * FROM recovery_control")).toEqual(global);
+      expect(f.port.query("SELECT * FROM recovery_runs")).toEqual(permits);
+      expect(f.port.query("SELECT * FROM library_capture_prunes")).toEqual([]);
+    }),
+);
+
+it.effect("candidate discovery pages sixty-four eligible keys and a final empty page", () =>
+  Effect.gen(function* () {
+    const f = yield* candidateFixture;
+
+    for (let index = 0; index < 63; index++) f.capture(`capture-${String(index).padStart(3, "0")}`);
+    yield* TestClock.adjust("30 days");
+    const page = yield* f.store.capturePruneCandidates({ after: null });
+    expect(page.items).toHaveLength(64);
+    expect(page.items[0]).toEqual(Candidates.New({ captureId: "backup", archiveId: "archive" }));
+    expect(page.items[63]).toEqual(
+      Candidates.New({ captureId: "capture-062", archiveId: "archive-capture-062" }),
+    );
+    expect(page.next).toBe("capture-062");
+    const fresh = yield* f.restart;
+    expect(yield* fresh.capturePruneCandidates({ after: "capture-062" })).toEqual({
+      items: [],
+      next: null,
+    });
+    expect(
+      Schema.is(LibraryCapturePruneCandidatesPage)({
+        ...page,
+        items: [...page.items, page.items[0]],
+      }),
+    ).toBe(false);
+  }),
+);
+
+it.effect("candidate discovery uses the server age boundary and refuses caller policy knobs", () =>
+  Effect.gen(function* () {
+    const f = yield* candidateFixture;
+    yield* TestClock.adjust(30 * 86400000 - 1);
+    expect(yield* f.store.capturePruneCandidates({ after: null })).toEqual({
+      items: [],
+      next: null,
+    });
+    yield* TestClock.adjust(1);
+    expect(yield* f.store.capturePruneCandidates({ after: null })).toEqual({
+      items: [Candidates.New({ captureId: "backup", archiveId: "archive" })],
+      next: null,
+    });
+
+    const callerPolicy = { after: null, now: 0, age: 0, limit: 1000 };
+    expect(yield* Effect.flip(f.store.capturePruneCandidates(callerPolicy))).toEqual(
+      new LibraryRecoveryError({ reason: "invalid" }),
+    );
+    expect(yield* Effect.flip(f.store.capturePruneCandidates({ after: "../backup" }))).toEqual(
+      new LibraryRecoveryError({ reason: "invalid" }),
+    );
+  }),
+);
+
+it.effect(
+  "candidate discovery selects the first exact committed unexpired archive rather than fresh header time",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* candidateFixture;
+      yield* TestClock.adjust("30 days");
+      f.archive("a-expired", f.set, 30 * 86400000);
+      f.port.query(
+        "UPDATE library_retained_archives SET body=json_set(body,'$.capturedAt',?) WHERE id='a-expired'",
+        30 * 86400000,
+      );
+      f.port.query(
+        "INSERT INTO library_retained_archives VALUES ('a-uncommitted',?)",
+        JSON.stringify({ ...f.header, archiveId: "a-uncommitted" }),
+      );
+      f.archive("z-valid");
+      f.archive("b-valid");
+      expect(yield* f.store.capturePruneCandidates({ after: null })).toEqual({
+        items: [Candidates.New({ captureId: "backup", archiveId: "archive" })],
+        next: null,
+      });
+
+      // Exact typed metadata equality must not depend on JSON object field order.
+      const reordered = {
+        capturedAt: 0,
+        codeDigest: CODE,
+        objectCount: 1,
+        allocatorFloor: 8,
+        inventoryId: "legacy-inventory",
+        sourceLineage: "library-1",
+        id: "backup",
+      };
+
+      f.port.query(
+        "UPDATE library_retained_commits SET body=json_set(body,'$.manifest.header.set',json(?)) WHERE archive_id='b-valid'",
+        JSON.stringify(reordered),
+      );
+      f.port.query("DELETE FROM library_retained_commits WHERE archive_id='archive'");
+      const fresh = yield* f.restart;
+      expect(yield* fresh.capturePruneCandidates({ after: null })).toEqual({
+        items: [Candidates.New({ captureId: "backup", archiveId: "b-valid" })],
+        next: null,
+      });
+      yield* TestClock.adjust("60 days");
+      expect(yield* fresh.capturePruneCandidates({ after: null })).toEqual({
+        items: [],
+        next: null,
+      });
+    }),
+);
+
+it.effect(
+  "candidate discovery rejects every changed set field in either archive metadata copy",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* candidateFixture;
+      yield* TestClock.adjust("30 days");
+
+      const mismatches = [
+        { field: "id", value: "other-capture" },
+        { field: "sourceLineage", value: "library-2" },
+        { field: "inventoryId", value: "other-inventory" },
+        { field: "allocatorFloor", value: 9 },
+        { field: "objectCount", value: 2 },
+        { field: "codeDigest", value: "d".repeat(64) },
+        { field: "capturedAt", value: 1 },
+      ];
+
+      for (const mismatch of mismatches) {
+        f.archive("archive");
+        f.port.query(
+          "UPDATE library_retained_archives SET body=json_set(body,?,?) WHERE id='archive'",
+          `$.set.${mismatch.field}`,
+          mismatch.value,
+        );
+        expect(yield* f.store.capturePruneCandidates({ after: null })).toEqual({
+          items: [],
+          next: null,
+        });
+        f.archive("archive");
+        f.port.query(
+          "UPDATE library_retained_commits SET body=json_set(body,?,?) WHERE archive_id='archive'",
+          `$.manifest.header.set.${mismatch.field}`,
+          mismatch.value,
+        );
+        expect(yield* f.store.capturePruneCandidates({ after: null })).toEqual({
+          items: [],
+          next: null,
+        });
+      }
+
+      f.archive("archive");
+      f.port.query("DELETE FROM library_journal WHERE kind='capture-complete' AND id='backup'");
+      expect(yield* f.store.capturePruneCandidates({ after: null })).toEqual({
+        items: [],
+        next: null,
+      });
+      f.port.query(
+        "INSERT INTO library_journal VALUES ('capture-complete','backup',?)",
+        JSON.stringify(yield* f.store.status),
+      );
+      f.port.query(
+        "UPDATE library_journal SET body=json_remove(body,'$.capturedAt') WHERE kind='set' AND id='backup'",
+      );
+      expect(yield* f.store.capturePruneCandidates({ after: null })).toEqual({
+        items: [],
+        next: null,
+      });
+    }),
+);
+
+it.effect(
+  "candidate discovery excludes incomplete pins on every alias but permits completed and unrelated pins",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* candidateFixture;
+      yield* TestClock.adjust("30 days");
+      f.archive("alias");
+
+      for (const kind of ["upload", "restore"]) {
+        for (const completed of [false, null]) {
+          f.port.query(
+            "INSERT OR REPLACE INTO library_retained_pins VALUES (?,?,'alias',?)",
+            kind,
+            kind,
+            JSON.stringify({ id: kind, archiveId: "alias", kind, completed }),
+          );
+          expect(yield* f.store.capturePruneCandidates({ after: null })).toEqual({
+            items: [],
+            next: null,
+          });
+        }
+
+        f.port.query(
+          "UPDATE library_retained_pins SET body=json_remove(body,'$.completed') WHERE id=?",
+          kind,
+        );
+        expect(yield* f.store.capturePruneCandidates({ after: null })).toEqual({
+          items: [],
+          next: null,
+        });
+        f.port.query(
+          "UPDATE library_retained_pins SET body=json_set(body,'$.completed',json('true')) WHERE id=?",
+          kind,
+        );
+      }
+
+      f.archive("unrelated", { ...f.set, id: "other-capture" });
+      f.port.query(
+        "INSERT INTO library_retained_pins VALUES ('upload','other','unrelated',?)",
+        JSON.stringify({ id: "other", archiveId: "unrelated", kind: "upload", completed: false }),
+      );
+      expect(yield* f.store.capturePruneCandidates({ after: null })).toEqual({
+        items: [Candidates.New({ captureId: "backup", archiveId: "alias" })],
+        next: null,
+      });
+    }),
+);
+
+it.effect(
+  "candidate discovery retains original pending IDs across expiry stopping and reconstruction",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* candidateFixture;
+      yield* TestClock.adjust("30 days");
+      yield* f.reserve();
+      f.archive("a-new-alias");
+
+      const resume = {
+        items: [
+          Candidates.Resume({ operationId: "prune", captureId: "backup", archiveId: "archive" }),
+        ],
+        next: null,
+      };
+
+      expect(yield* f.store.capturePruneCandidates({ after: null })).toEqual(resume);
+      yield* f.markVerified();
+      yield* f.store.beginCapturePrune("prune");
+      const fresh = yield* f.restart;
+      expect(yield* fresh.capturePruneCandidates({ after: null })).toEqual(resume);
+      yield* TestClock.adjust("60 days");
+
+      const blocked = {
+        items: [
+          Candidates.BlockedExpired({
+            operationId: "prune",
+            captureId: "backup",
+            archiveId: "archive",
+          }),
+        ],
+        next: null,
+      };
+
+      expect(yield* fresh.capturePruneCandidates({ after: null })).toEqual(blocked);
+      yield* fresh.beginAbandonCapturePrune("prune");
+      const stopping = yield* f.restart;
+      yield* TestClock.setTime(30 * 86400000);
+      expect(yield* stopping.capturePruneCandidates({ after: null })).toEqual(blocked);
+      yield* TestClock.setTime(90 * 86400000);
+      const authorization = yield* stopping.authorizeCapturePruneStop("prune", 1);
+      yield* stopping.acknowledgeCapturePruneStopped("prune", { authorization });
+      yield* stopping.completeAbandonCapturePrune("prune");
+      const abandoned = yield* f.restart;
+      yield* TestClock.setTime(30 * 86400000);
+      expect(yield* abandoned.capturePruneCandidates({ after: null })).toEqual({
+        items: [],
+        next: null,
+      });
+    }),
+);
+
+it.effect(
+  "candidate discovery never selects a completed prune again even with another archive",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* candidateFixture;
+      yield* TestClock.adjust("30 days");
+      yield* f.reserve();
+      yield* f.markVerified();
+      yield* f.store.beginCapturePrune("prune");
+      const authorization = yield* f.store.authorizeCapturePrune("prune", 1);
+      yield* f.store.acknowledgeCapturePrune("prune", { authorization, removedRows: 0 });
+      yield* f.store.completeCapturePrune("prune");
+      f.archive("a-new-alias");
+      const fresh = yield* f.restart;
+      expect(yield* fresh.capturePruneCandidates({ after: null })).toEqual({
+        items: [],
+        next: null,
+      });
+    }),
+);
+
+it.effect(
+  "prune reservation enforces the exact30day boundary and rolls back its source fence",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* pruneFixture();
+      const library = yield* f.store.status;
+      const global = f.port.query("SELECT * FROM recovery_control");
+      const permits = f.port.query("SELECT * FROM recovery_runs");
+      yield* TestClock.adjust(LIBRARY_CAPTURE_PRUNE_MIN_AGE_MS - 1);
+      expect(yield* Effect.flip(f.reserve())).toEqual(
+        new LibraryRecoveryError({ reason: "fenced" }),
+      );
+      expect(yield* f.store.capturePrune("prune")).toBeNull();
+      yield* TestClock.adjust(1);
+      yield* f.failCommit;
+      expect(yield* Effect.flip(f.reserve())).toEqual(
+        new LibraryRecoveryError({ reason: "storage" }),
+      );
+      expect(yield* f.store.capturePrune("prune")).toBeNull();
+      const plan = yield* f.reserve();
+      expect(plan).toEqual({
+        request: f.request,
+        phase: "reserved",
+        reservedAt: 30 * 86400000,
+        capturedAt: 0,
+        expiresAt: 90 * 86400000,
+        objectCount: 2,
+      });
+      expect(yield* f.reserve()).toEqual(plan);
+      expect(yield* f.store.status).toEqual(library);
+      expect(f.port.query("SELECT * FROM recovery_control")).toEqual(global);
+      expect(f.port.query("SELECT * FROM recovery_runs")).toEqual(permits);
+      expect(yield* f.store.admit(1)).toEqual({
+        libraryId: "owner",
+        epoch: 1,
+        lineage: "library-1",
+      });
+    }),
+);
+
+it.effect("prune reservation excludes every archive alias pin and unbound Native intent", () =>
+  Effect.gen(function* () {
+    const f = yield* pruneFixture();
+    yield* TestClock.adjust("30 days");
+    f.port.query(
+      "INSERT INTO library_retained_archives VALUES ('alias',?)",
+      JSON.stringify({ ...f.header, archiveId: "alias" }),
+    );
+
+    for (const kind of ["upload", "restore"]) {
+      f.port.query(
+        "INSERT INTO library_retained_pins VALUES (?,?,'alias',?)",
+        kind,
+        kind,
+        JSON.stringify({ id: kind, archiveId: "alias", kind, completed: false }),
+      );
+      expect(yield* Effect.flip(f.reserve())).toEqual(
+        new LibraryRecoveryError({ reason: "fenced" }),
+      );
+      f.port.query("DELETE FROM library_retained_pins WHERE id=?", kind);
+    }
+
+    f.port.query(
+      "INSERT INTO library_journal VALUES ('operation','legacy',?)",
+      JSON.stringify({ setId: null }),
+    );
+    expect(yield* Effect.flip(f.reserve())).toEqual(new LibraryRecoveryError({ reason: "fenced" }));
+    f.port.query(
+      "UPDATE library_journal SET body=? WHERE kind='operation' AND id='legacy'",
+      JSON.stringify({
+        kind: "restore",
+        setId: "backup",
+        intent: { setId: "backup", codeDigest: CODE, source: RestoreSources.Native() },
+      }),
+    );
+    expect(yield* Effect.flip(f.reserve())).toEqual(new LibraryRecoveryError({ reason: "fenced" }));
+    expect(yield* f.store.capturePrune("prune")).toBeNull();
+    f.port.query(
+      "INSERT INTO library_journal VALUES ('published','legacy',?)",
+      JSON.stringify(yield* f.store.status),
+    );
+    expect(yield* f.reserve()).toMatchObject({ phase: "reserved" });
+  }),
+);
+
+it.effect(
+  "prune reservation binds original archive inputs and fences Native reads before verification",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* pruneFixture();
+      yield* f.store.grantExport("upload", "backup");
+      yield* TestClock.adjust("30 days");
+      expect(
+        yield* Effect.flip(f.reserve({ ...f.request, manifestDigest: "d".repeat(64) })),
+      ).toEqual(new LibraryRecoveryError({ reason: "conflict" }));
+      expect(yield* Effect.flip(f.reserve({ ...f.request, pruneId: "backup" }))).toEqual(
+        new LibraryRecoveryError({ reason: "conflict" }),
+      );
+      yield* f.reserve();
+      expect(yield* Effect.flip(f.reserve({ ...f.request, archiveId: "alias" }))).toEqual(
+        new LibraryRecoveryError({ reason: "conflict" }),
+      );
+      expect(yield* Effect.flip(f.store.beginCapturePrune("prune"))).toEqual(
+        new LibraryRecoveryError({ reason: "incomplete" }),
+      );
+      expect(yield* Effect.flip(f.store.authorizeExport("upload", "backup", 1))).toEqual(
+        new LibraryRecoveryError({ reason: "fenced" }),
+      );
+      expect(yield* Effect.flip(f.store.grantExport("new-export", "backup"))).toEqual(
+        new LibraryRecoveryError({ reason: "fenced" }),
+      );
+      expect(yield* Effect.flip(f.beginGlobal("destructive"))).toEqual(
+        new LibraryRecoveryError({ reason: "fenced" }),
+      );
+      expect(yield* Effect.flip(f.store.beginCapture("capture-new", CODE))).toEqual(
+        new LibraryRecoveryError({ reason: "fenced" }),
+      );
+      expect(
+        yield* Effect.flip(
+          f.store.beginRestore("native", {
+            setId: "backup",
+            codeDigest: CODE,
+            source: RestoreSources.Native(),
+          }),
+        ),
+      ).toEqual(new LibraryRecoveryError({ reason: "fenced" }));
+      expect(f.port.query("SELECT epoch,operation_id,mode FROM recovery_control")).toEqual([
+        { epoch: 7, operation_id: null, mode: "ready" },
+      ]);
+    }),
+);
+
+it.effect(
+  "verified pruning resumes only pending sealed objects with immutable exact receipts",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* pruneFixture(70);
+      yield* TestClock.adjust("30 days");
+      yield* f.reserve();
+      yield* f.markVerified();
+      yield* f.store.beginCapturePrune("prune");
+      yield* f.store.register(objectRef("library-1", 71, "post-capture"));
+      expect(
+        (yield* f.store.capturePruneInventory("prune")).map((ref) => ref.ordinal),
+      ).toHaveLength(64);
+      expect((yield* f.store.capturePruneInventory("prune", 64)).map((ref) => ref.ordinal)).toEqual(
+        [65, 66, 67, 68, 69, 70],
+      );
+      expect(yield* Effect.flip(f.store.authorizeCapturePrune("prune", 71))).toEqual(
+        new LibraryRecoveryError({ reason: "incomplete" }),
+      );
+      const first = yield* f.store.authorizeCapturePrune("prune", 1);
+      const receipt = { authorization: first, removedRows: 42 };
+      expect(
+        yield* Effect.flip(
+          f.store.acknowledgeCapturePrune("prune", {
+            ...receipt,
+            authorization: {
+              ...first,
+              source: { ...first.source, className: "LibraryModel.DomainDirectory" },
+            },
+          }),
+        ),
+      ).toEqual(new LibraryRecoveryError({ reason: "conflict" }));
+      yield* f.failCommit;
+      expect(yield* Effect.flip(f.store.acknowledgeCapturePrune("prune", receipt))).toEqual(
+        new LibraryRecoveryError({ reason: "storage" }),
+      );
+      expect((yield* f.store.capturePruneInventory("prune"))[0]?.ordinal).toBe(1);
+      yield* f.store.acknowledgeCapturePrune("prune", receipt);
+      const fresh = yield* f.restart;
+      expect((yield* fresh.capturePruneInventory("prune"))[0]?.ordinal).toBe(2);
+      expect(yield* fresh.acknowledgeCapturePrune("prune", receipt)).toEqual(receipt);
+      expect(
+        yield* Effect.flip(fresh.acknowledgeCapturePrune("prune", { ...receipt, removedRows: 43 })),
+      ).toEqual(new LibraryRecoveryError({ reason: "conflict" }));
+      expect(yield* Effect.flip(fresh.completeCapturePrune("prune"))).toEqual(
+        new LibraryRecoveryError({ reason: "incomplete" }),
+      );
+
+      for (let ordinal = 2; ordinal <= 70; ordinal++)
+        yield* fresh.acknowledgeCapturePrune("prune", {
+          authorization: yield* fresh.authorizeCapturePrune("prune", ordinal),
+          removedRows: 1,
+        });
+      const proof = yield* fresh.completeCapturePrune("prune");
+      expect(proof).toEqual({ request: f.request, objectCount: 70, completedAt: 30 * 86400000 });
+      expect(yield* fresh.completeCapturePrune("prune")).toEqual(proof);
+      expect(yield* fresh.capturePruneInventory("prune")).toEqual([]);
+      expect(yield* fresh.image("backup", 1)).toEqual(IMAGE);
+      expect(yield* fresh.recoverySet("backup")).toEqual(f.set);
+      expect(yield* fresh.inventory("library-1")).toHaveLength(64);
+      expect((yield* fresh.inventory("library-1", 64)).map((ref) => ref.ordinal)).toEqual([
+        65, 66, 67, 68, 69, 70, 71,
+      ]);
+      expect(yield* Effect.flip(fresh.beginCapture("prune", CODE))).toEqual(
+        new LibraryRecoveryError({ reason: "conflict" }),
+      );
+      expect(yield* Effect.flip(f.beginGlobal("prune"))).toEqual(
+        new LibraryRecoveryError({ reason: "conflict" }),
+      );
+      expect(
+        yield* Effect.flip(
+          fresh.beginRestore("native-later", {
+            setId: "backup",
+            codeDigest: CODE,
+            source: RestoreSources.Native(),
+          }),
+        ),
+      ).toEqual(new LibraryRecoveryError({ reason: "fenced" }));
+      expect(
+        yield* fresh.beginRestore("retained", {
+          setId: "backup",
+          codeDigest: CODE,
+          source: RestoreSources.Retained({ archiveId: "archive", manifestDigest: "c".repeat(64) }),
+        }),
+      ).toMatchObject({ phase: "frozen", operationId: "retained" });
+    }),
+);
+
+it.effect("prune grants and unrecorded acknowledgements stop at exact archive expiry", () =>
+  Effect.gen(function* () {
+    const f = yield* pruneFixture();
+    yield* TestClock.adjust("30 days");
+    yield* f.reserve();
+    yield* f.markVerified();
+    yield* f.store.beginCapturePrune("prune");
+    const authorization = yield* f.store.authorizeCapturePrune("prune", 1);
+    yield* TestClock.adjust("60 days");
+    expect(yield* Effect.flip(f.store.authorizeCapturePrune("prune", 1))).toEqual(
+      new LibraryRecoveryError({ reason: "fenced" }),
+    );
+    expect(
+      yield* Effect.flip(
+        f.store.acknowledgeCapturePrune("prune", { authorization, removedRows: 1 }),
+      ),
+    ).toEqual(new LibraryRecoveryError({ reason: "fenced" }));
+    expect(yield* Effect.flip(f.store.completeCapturePrune("prune"))).toEqual(
+      new LibraryRecoveryError({ reason: "fenced" }),
+    );
+    expect(yield* f.store.capturePrune("prune")).toMatchObject({ phase: "deleting" });
+    expect(yield* Effect.flip(f.store.beginCapture("unrelated", CODE))).toEqual(
+      new LibraryRecoveryError({ reason: "fenced" }),
+    );
+  }),
+);
+
+it.effect(
+  "expired cleanup drains every sealed stop acknowledgement before releasing the maintenance barrier",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* pruneFixture(70);
+      yield* TestClock.adjust("30 days");
+      yield* f.reserve();
+      yield* f.markVerified();
+      yield* f.store.beginCapturePrune("prune");
+
+      const deleted = {
+        authorization: yield* f.store.authorizeCapturePrune("prune", 1),
+        removedRows: 42,
+      };
+
+      yield* f.store.acknowledgeCapturePrune("prune", deleted);
+      const library = yield* f.store.status;
+      const global = f.port.query("SELECT * FROM recovery_control");
+      const permits = f.port.query("SELECT * FROM recovery_runs");
+      yield* TestClock.adjust(60 * 86400000 - 1);
+      expect(yield* Effect.flip(f.store.beginAbandonCapturePrune("prune"))).toEqual(
+        new LibraryRecoveryError({ reason: "fenced" }),
+      );
+      expect(yield* f.store.capturePrune("prune")).toMatchObject({ phase: "deleting" });
+      yield* TestClock.adjust(1);
+      yield* f.failCommit;
+      expect(yield* Effect.flip(f.store.beginAbandonCapturePrune("prune"))).toEqual(
+        new LibraryRecoveryError({ reason: "storage" }),
+      );
+      expect(yield* f.store.capturePrune("prune")).toMatchObject({ phase: "deleting" });
+      const stopping = yield* f.store.beginAbandonCapturePrune("prune");
+      expect(stopping).toEqual({
+        request: f.request,
+        phase: "stopping",
+        reservedAt: 30 * 86400000,
+        capturedAt: 0,
+        expiresAt: 90 * 86400000,
+        objectCount: 70,
+        stoppingAt: 90 * 86400000,
+      });
+      expect(yield* Effect.flip(f.store.authorizeCapturePrune("prune", 2))).toEqual(
+        new LibraryRecoveryError({ reason: "fenced" }),
+      );
+      expect(yield* Effect.flip(f.store.beginCapturePrune("prune"))).toEqual(
+        new LibraryRecoveryError({ reason: "fenced" }),
+      );
+      expect(yield* Effect.flip(f.store.completeCapturePrune("prune"))).toEqual(
+        new LibraryRecoveryError({ reason: "fenced" }),
+      );
+      yield* f.store.register(objectRef("library-1", 71, "post-reservation"));
+      const firstPage = yield* f.store.capturePruneStopInventory("prune");
+      expect(firstPage).toHaveLength(64);
+      expect(firstPage[0]?.ordinal).toBe(1);
+      expect(
+        (yield* f.store.capturePruneStopInventory("prune", 64)).map((ref) => ref.ordinal),
+      ).toEqual([65, 66, 67, 68, 69, 70]);
+      expect(yield* Effect.flip(f.store.authorizeCapturePruneStop("prune", 71))).toEqual(
+        new LibraryRecoveryError({ reason: "incomplete" }),
+      );
+      const authorization = yield* f.store.authorizeCapturePruneStop("prune", 1);
+      const receipt = { authorization };
+      expect(
+        yield* Effect.flip(
+          f.store.acknowledgeCapturePruneStopped("prune", {
+            authorization: { ...authorization, stoppingAt: authorization.stoppingAt + 1 },
+          }),
+        ),
+      ).toEqual(new LibraryRecoveryError({ reason: "conflict" }));
+      yield* f.failCommit;
+      expect(yield* Effect.flip(f.store.acknowledgeCapturePruneStopped("prune", receipt))).toEqual(
+        new LibraryRecoveryError({ reason: "storage" }),
+      );
+      expect((yield* f.store.capturePruneStopInventory("prune"))[0]?.ordinal).toBe(1);
+      yield* f.store.acknowledgeCapturePruneStopped("prune", receipt);
+      const fresh = yield* f.restart;
+      expect((yield* fresh.capturePruneStopInventory("prune"))[0]?.ordinal).toBe(2);
+      expect(yield* fresh.acknowledgeCapturePruneStopped("prune", receipt)).toEqual(receipt);
+      expect(yield* Effect.flip(fresh.completeAbandonCapturePrune("prune"))).toEqual(
+        new LibraryRecoveryError({ reason: "incomplete" }),
+      );
+      expect(yield* Effect.flip(f.beginGlobal("still-held"))).toEqual(
+        new LibraryRecoveryError({ reason: "fenced" }),
+      );
+      yield* TestClock.adjust("1 minute");
+      expect(yield* fresh.beginAbandonCapturePrune("prune")).toEqual(stopping);
+
+      for (let ordinal = 2; ordinal <= 70; ordinal++)
+        yield* fresh.acknowledgeCapturePruneStopped("prune", {
+          authorization: yield* fresh.authorizeCapturePruneStop("prune", ordinal),
+        });
+      yield* f.failCommit;
+      expect(yield* Effect.flip(fresh.completeAbandonCapturePrune("prune"))).toEqual(
+        new LibraryRecoveryError({ reason: "storage" }),
+      );
+      expect(yield* fresh.capturePrune("prune")).toMatchObject({ phase: "stopping" });
+      expect(
+        f.port.query("SELECT id FROM library_journal WHERE kind='capture-prune-abandoned'"),
+      ).toEqual([]);
+      const proof = yield* fresh.completeAbandonCapturePrune("prune");
+      expect(proof).toEqual({
+        request: f.request,
+        objectCount: 70,
+        abandonedAt: 90 * 86400000 + 60000,
+      });
+      expect(yield* fresh.capturePruneStopInventory("prune")).toEqual([]);
+      expect(
+        f.port.query("SELECT id FROM library_journal WHERE kind='capture-prune-complete'"),
+      ).toEqual([]);
+      expect(yield* fresh.status).toEqual(library);
+      expect(f.port.query("SELECT * FROM recovery_control")).toEqual(global);
+      expect(f.port.query("SELECT * FROM recovery_runs")).toEqual(permits);
+      expect(yield* fresh.image("backup", 1)).toEqual(IMAGE);
+      expect(yield* fresh.recoverySet("backup")).toEqual(f.set);
+      expect(yield* Effect.flip(fresh.grantExport("later-export", "backup"))).toEqual(
+        new LibraryRecoveryError({ reason: "fenced" }),
+      );
+      expect(
+        yield* Effect.flip(
+          fresh.beginRestore("later-native", {
+            setId: "backup",
+            codeDigest: CODE,
+            source: RestoreSources.Native(),
+          }),
+        ),
+      ).toEqual(new LibraryRecoveryError({ reason: "fenced" }));
+      expect(yield* Effect.flip(f.beginGlobal("prune"))).toEqual(
+        new LibraryRecoveryError({ reason: "conflict" }),
+      );
+      yield* f.beginGlobal("new-maintenance");
+      yield* TestClock.adjust("1 day");
+      expect(yield* fresh.beginAbandonCapturePrune("prune")).toEqual({
+        ...stopping,
+        phase: "abandoned",
+      });
+      expect(yield* fresh.completeAbandonCapturePrune("prune")).toEqual(proof);
+      expect(yield* fresh.acknowledgeCapturePruneStopped("prune", receipt)).toEqual(receipt);
+    }),
+);
+
+it.effect(
+  "an expired unverified reservation can stop without claiming successful deletion or verification",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* pruneFixture(1);
+      yield* TestClock.adjust("30 days");
+      yield* f.reserve();
+      expect(yield* Effect.flip(f.store.authorizeCapturePruneStop("prune", 1))).toEqual(
+        new LibraryRecoveryError({ reason: "fenced" }),
+      );
+      yield* TestClock.adjust("60 days");
+      yield* f.store.beginAbandonCapturePrune("prune");
+      const receipt = { authorization: yield* f.store.authorizeCapturePruneStop("prune", 1) };
+      yield* f.store.acknowledgeCapturePruneStopped("prune", receipt);
+      expect(yield* f.store.completeAbandonCapturePrune("prune")).toEqual({
+        request: f.request,
+        objectCount: 1,
+        abandonedAt: 90 * 86400000,
+      });
+      expect(f.port.query("SELECT body FROM library_capture_prune_acks")).toEqual([]);
+      expect(
+        f.port.query(
+          "SELECT json_extract(body,'$.phase') AS phase,json_extract(body,'$.verifiedAt') AS verifiedAt FROM library_retained_prunes",
+        ),
+      ).toEqual([{ phase: "verifying", verifiedAt: null }]);
+      expect(yield* f.store.beginCapture("next-capture", CODE)).toMatchObject({
+        phase: "frozen",
+        operationId: "next-capture",
+        epoch: 1,
+      });
+    }),
+);
+
+it.effect("successful cleanup cannot be relabelled abandoned after expiry", () =>
+  Effect.gen(function* () {
+    const f = yield* pruneFixture(1);
+    yield* TestClock.adjust("30 days");
+    yield* f.reserve();
+    yield* f.markVerified();
+    yield* f.store.beginCapturePrune("prune");
+    yield* f.store.acknowledgeCapturePrune("prune", {
+      authorization: yield* f.store.authorizeCapturePrune("prune", 1),
+      removedRows: 3,
+    });
+    const completed = yield* f.store.completeCapturePrune("prune");
+    yield* TestClock.adjust("60 days");
+    expect(yield* Effect.flip(f.store.beginAbandonCapturePrune("prune"))).toEqual(
+      new LibraryRecoveryError({ reason: "conflict" }),
+    );
+    expect(yield* f.store.completeCapturePrune("prune")).toEqual(completed);
+    expect(
+      f.port.query("SELECT id FROM library_journal WHERE kind='capture-prune-abandoned'"),
+    ).toEqual([]);
+  }),
+);
 
 it.effect("capture-only resumes every sealed member before reopening the same lineage", () =>
   Effect.gen(function* () {

@@ -2,6 +2,8 @@ import { DatabaseSync } from "node:sqlite";
 import { it } from "@effect/vitest";
 import { expect } from "vite-plus/test";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
 import * as Schema from "effect/Schema";
 import * as Predicate from "effect/Predicate";
 import * as Data from "effect/Data";
@@ -20,6 +22,10 @@ import {
   RegisteredLibraryObject,
 } from "./library-recovery-records.ts";
 import { LibraryImageError, type LibraryNativeValue } from "./library-image.ts";
+import {
+  LibraryCapturePruneAuthorization,
+  LibraryCapturePruneStopAuthorization,
+} from "./library-capture-prune-records.ts";
 
 const scheduler = `
 CREATE TABLE IF NOT EXISTS alchemy_alarm_schema(id INTEGER PRIMARY KEY,version INTEGER NOT NULL);
@@ -34,6 +40,10 @@ const fixture = (lineage: string, phase: "frozen" | "staging") => {
   let alarm: number | null = 10000;
   let selected: LibraryObjectImage | null = null;
   let exported: LibraryExportAuthorization | null = null;
+  let prune: LibraryCapturePruneAuthorization | null = null;
+  let pruneGate: Effect.Effect<void> = Effect.void;
+  let pruneStop: LibraryCapturePruneStopAuthorization | null = null;
+  let stopAuthorizationCalls = 0;
 
   let inspection: LibraryObjectInspection = {
     identity: RegisteredLibraryObject.make({
@@ -131,6 +141,25 @@ const fixture = (lineage: string, phase: "frozen" | "staging") => {
             exported !== null && grantId === "upload" && captureId === "capture"
               ? Effect.succeed(exported)
               : Effect.fail(new LibraryImageError({ reason: "conflict" })),
+          authorizePrune: (pruneId, captureId) =>
+            prune !== null &&
+            prune.request.pruneId === pruneId &&
+            prune.request.captureId === captureId
+              ? Effect.succeed(prune).pipe(Effect.tap(() => pruneGate))
+              : Effect.fail(new LibraryImageError({ reason: "conflict" })),
+          authorizePruneStop: (pruneId, captureId) => {
+            const selected = pruneStop;
+
+            return selected !== null &&
+              selected.request.pruneId === pruneId &&
+              selected.request.captureId === captureId
+              ? Effect.sync(() => {
+                  stopAuthorizationCalls++;
+
+                  return selected;
+                })
+              : Effect.fail(new LibraryImageError({ reason: "conflict" }));
+          },
           closeSockets: () => {},
           evict: () => {},
         }),
@@ -147,6 +176,16 @@ const fixture = (lineage: string, phase: "frozen" | "staging") => {
     grantExport: (value: LibraryExportAuthorization) => {
       exported = value;
     },
+    grantPrune: (value: LibraryCapturePruneAuthorization | null) => {
+      prune = value;
+    },
+    grantPruneStop: (value: LibraryCapturePruneStopAuthorization | null) => {
+      pruneStop = value;
+    },
+    pausePruneAuthorization: (gate: Effect.Effect<void>) => {
+      pruneGate = gate;
+    },
+    stopAuthorizationCalls: () => stopAuthorizationCalls,
     captureOnly: () => {
       if (inspection.recovery === null) throw Error("fixture recovery");
       inspection = {
@@ -224,6 +263,293 @@ const capture = (admin: LibraryObjectAdmin["Service"]) =>
 
 const Request = Data.taggedEnum<LibraryAdminRequest>();
 const Reply = Data.taggedEnum<LibraryAdminReply>();
+
+const pruneGrant = (image: LibraryObjectImage) =>
+  LibraryCapturePruneAuthorization.make({
+    request: {
+      pruneId: "prune",
+      captureId: "capture",
+      archiveId: "archive",
+      codeDigest: "a".repeat(64),
+      manifestDigest: "b".repeat(64),
+    },
+    ordinal: 1,
+    source: {
+      modelName: "LibraryModel",
+      layout: 0,
+      className: "LibraryModel.LibraryAggregate",
+      lineage: "library-1",
+      logicalName: "owner",
+      physicalName: "r:library-1:owner",
+      nativeId: "a".repeat(64),
+    },
+    image,
+  });
+
+it.effect(
+  "capture pruning deletes at most64 image rows and resumes after lost acknowledgement without touching live state",
+  () =>
+    Effect.gen(function* () {
+      const source = fixture("library-1", "frozen");
+      yield* Effect.addFinalizer(() => Effect.sync(() => source.database.close()));
+      source.captureOnly();
+
+      for (let index = 0; index < 70; index++)
+        source.values.set(`receipt:${index}`, { reply: index });
+      const initial = yield* source.acquire;
+      yield* initial.libraryAdmin(Request.Freeze({ operationId: "capture" }));
+      const frozen = yield* source.acquire;
+      const image = yield* capture(frozen);
+
+      for (let row = 1; row <= 3; row++) {
+        const part = yield* frozen.libraryAdmin(
+          Request.ReadPart({ operationId: "capture", captureId: "capture", row, part: 0 }),
+        );
+
+        if (!Predicate.isTagged(part, "Part")) return yield* Effect.die(part);
+        source.database
+          .prepare("INSERT INTO library_admin_parts VALUES ('capture',?,0,?)")
+          .run(row, JSON.stringify(part.value));
+      }
+
+      source.database.exec(
+        "INSERT INTO library_admin_images SELECT 'other',body FROM library_admin_images WHERE id='capture'",
+      );
+      source.database.exec(
+        "INSERT INTO library_admin_rows SELECT 'other',row_number,kind,key,digest,body FROM library_admin_rows WHERE id='capture'",
+      );
+      source.database.exec(
+        "INSERT INTO library_admin_parts SELECT 'other',row_number,part,body FROM library_admin_parts WHERE id='capture'",
+      );
+      source.resumeCapture();
+      yield* frozen.libraryAdmin(Request.ResumeCapture({ operationId: "capture" }));
+      const resumed = yield* source.acquire;
+      yield* resumed.afterInitialize(new Set());
+      source.completeCapture();
+      const active = yield* source.acquire;
+      source.values.set("receipt:after-capture", { reply: "new live receipt" });
+      source.database.exec(
+        "INSERT INTO alchemy_scheduled_events VALUES ('new-event',12345,NULL,'live')",
+      );
+      const live = [...source.values];
+      const guard = source.database.prepare("SELECT * FROM library_admin_guard").all();
+      const callbacks = source.database.prepare("SELECT * FROM alchemy_alarm_callbacks").all();
+      const schedules = source.database.prepare("SELECT * FROM alchemy_scheduled_events").all();
+
+      const holds = source.database
+        .prepare("SELECT * FROM library_admin_hold_alchemy_alarm_schema")
+        .all();
+
+      const otherRows = source.database
+        .prepare("SELECT * FROM library_admin_rows WHERE id='other'")
+        .all();
+
+      const otherParts = source.database
+        .prepare("SELECT * FROM library_admin_parts WHERE id='other'")
+        .all();
+
+      const otherImages = source.database
+        .prepare("SELECT * FROM library_admin_images WHERE id='other'")
+        .all();
+
+      const authorization = pruneGrant(image);
+      source.grantPrune(authorization);
+      const request = Request.PruneCaptureStep({ pruneId: "prune", captureId: "capture" });
+      expect(yield* active.libraryAdmin(request)).toEqual(
+        Reply.PruneProgress({ value: { done: false, removedRows: 64, receipt: null } }),
+      );
+      expect(
+        source.database
+          .prepare("SELECT COUNT(*) AS count FROM library_admin_parts WHERE id='capture'")
+          .all(),
+      ).toEqual([{ count: 0 }]);
+      expect(
+        source.database
+          .prepare("SELECT COUNT(*) AS count FROM library_admin_rows WHERE id='capture'")
+          .all(),
+      ).toEqual([{ count: 11 }]);
+      const fresh = yield* source.acquire;
+      expect(fresh.allowed).toBe(true);
+
+      const terminal = Reply.PruneProgress({
+        value: { done: true, removedRows: 76, receipt: { authorization, removedRows: 76 } },
+      });
+
+      expect(yield* fresh.libraryAdmin(request)).toEqual(terminal);
+      const afterLostAck = yield* source.acquire;
+      expect(yield* afterLostAck.libraryAdmin(request)).toEqual(terminal);
+
+      for (const table of ["library_admin_images", "library_admin_rows", "library_admin_parts"])
+        expect(
+          source.database
+            .prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE id='capture'`)
+            .all(),
+        ).toEqual([{ count: 0 }]);
+      expect([...source.values]).toEqual(live);
+      expect(source.database.prepare("SELECT * FROM library_admin_guard").all()).toEqual(guard);
+      expect(source.database.prepare("SELECT * FROM alchemy_alarm_callbacks").all()).toEqual(
+        callbacks,
+      );
+      expect(source.database.prepare("SELECT * FROM alchemy_scheduled_events").all()).toEqual(
+        schedules,
+      );
+      expect(
+        source.database.prepare("SELECT * FROM library_admin_hold_alchemy_alarm_schema").all(),
+      ).toEqual(holds);
+      expect(
+        source.database.prepare("SELECT * FROM library_admin_rows WHERE id='other'").all(),
+      ).toEqual(otherRows);
+      expect(
+        source.database.prepare("SELECT * FROM library_admin_parts WHERE id='other'").all(),
+      ).toEqual(otherParts);
+      expect(
+        source.database.prepare("SELECT * FROM library_admin_images WHERE id='other'").all(),
+      ).toEqual(otherImages);
+    }),
+);
+
+it.effect(
+  "capture pruning refuses missing or changed exact grants before deleting any buffer",
+  () =>
+    Effect.gen(function* () {
+      const source = fixture("library-1", "frozen");
+      yield* Effect.addFinalizer(() => Effect.sync(() => source.database.close()));
+      source.values.set("receipt:owner", { reply: "stable" });
+      const admin = yield* source.acquire;
+      const image = yield* capture(admin);
+      const before = source.database.prepare("SELECT * FROM library_admin_rows").all();
+      const authorization = pruneGrant(image);
+      const request = Request.PruneCaptureStep({ pruneId: "prune", captureId: "capture" });
+      expect(yield* admin.libraryAdmin(request)).toEqual(Reply.Rejected({ reason: "conflict" }));
+      source.grantPrune({ ...authorization, ordinal: 2 });
+      expect(yield* admin.libraryAdmin(request)).toEqual(Reply.Rejected({ reason: "fenced" }));
+      source.grantPrune({
+        ...authorization,
+        source: { ...authorization.source, className: "LibraryModel.DomainDirectory" },
+      });
+      expect(yield* admin.libraryAdmin(request)).toEqual(Reply.Rejected({ reason: "fenced" }));
+      source.grantPrune({ ...authorization, image: { ...image, digest: "f".repeat(64) } });
+      expect(yield* admin.libraryAdmin(request)).toEqual(Reply.Rejected({ reason: "conflict" }));
+      expect(source.database.prepare("SELECT * FROM library_admin_rows").all()).toEqual(before);
+      expect(source.database.prepare("SELECT * FROM library_admin_prunes").all()).toEqual([]);
+      source.grantPrune(authorization);
+      const done = yield* admin.libraryAdmin(request);
+      expect(done._tag).toBe("PruneProgress");
+      source.grantPrune({
+        ...authorization,
+        request: { ...authorization.request, manifestDigest: "c".repeat(64) },
+      });
+      expect(yield* admin.libraryAdmin(request)).toEqual(Reply.Rejected({ reason: "conflict" }));
+      source.grantPrune(null);
+      expect(yield* admin.libraryAdmin(request)).toEqual(Reply.Rejected({ reason: "conflict" }));
+    }),
+);
+
+it.effect(
+  "stop acknowledgement drains an already authorized delete under the same object semaphore and survives lost reply",
+  () =>
+    Effect.gen(function* () {
+      const source = fixture("library-1", "frozen");
+      yield* Effect.addFinalizer(() => Effect.sync(() => source.database.close()));
+
+      for (let index = 0; index < 70; index++)
+        source.values.set(`receipt:${index}`, { reply: index });
+      const admin = yield* source.acquire;
+      const image = yield* capture(admin);
+      const authorization = pruneGrant(image);
+
+      const stopping = LibraryCapturePruneStopAuthorization.make({
+        ...authorization,
+        stoppingAt: 90 * 86400000,
+      });
+
+      source.grantPrune(authorization);
+      source.grantPruneStop(stopping);
+      const authorized = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      source.pausePruneAuthorization(
+        Deferred.succeed(authorized, undefined).pipe(Effect.andThen(Deferred.await(release))),
+      );
+      const step = Request.PruneCaptureStep({ pruneId: "prune", captureId: "capture" });
+
+      const deleting = yield* admin
+        .libraryAdmin(step)
+        .pipe(Effect.forkChild({ startImmediately: true }));
+
+      yield* Deferred.await(authorized);
+      source.grantPrune(null);
+      const stop = Request.StopPrune({ pruneId: "prune", captureId: "capture" });
+
+      const stoppingFiber = yield* admin
+        .libraryAdmin(stop)
+        .pipe(Effect.forkChild({ startImmediately: true }));
+
+      // Immediate child start runs until suspension. The stop cannot even request
+      // its grant while the old request holds the semaphore across authorization.
+      expect(source.stopAuthorizationCalls()).toBe(0);
+      expect(source.database.prepare("SELECT * FROM library_admin_prune_stops").all()).toEqual([]);
+      yield* Deferred.succeed(release, undefined);
+      expect(yield* Fiber.join(deleting)).toEqual(
+        Reply.PruneProgress({ value: { done: false, removedRows: 64, receipt: null } }),
+      );
+      const expected = Reply.PruneStopped({ value: { authorization: stopping } });
+      expect(yield* Fiber.join(stoppingFiber)).toEqual(expected);
+      expect(source.stopAuthorizationCalls()).toBe(1);
+
+      const remaining = source.database
+        .prepare("SELECT * FROM library_admin_rows WHERE id='capture'")
+        .all();
+
+      expect(remaining).toHaveLength(8);
+      const guard = source.database.prepare("SELECT * FROM library_admin_guard").all();
+      const live = [...source.values];
+      const fresh = yield* source.acquire;
+      expect(yield* fresh.libraryAdmin(stop)).toEqual(expected);
+      source.grantPrune(authorization);
+      source.pausePruneAuthorization(Effect.void);
+      expect(yield* fresh.libraryAdmin(step)).toEqual(Reply.Rejected({ reason: "fenced" }));
+      expect(
+        source.database.prepare("SELECT * FROM library_admin_rows WHERE id='capture'").all(),
+      ).toEqual(remaining);
+      expect(source.database.prepare("SELECT * FROM library_admin_guard").all()).toEqual(guard);
+      expect([...source.values]).toEqual(live);
+    }),
+);
+
+it.effect(
+  "stop-only authority binds exact source and first stopping time without creating a deletion receipt",
+  () =>
+    Effect.gen(function* () {
+      const source = fixture("library-1", "frozen");
+      yield* Effect.addFinalizer(() => Effect.sync(() => source.database.close()));
+      source.values.set("receipt:stable", { reply: "preserved" });
+      const admin = yield* source.acquire;
+
+      const authorization = LibraryCapturePruneStopAuthorization.make({
+        ...pruneGrant({ digest: "c".repeat(64), kvCount: 1, sqlCount: 1 }),
+        stoppingAt: 90 * 86400000,
+      });
+
+      const stop = Request.StopPrune({ pruneId: "prune", captureId: "capture" });
+      expect(yield* admin.libraryAdmin(stop)).toEqual(Reply.Rejected({ reason: "conflict" }));
+      source.grantPruneStop({ ...authorization, ordinal: 2 });
+      expect(yield* admin.libraryAdmin(stop)).toEqual(Reply.Rejected({ reason: "fenced" }));
+      source.grantPruneStop({
+        ...authorization,
+        source: { ...authorization.source, layout: 0, nativeId: "f".repeat(64) },
+      });
+      expect(yield* admin.libraryAdmin(stop)).toEqual(Reply.Rejected({ reason: "fenced" }));
+      expect(source.database.prepare("SELECT * FROM library_admin_prune_stops").all()).toEqual([]);
+      source.grantPruneStop(authorization);
+      const stopped = Reply.PruneStopped({ value: { authorization } });
+      expect(yield* admin.libraryAdmin(stop)).toEqual(stopped);
+      source.grantPruneStop({ ...authorization, stoppingAt: authorization.stoppingAt + 1 });
+      expect(yield* admin.libraryAdmin(stop)).toEqual(Reply.Rejected({ reason: "conflict" }));
+      expect(source.database.prepare("SELECT * FROM library_admin_prunes").all()).toEqual([]);
+      expect(source.database.prepare("SELECT * FROM library_admin_images").all()).toEqual([]);
+      expect(source.values.get("receipt:stable")).toEqual({ reply: "preserved" });
+    }),
+);
 
 it.effect(
   "completed capture followed by restart establishes a fresh freeze for the next operation",

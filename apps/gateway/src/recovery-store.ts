@@ -3,7 +3,10 @@ import { libraryArchiveReply } from "./library-archive-wire.ts";
 import { libraryControlReply } from "./library-control-wire.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Effect from "effect/Effect";
+import * as Clock from "effect/Clock";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import { LibraryCapturePruneClock } from "./library-capture-prune-clock.ts";
 import { LibraryRecoveryStore, nativeLibraryControlDatabase } from "./library-recovery-store.ts";
 import { GlobalRecoveryAuthority } from "./library-recovery-authority.ts";
 import { LibraryRecoveryError } from "./library-recovery-records.ts";
@@ -12,6 +15,9 @@ export class RecoveryDO extends Cloudflare.DurableObject<RecoveryDO>()(
   "RecoveryDO",
   Effect.gen(function* () {
     const state = yield* Cloudflare.DurableObjectState;
+    const clock = yield* Clock.Clock;
+    const selectedPruneClock = yield* Effect.serviceOption(LibraryCapturePruneClock);
+    const pruneClock = Option.getOrElse(selectedPruneClock, () => clock);
 
     return Effect.gen(function* () {
       const database = nativeLibraryControlDatabase(state.raw.storage);
@@ -54,6 +60,18 @@ export class RecoveryDO extends Cloudflare.DurableObject<RecoveryDO>()(
             .toArray()[0]!;
 
         return {
+          libraryArchiveReservePrune: (...args: Parameters<typeof archive.reservePrune>) =>
+            libraryArchiveReply(archive.reservePrune(...args)),
+          libraryArchivePruneStatus: (...args: Parameters<typeof archive.pruneStatus>) =>
+            libraryArchiveReply(archive.pruneStatus(...args)),
+          libraryArchivePruneNext: (...args: Parameters<typeof archive.pruneNext>) =>
+            libraryArchiveReply(archive.pruneNext(...args)),
+          libraryArchiveAcknowledgePrune: (...args: Parameters<typeof archive.acknowledgePrune>) =>
+            libraryArchiveReply(archive.acknowledgePrune(...args)),
+          libraryArchiveFinishPrune: (...args: Parameters<typeof archive.finishPrune>) =>
+            libraryArchiveReply(archive.finishPrune(...args)),
+          libraryArchiveFinishAbandon: (...args: Parameters<typeof archive.finishAbandon>) =>
+            libraryArchiveReply(archive.finishAbandon(...args)),
           libraryArchiveSetup: () => libraryArchiveReply(archive.setup),
           libraryArchiveBegin: (...args: Parameters<typeof archive.begin>) =>
             libraryArchiveReply(archive.begin(...args)),
@@ -106,6 +124,82 @@ export class RecoveryDO extends Cloudflare.DurableObject<RecoveryDO>()(
               }),
             ),
           libraryStatus: () => libraryControlReply(library.status),
+          libraryCapturePruneCandidates: (
+            ...args: Parameters<typeof library.capturePruneCandidates>
+          ) =>
+            libraryControlReply(
+              library
+                .capturePruneCandidates(...args)
+                .pipe(Effect.provideService(Clock.Clock, pruneClock)),
+            ),
+          libraryCapturePrune: (...args: Parameters<typeof library.capturePrune>) =>
+            libraryControlReply(library.capturePrune(...args)),
+          libraryBeginAbandonCapturePrune: (
+            ...args: Parameters<typeof library.beginAbandonCapturePrune>
+          ) =>
+            libraryControlReply(
+              library
+                .beginAbandonCapturePrune(...args)
+                .pipe(Effect.provideService(Clock.Clock, pruneClock)),
+            ),
+          libraryCapturePruneStopInventory: (
+            ...args: Parameters<typeof library.capturePruneStopInventory>
+          ) => libraryControlReply(library.capturePruneStopInventory(...args)),
+          libraryAuthorizeCapturePruneStop: (
+            ...args: Parameters<typeof library.authorizeCapturePruneStop>
+          ) =>
+            libraryControlReply(
+              library
+                .authorizeCapturePruneStop(...args)
+                .pipe(Effect.provideService(Clock.Clock, pruneClock)),
+            ),
+          libraryAcknowledgeCapturePruneStopped: (
+            ...args: Parameters<typeof library.acknowledgeCapturePruneStopped>
+          ) =>
+            libraryControlReply(
+              library
+                .acknowledgeCapturePruneStopped(...args)
+                .pipe(Effect.provideService(Clock.Clock, pruneClock)),
+            ),
+          libraryCompleteAbandonCapturePrune: (
+            ...args: Parameters<typeof library.completeAbandonCapturePrune>
+          ) =>
+            libraryControlReply(
+              library
+                .completeAbandonCapturePrune(...args)
+                .pipe(Effect.provideService(Clock.Clock, pruneClock)),
+            ),
+          libraryBeginCapturePrune: (...args: Parameters<typeof library.beginCapturePrune>) =>
+            libraryControlReply(
+              library
+                .beginCapturePrune(...args)
+                .pipe(Effect.provideService(Clock.Clock, pruneClock)),
+            ),
+          libraryCapturePruneInventory: (
+            ...args: Parameters<typeof library.capturePruneInventory>
+          ) => libraryControlReply(library.capturePruneInventory(...args)),
+          libraryAuthorizeCapturePrune: (
+            ...args: Parameters<typeof library.authorizeCapturePrune>
+          ) =>
+            libraryControlReply(
+              library
+                .authorizeCapturePrune(...args)
+                .pipe(Effect.provideService(Clock.Clock, pruneClock)),
+            ),
+          libraryAcknowledgeCapturePrune: (
+            ...args: Parameters<typeof library.acknowledgeCapturePrune>
+          ) =>
+            libraryControlReply(
+              library
+                .acknowledgeCapturePrune(...args)
+                .pipe(Effect.provideService(Clock.Clock, pruneClock)),
+            ),
+          libraryCompleteCapturePrune: (...args: Parameters<typeof library.completeCapturePrune>) =>
+            libraryControlReply(
+              library
+                .completeCapturePrune(...args)
+                .pipe(Effect.provideService(Clock.Clock, pruneClock)),
+            ),
           libraryInitialize: (...args: Parameters<typeof library.initialize>) =>
             libraryControlReply(library.initialize(...args)),
           libraryFinishImport: (...args: Parameters<typeof library.finishImport>) =>

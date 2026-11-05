@@ -1,13 +1,28 @@
 import * as Context from "effect/Context";
+import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Match from "effect/Match";
+import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 import type { LibraryControlDatabase } from "./library-recovery-store.ts";
+import {
+  LibraryArchivePruneRequest,
+  LibraryCapturePruneCompletion,
+  LibraryCapturePrunePlan,
+  LibraryCapturePruneVerification,
+  LibraryCapturePruneAbandonment,
+} from "./library-capture-prune-records.ts";
+import {
+  reserveLibraryCapturePrune,
+  setupLibraryCapturePrunes,
+} from "./library-recovery-authority.ts";
 import {
   LibraryObjectRef,
   LibraryObjectImage,
   LibraryRecoverySet,
   LibraryRecoveryState,
+  LibraryRecoveryError,
   RecoveryDigest,
   RecoveryOperationId,
 } from "./library-recovery-records.ts";
@@ -126,6 +141,51 @@ export const LibraryArchivePin = Schema.Struct({
 });
 
 export type LibraryArchivePin = typeof LibraryArchivePin.Type;
+
+export const LibraryArchivePruneCursor = Schema.Union([
+  Schema.TaggedStruct("Manifest", {}),
+  Schema.TaggedStruct("Page", { page: ArchiveNumber }),
+  // Part positions name the last acknowledged part; zero starts the scan.
+  Schema.TaggedStruct("Part", {
+    ordinal: ArchiveNumber,
+    row: ArchiveNumber,
+    part: ArchiveNumber,
+  }),
+  Schema.TaggedStruct("Done", {}),
+]);
+
+export const LibraryArchivePruneVerification = Schema.Struct({
+  ...LibraryCapturePruneVerification.fields,
+  sequence: ArchiveNumber,
+  cursor: LibraryArchivePruneCursor,
+});
+
+export type LibraryArchivePruneVerification = typeof LibraryArchivePruneVerification.Type;
+
+export const LibraryArchivePruneWork = Schema.Union([
+  Schema.TaggedStruct("Manifest", {
+    sequence: ArchiveNumber,
+    receipt: LibraryArchiveUploadReceipt,
+    manifest: LibraryArchiveManifest,
+  }),
+  Schema.TaggedStruct("Page", {
+    sequence: ArchiveNumber,
+    receipt: LibraryArchivePageReceipt,
+    objects: Schema.Array(LibraryArchiveObject).check(
+      Schema.isMaxLength(LIBRARY_ARCHIVE_PAGE_SIZE),
+    ),
+  }),
+  Schema.TaggedStruct("Part", {
+    sequence: ArchiveNumber,
+    receipt: LibraryArchivePartReceipt,
+    object: LibraryArchiveObject,
+  }),
+]);
+
+export type LibraryArchivePruneWork = typeof LibraryArchivePruneWork.Type;
+
+const Cursor = Data.taggedEnum<typeof LibraryArchivePruneCursor.Type>();
+const Work = Data.taggedEnum<LibraryArchivePruneWork>();
 
 const Body = Schema.Struct({ body: Schema.String });
 const Count = Schema.Struct({ count: ArchiveNumber });
@@ -255,11 +315,174 @@ const makeJournal = (database: LibraryControlDatabase) => {
   const attempt = <A>(body: () => A) =>
     Effect.try({
       try: () => database.transaction(body),
-      catch: (cause) =>
-        Schema.is(LibraryArchiveError)(cause)
-          ? cause
-          : new LibraryArchiveError({ reason: "storage" }),
+      catch: (cause) => {
+        if (Schema.is(LibraryArchiveError)(cause)) return cause;
+
+        return new LibraryArchiveError({
+          reason: Schema.is(LibraryRecoveryError)(cause)
+            ? cause.reason === "invalid" ||
+              cause.reason === "incomplete" ||
+              cause.reason === "storage"
+              ? cause.reason
+              : "conflict"
+            : "storage",
+        });
+      },
     });
+
+  const unreservedCapture = (captureId: string) => {
+    const plan = read(
+      LibraryCapturePrunePlan,
+      "SELECT body FROM library_capture_prunes WHERE capture_id=?",
+      captureId,
+    );
+
+    if (plan === null) return;
+    const state = prune(plan.request.pruneId);
+
+    if (state === null || !same(plan.request, state.request)) return fail("conflict");
+
+    const released =
+      (plan.phase === "complete" && state.phase === "complete") ||
+      (plan.phase === "abandoned" && state.phase === "abandoned");
+
+    if (!released) fail("conflict");
+  };
+
+  const prune = (id: string) =>
+    read(
+      LibraryArchivePruneVerification,
+      "SELECT body FROM library_retained_prunes WHERE id=?",
+      id,
+    );
+
+  const pruning = (id: string, now: number) => {
+    const state = prune(decode(RecoveryOperationId, id)) ?? fail("invalid");
+    decode(ArchiveNumber, now);
+
+    if (state.phase === "complete" || state.phase === "abandoned") return state;
+
+    const plan = read(
+      LibraryCapturePrunePlan,
+      "SELECT body FROM library_capture_prunes WHERE id=?",
+      id,
+    );
+
+    const status = summary(state.request.archiveId);
+
+    if (
+      plan === null ||
+      (plan.phase !== "reserved" && plan.phase !== "deleting") ||
+      !same(plan.request, state.request) ||
+      plan.expiresAt !== state.expiresAt ||
+      status.commit === null ||
+      status.header.set.id !== state.request.captureId ||
+      status.header.set.codeDigest !== state.request.codeDigest ||
+      status.commit.receipt.plainSha256 !== state.request.manifestDigest ||
+      status.expiresAt !== state.expiresAt
+    )
+      return fail("conflict");
+
+    if (now < state.reservedAt) return fail("invalid");
+
+    if (now >= state.expiresAt) return fail("expired");
+
+    return state;
+  };
+
+  const pruneWork = (state: LibraryArchivePruneVerification): LibraryArchivePruneWork | null => {
+    if (state.phase !== "verifying") return null;
+    const id = state.request.archiveId;
+    const selected = commit(id) ?? fail("incomplete");
+    const sequence = state.sequence;
+
+    return Match.value(state.cursor).pipe(
+      Match.tagsExhaustive({
+        Manifest: () =>
+          Work.Manifest({
+            sequence,
+            receipt: selected.receipt,
+            manifest: selected.manifest,
+          }),
+        Page: ({ page }) => {
+          const receipt =
+            read(
+              LibraryArchivePageReceipt,
+              "SELECT body FROM library_retained_pages WHERE archive_id=? AND page_no=?",
+              id,
+              page,
+            ) ?? fail("incomplete");
+
+          const previous =
+            page === 0
+              ? null
+              : (read(
+                  LibraryArchivePageReceipt,
+                  "SELECT body FROM library_retained_pages WHERE archive_id=? AND page_no=?",
+                  id,
+                  page - 1,
+                ) ?? fail("incomplete"));
+
+          const members = rows(
+            LibraryArchiveObject,
+            "SELECT body FROM library_retained_objects WHERE archive_id=? AND ordinal>? ORDER BY ordinal LIMIT 8",
+            id,
+            previous?.after ?? 0,
+          );
+
+          if (
+            receipt.page !== page ||
+            receipt.count !== members.length ||
+            receipt.after !== (members.at(-1)?.ordinal ?? 0) ||
+            receipt.previousSha256 !== (previous?.plainSha256 ?? ZERO) ||
+            members.some((member) => !member.complete)
+          )
+            return fail("conflict");
+
+          return Work.Page({ sequence, receipt, objects: members });
+        },
+        Part: (cursor) => {
+          const next = query(
+            "SELECT ordinal,body FROM library_retained_parts WHERE archive_id=? AND (ordinal>? OR (ordinal=? AND row_no>?) OR (ordinal=? AND row_no=? AND part_no>?)) ORDER BY ordinal,row_no,part_no LIMIT 1",
+            id,
+            cursor.ordinal,
+            cursor.ordinal,
+            cursor.row,
+            cursor.ordinal,
+            cursor.row,
+            cursor.part,
+          )[0];
+
+          if (next === undefined) return fail("incomplete");
+
+          const item = Schema.decodeUnknownSync(
+            Schema.Struct({ ordinal: ArchiveNumber, body: Schema.String }),
+          )(next);
+
+          const receipt = Schema.decodeUnknownSync(
+            Schema.fromJsonString(LibraryArchivePartReceipt),
+          )(item.body);
+
+          const member = object(id, item.ordinal) ?? fail("incomplete");
+
+          if (!member.complete) return fail("incomplete");
+
+          return Work.Part({ sequence, receipt, object: member });
+        },
+        Done: () => fail("conflict"),
+      }),
+    );
+  };
+
+  const savePrune = (state: LibraryArchivePruneVerification) => {
+    query(
+      "UPDATE library_retained_prunes SET body=? WHERE id=?",
+      JSON.stringify(state),
+      state.request.pruneId,
+    );
+
+    return state;
+  };
 
   const mutable = (id: string) => {
     header(id);
@@ -301,6 +524,10 @@ const makeJournal = (database: LibraryControlDatabase) => {
       query(
         "CREATE TABLE IF NOT EXISTS library_retained_pins (kind TEXT NOT NULL,id TEXT NOT NULL,archive_id TEXT NOT NULL,body TEXT NOT NULL,PRIMARY KEY(kind,id))",
       );
+      setupLibraryCapturePrunes(database);
+      query(
+        "CREATE TABLE IF NOT EXISTS library_retained_prunes (id TEXT PRIMARY KEY,archive_id TEXT NOT NULL,capture_id TEXT NOT NULL,body TEXT NOT NULL)",
+      );
     }),
     begin: (input: LibraryArchiveHeader) =>
       attempt(() => {
@@ -317,6 +544,8 @@ const makeJournal = (database: LibraryControlDatabase) => {
 
           return summary(value.archiveId);
         }
+
+        unreservedCapture(value.set.id);
 
         query(
           "INSERT INTO library_retained_archives VALUES (?,?)",
@@ -352,6 +581,192 @@ const makeJournal = (database: LibraryControlDatabase) => {
         ) === null
           ? null
           : summary(id);
+      }),
+    reservePrune: (input: LibraryArchivePruneRequest, now: number) =>
+      attempt(() => {
+        const request = decode(LibraryArchivePruneRequest, input);
+        decode(ArchiveNumber, now);
+        const previous = prune(request.pruneId);
+
+        if (previous !== null) {
+          if (!same(previous.request, request)) return fail("conflict");
+
+          return pruning(request.pruneId, now);
+        }
+
+        const status = summary(request.archiveId);
+
+        if (status.commit === null || status.expiresAt === null) return fail("incomplete");
+
+        if (
+          status.header.set.id !== request.captureId ||
+          status.header.set.codeDigest !== request.codeDigest ||
+          status.commit.receipt.plainSha256 !== request.manifestDigest
+        )
+          return fail("conflict");
+
+        if (now >= status.expiresAt) return fail("expired");
+
+        // Both the source-consumer barrier and verification cursor commit together.
+        const plan = reserveLibraryCapturePrune(database, request, status.expiresAt, now);
+
+        const state = LibraryArchivePruneVerification.make({
+          request,
+          phase: "verifying",
+          reservedAt: plan.reservedAt,
+          expiresAt: plan.expiresAt,
+          verifiedAt: null,
+          sequence: 0,
+          cursor: Cursor.Manifest(),
+        });
+
+        query(
+          "INSERT INTO library_retained_prunes VALUES (?,?,?,?)",
+          request.pruneId,
+          request.archiveId,
+          request.captureId,
+          JSON.stringify(state),
+        );
+
+        return state;
+      }),
+    pruneStatus: (id: string) => attempt(() => prune(decode(RecoveryOperationId, id))),
+    pruneNext: (id: string, now: number) => attempt(() => pruneWork(pruning(id, now))),
+    acknowledgePrune: (
+      id: string,
+      sequence: number,
+      input: LibraryArchiveUploadReceipt,
+      now: number,
+    ) =>
+      attempt(() => {
+        decode(ArchiveNumber, sequence);
+        const value = decode(LibraryArchiveUploadReceipt, input);
+        const state = pruning(id, now);
+
+        // Lost ACKs and concurrent verifiers cannot skip a still-unverified item.
+        if (sequence < state.sequence) return state;
+
+        if (sequence !== state.sequence || state.phase !== "verifying") return fail("conflict");
+        const work = pruneWork(state) ?? fail("incomplete");
+
+        if (
+          value.plainSha256 !== work.receipt.plainSha256 ||
+          value.cipherSha256 !== work.receipt.cipherSha256 ||
+          value.bytes !== work.receipt.bytes ||
+          value.uploadedAt !== work.receipt.uploadedAt ||
+          value.verifiedAt < state.reservedAt ||
+          value.verifiedAt > now
+        )
+          return fail("conflict");
+
+        const selected = commit(state.request.archiveId) ?? fail("incomplete");
+        const nextSequence = decode(ArchiveNumber, sequence + 1);
+
+        const cursor = Match.value(work).pipe(
+          Match.tagsExhaustive({
+            Manifest: () => Cursor.Page({ page: 0 }),
+            Page: ({ receipt }) => {
+              if (receipt.page + 1 < selected.manifest.pageCount)
+                return Cursor.Page({ page: receipt.page + 1 });
+
+              return selected.manifest.partCount === 0
+                ? Cursor.Done()
+                : Cursor.Part({ ordinal: 0, row: 0, part: 0 });
+            },
+            Part: ({ object, receipt }) =>
+              nextSequence === 1 + selected.manifest.pageCount + selected.manifest.partCount
+                ? Cursor.Done()
+                : Cursor.Part({ ordinal: object.ordinal, row: receipt.row, part: receipt.part }),
+          }),
+        );
+
+        const done = Predicate.isTagged(cursor, "Done");
+
+        if (done && nextSequence !== 1 + selected.manifest.pageCount + selected.manifest.partCount)
+          return fail("incomplete");
+
+        return savePrune(
+          LibraryArchivePruneVerification.make({
+            ...state,
+            sequence: nextSequence,
+            cursor,
+            phase: done ? "verified" : "verifying",
+            verifiedAt: done ? now : null,
+          }),
+        );
+      }),
+    finishPrune: (id: string) =>
+      attempt(() => {
+        const state = prune(decode(RecoveryOperationId, id)) ?? fail("invalid");
+
+        if (state.phase === "complete") return state;
+
+        if (state.phase !== "verified" || state.verifiedAt === null) return fail("incomplete");
+
+        const plan = read(
+          LibraryCapturePrunePlan,
+          "SELECT body FROM library_capture_prunes WHERE id=?",
+          id,
+        );
+
+        const proof = read(
+          LibraryCapturePruneCompletion,
+          "SELECT body FROM library_journal WHERE kind='capture-prune-complete' AND id=?",
+          id,
+        );
+
+        if (plan === null || proof === null || plan.phase !== "complete") return fail("incomplete");
+
+        if (
+          !same(plan.request, state.request) ||
+          !same(proof.request, state.request) ||
+          plan.expiresAt !== state.expiresAt ||
+          plan.reservedAt !== state.reservedAt ||
+          proof.objectCount !== plan.objectCount ||
+          proof.completedAt < state.verifiedAt ||
+          proof.completedAt >= state.expiresAt
+        )
+          return fail("conflict");
+
+        return savePrune({ ...state, phase: "complete" });
+      }),
+    finishAbandon: (id: string) =>
+      attempt(() => {
+        const state = prune(decode(RecoveryOperationId, id)) ?? fail("invalid");
+
+        if (state.phase === "abandoned") return state;
+
+        if (state.phase === "complete") return fail("conflict");
+
+        const plan = read(
+          LibraryCapturePrunePlan,
+          "SELECT body FROM library_capture_prunes WHERE id=?",
+          id,
+        );
+
+        const proof = read(
+          LibraryCapturePruneAbandonment,
+          "SELECT body FROM library_journal WHERE kind='capture-prune-abandoned' AND id=?",
+          id,
+        );
+
+        if (plan === null || proof === null || plan.phase !== "abandoned")
+          return fail("incomplete");
+
+        if (
+          !same(plan.request, state.request) ||
+          !same(proof.request, state.request) ||
+          plan.expiresAt !== state.expiresAt ||
+          plan.reservedAt !== state.reservedAt ||
+          plan.stoppingAt === undefined ||
+          plan.stoppingAt < state.expiresAt ||
+          plan.stoppingAt < state.reservedAt ||
+          proof.objectCount !== plan.objectCount ||
+          proof.abandonedAt < plan.stoppingAt
+        )
+          return fail("conflict");
+
+        return savePrune({ ...state, phase: "abandoned" });
       }),
     object: (id: string, ordinal: number) =>
       attempt(() => object(decode(RecoveryOperationId, id), decode(ArchiveNumber, ordinal))),
@@ -632,6 +1047,8 @@ const makeJournal = (database: LibraryControlDatabase) => {
 
         if (state.expiresAt === null || decode(ArchiveNumber, now) >= state.expiresAt)
           fail("expired");
+
+        unreservedCapture(state.header.set.id);
 
         const previous = read(
           LibraryArchivePin,

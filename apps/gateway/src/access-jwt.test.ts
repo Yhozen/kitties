@@ -114,7 +114,7 @@ it.effect(
 
       expect(actual).toEqual({ libraryId: "owner", expiresAt: 60000 });
       expect(calls).toEqual([
-        { url: `${issuer}/cdn-cgi/access/certs`, redirect: "error", hasAuthorization: false },
+        { url: `${issuer}/cdn-cgi/access/certs`, redirect: "manual", hasAuthorization: false },
       ]);
     }),
 );
@@ -261,6 +261,41 @@ it.effect(
       });
       expect(fetched).toBe(3);
     }),
+);
+
+it.effect("discovers keys with a Workers redirect mode and refuses redirected key responses", () =>
+  Effect.gen(function* () {
+    // Mirrors workerd, which throws for any redirect mode other than follow or manual.
+    const workers =
+      (respond: () => Response): typeof fetch =>
+      async (_input, init) => {
+        if (init?.redirect !== undefined && !["follow", "manual"].includes(init.redirect))
+          throw new TypeError("Invalid redirect value");
+
+        return respond();
+      };
+
+    const token = yield* Effect.promise(() => sign(claims));
+
+    const verify = (fetcher: typeof fetch) =>
+      Effect.gen(function* () {
+        const verifier = yield* AccessJwtVerifier;
+
+        return yield* verifier.verify(request(token), issuer, audience);
+      }).pipe(Effect.provide(accessJwtLayer(fetcher)));
+
+    const valid = yield* verify(workers(() => Response.json({ keys: [publicJwk] })));
+
+    const redirected = yield* verify(
+      workers(
+        () =>
+          new Response(null, { status: 302, headers: { location: "https://attacker.example/" } }),
+      ),
+    ).pipe(Effect.flip);
+
+    expect(valid).toEqual({ email: "OWNER@example.test", expiresAt: 60000 });
+    expect(redirected._tag).toBe("AccessKeysUnavailable");
+  }),
 );
 
 it.effect("bounds a hung key request and aborts its owned fetch at the deadline", () =>
