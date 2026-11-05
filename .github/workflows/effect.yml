@@ -51,4 +51,18 @@ jobs:
       - run: pnpm build
       - name: Compile every gateway export locally
         run: pnpm test:library-bundle
+      - name: Shared production browser assets
+        run: KITTIES_BROWSER=/usr/bin/google-chrome pnpm test:library-browser
+        timeout-minutes: 5
+      - name: Library browser reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: library-browser-reports
+          path: |
+            .context/library-browser-check/*/results.json
+            .context/library-browser-check/*/*.png
+            .context/library-gateway-bundles/results.json
+          include-hidden-files: true
+          retention-days: 14
       - run: pnpm --filter @kitties/kittyd check

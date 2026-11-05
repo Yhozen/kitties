@@ -2,7 +2,8 @@
 
 Adapted from the Foldkit 0.170.0 scaffold for this Vite+ monorepo. Source revision
 and license are recorded in [.agents/skills/UPSTREAM.md](.agents/skills/UPSTREAM.md).
-Kitties delivers its frontend as an online website for desktop and mobile browsers.
+Kitties delivers its library as one online Foldkit frontend in desktop/mobile
+browsers and Tauri's local WebView. Other routes retain the existing Preact shell.
 
 ## References
 

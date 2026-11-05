@@ -219,6 +219,7 @@ const dict: Dictionary = {
 
   // Library
   Library: "Biblioteca",
+  "Open skill library": "Abrir biblioteca de habilidades",
   skills: "habilidades",
   artifacts: "arquivos",
   "{n} proposed": "{n} propostas",

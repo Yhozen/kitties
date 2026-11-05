@@ -14,7 +14,14 @@
       throw new Error("the query wins");
     }
 
-    var raw = JSON.parse(localStorage.getItem("kitties.ui.theme") || "{}");
+    // A read-only first-paint hint. The application validates the full versioned
+    // record through DevicePreferences before using it or accepting a save.
+    var preferences = JSON.parse(localStorage.getItem("kitties.device-preferences.v1") || "null");
+
+    var raw =
+      preferences && preferences.version === 1
+        ? { mode: preferences.theme }
+        : JSON.parse(localStorage.getItem("kitties.ui.theme") || "{}");
 
     if (raw.mode === "light" || raw.mode === "dark" || raw.mode === "system") {
       mode = raw.mode;

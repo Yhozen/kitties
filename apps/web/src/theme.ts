@@ -1,8 +1,9 @@
 // The colour mode, saved in localStorage and applied to <html> as data attributes. The palette is
 // the Motita design system (themes.css); public/theme-init.js applies the saved choice before the
 // first paint.
+import { changeBrowserPreferences, readBrowserPreferences } from "./browser-preferences.ts";
+
 export type Mode = "system" | "light" | "dark";
-const KEY = "kitties.ui.theme";
 
 export function savedMode(): Mode {
   const q = new URLSearchParams(location.search).get("theme");
@@ -11,8 +12,7 @@ export function savedMode(): Mode {
   }
   try {
     // Dark unless the person picked light or the system's.
-    const raw = JSON.parse(localStorage.getItem(KEY) || "{}");
-    return raw.mode === "light" || raw.mode === "system" ? raw.mode : "dark";
+    return readBrowserPreferences().theme;
   } catch {
     return "dark";
   }
@@ -29,16 +29,11 @@ export function applyMode(mode: Mode): void {
   root.dataset.mode = resolved;
   root.dataset.scheme = "motita";
   root.style.colorScheme = resolved;
-  try {
-    localStorage.setItem(KEY, JSON.stringify({ mode }));
-  } catch {
-    /* private window */
-  }
 }
 
-export function cycleMode(): Mode {
+export async function cycleMode(): Promise<void> {
   const next: Record<Mode, Mode> = { system: "dark", dark: "light", light: "system" };
   const mode = next[savedMode()];
+  await changeBrowserPreferences({ theme: mode });
   applyMode(mode);
-  return mode;
 }

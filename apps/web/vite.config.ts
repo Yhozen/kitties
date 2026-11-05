@@ -9,6 +9,10 @@ export default defineConfig({
   server: {
     proxy: { "/v1": "http://localhost:1337", "/guest": "http://localhost:1337" },
   },
-  build: { target: "es2022", sourcemap: false },
+  build: {
+    target: "es2022",
+    sourcemap: false,
+    rolldownOptions: { input: ["index.html", "library.html"] },
+  },
   resolve: { alias: { react: "preact/compat", "react-dom": "preact/compat" } },
 });
