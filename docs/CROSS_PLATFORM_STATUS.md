@@ -22,6 +22,7 @@ Each draft targets the preceding branch; none is merged.
 | [52](https://github.com/Yhozen/kitties/pull/52) | Production native host, recovery coordinator and authenticated HTTP |
 | [53](https://github.com/Yhozen/kitties/pull/53) | Shared Foldkit screen, connection lifecycle and device services |
 | [54](https://github.com/Yhozen/kitties/pull/54) | Native host, packaged local-issuer proof, strict cancellation probe and operational gates |
+| [55](https://github.com/Yhozen/kitties/pull/55) | Capture-only backups, encrypted retained archives and native restore after local buffer loss |
 
 The plan's real-provider proof has not passed; draft UI work
 must not be interpreted as permission to release or enable cutover.
