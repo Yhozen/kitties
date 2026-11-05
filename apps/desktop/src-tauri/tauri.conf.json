@@ -1,0 +1,39 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Kitties",
+  "version": "0.1.0",
+  "identifier": "app.kitties.desktop",
+  "build": {
+    "frontendDist": "../../web/dist",
+    "devUrl": "http://localhost:5173"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Kitties",
+        "url": "library.html",
+        "width": 1120,
+        "height": 820,
+        "minWidth": 360,
+        "minHeight": 540,
+        "incognito": true
+      }
+    ],
+    "security": {
+      "capabilities": ["main-preferences", "main-native-access"],
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' asset: data:; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'",
+      "devCsp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: data:; connect-src ipc: http://ipc.localhost http://localhost:5173 ws://localhost:5173; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/icon.png", "icons/icon.ico", "icons/icon.icns"]
+  },
+  "plugins": {
+    "http": {
+      "scopeRedirects": true
+    }
+  }
+}

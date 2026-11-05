@@ -13,7 +13,7 @@ pnpm build
 ingress on 1338. Supply the required variables from [deployment](DEPLOY.md) through your shell;
 keep credentials out of tracked files.
 
-The workspace contains `apps/gateway`, `apps/web`, `packages/{api,domain,protocol}` and
+The workspace contains `apps/{gateway,web,desktop}`, `packages/{api,domain,protocol,device}` and
 `guest/{desktop,kittyd}`. The guest build requires Bun and produces the Linux baseline binary.
 `pnpm --filter @kitties/kittyd release` creates the content-addressed archive and release manifest.
 
@@ -63,8 +63,11 @@ retirement endpoint available for returning clients.
 | Foldkit | `apps/web` owns browser Models, Messages, views, Commands and Subscriptions. |
 | Effect | Shared schemas in `packages/{api,domain,protocol}` define browser/server boundaries; services and Layers provide dependencies. |
 
-Foldkit 0.170.0, its UI package and Vite plugin are installed. The application
-continues to boot Preact until its UI migration. Put native Foldkit modules
+Foldkit 0.170.0, its UI package and Vite plugin are installed. `/library.html`
+boots the shared Foldkit library; `/` continues to boot the existing Preact shell.
+The shell's Library navigation opens the shared route and retains file uploads.
+Both browser entries use the same versioned language/theme preference service;
+legacy keys are read-only defaults until an explicit save. Put native Foldkit modules
 under `apps/web/src/foldkit/` during migration; the full upstream Foldkit lint
 preset applies there. Shared tooling remains in the root Vite+ configuration.
 
@@ -83,3 +86,12 @@ the app in a browser. A Foldkit runtime becomes inspectable when a migrated
 page boots it; the current Preact runtime will not appear in Foldkit DevTools.
 The plugin's default authenticated loopback discovery handles multiple dev
 servers. Keep credentials out of Models and Message history.
+
+The desktop host uses the same `apps/web/dist/library.html`, selected through
+the official Tauri runtime API. Native preferences and HTTP/authentication use
+device Layers; the leaf has no browser storage or native IPC imports. Build web
+assets before `pnpm --filter @kitties/desktop package`. See the
+[native host guide](../apps/desktop/src-tauri/README.md) for platform prerequisites
+and [staging authentication gate](LIBRARY_STAGING_AUTH.md) for compiled origins.
+No configuration means an unavailable Library connection with usable local
+preferences. No deployment or production migration runs on application startup.

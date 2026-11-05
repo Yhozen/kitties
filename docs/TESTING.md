@@ -4,6 +4,12 @@ The suite starts from current behavior. Historical tests were removed rather
 than ported. Use Vite+'s bundled Vitest; all runner and lint configuration lives
 in root `vite.config.ts`.
 
+See [cross-platform evidence](CROSS_PLATFORM_STATUS.md) for the current Library
+proof matrix, package hashes and explicitly failing provider cancellation gates.
+The `desktop-fixture` Vitest project tests the local issuer protocol, not the
+packaged app. Actual native IPC and package tests have separate maintained
+[desktop recipes](../scripts/testing/library-desktop/README.md).
+
 ```sh
 pnpm install --frozen-lockfile
 pnpm check
@@ -12,6 +18,10 @@ pnpm test --project protocol --project web
 pnpm test:watch
 pnpm test:coverage
 pnpm test:workflows # Linux: real local workerd and persistent SQLite
+pnpm test:library # real local recovery coordinator and Home import/restart
+pnpm test:library-bundle # every declared gateway object and native Workflow export
+pnpm test:library-browser # built assets, Chromium and local HTTPS fixture
+pnpm test:library-http # includes strict known-failing idle-abort gates
 pnpm build
 pnpm --filter @kitties/kittyd check
 ```

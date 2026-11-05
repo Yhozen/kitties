@@ -1,0 +1,7 @@
+{
+  "identifier": "main-preferences",
+  "description": "Read and explicitly save device language and theme from the bundled main window.",
+  "local": true,
+  "windows": ["main"],
+  "permissions": ["allow-read-device-preferences", "allow-write-device-preferences"]
+}

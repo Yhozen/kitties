@@ -31,6 +31,20 @@ See [releasing](RELEASING.md).
 
 ## Application publishing
 
+The cross-platform Library candidate adds four Domain Durable Object classes and
+the native `LibraryModel.DomainBackfill` Workflow. Its application-only publisher
+now refuses the manifest before reading credentials or making requests: the full
+Alchemy infrastructure/binding plan must be reviewed first. The instructions below
+describe the earlier release; they must not be used to bypass that guard.
+
+`KITTIES_LIBRARY_CUTOVER_ENABLED` defaults to `false`. Keep it disabled while
+the Library export/retention/reset/purge and idle-stream teardown gates remain
+incomplete. Local sealed-set restore does not establish arbitrary cross-object
+PITR. Rolling back to an older Worker that writes legacy skill rows after Domain
+writes is unsafe. See [the cross-platform plan](CROSS_PLATFORM_PLAN.md) and
+[staging auth preparation](LIBRARY_STAGING_AUTH.md). No remote deployment or
+migration is authorized by the implementation or CI checks.
+
 After infrastructure exists, use a separate token with Workers Scripts Write and Account Settings
 Read, without bucket-configuration permissions:
 

@@ -73,7 +73,7 @@ export default defineConfig({
         files: override.files.map((pattern) => `apps/web/src/foldkit/${pattern}`),
       })),
       {
-        files: ["**/*.test.ts", "**/*.test.tsx"],
+        files: ["**/*.test.ts", "**/*.test.tsx", "**/*.test.mjs"],
         plugins: ["vitest"],
         rules: {
           "vitest/expect-expect": [
@@ -192,6 +192,12 @@ export default defineConfig({
       { test: { name: "device", include: ["packages/device/src/**/*.test.ts"] } },
       { test: { name: "domain", include: ["packages/domain/src/**/*.test.ts"] } },
       { test: { name: "api", include: ["packages/api/src/**/*.test.ts"] } },
+      {
+        test: {
+          name: "desktop-fixture",
+          include: ["scripts/testing/library-desktop/fixture.test.mjs"],
+        },
+      },
     ],
     coverage: {
       provider: "v8",

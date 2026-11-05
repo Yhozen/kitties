@@ -1,0 +1,12 @@
+{
+  "identifier": "main-native-access",
+  "description": "Managed OAuth sign-in for the bundled main window; no arbitrary opener or HTTP permissions.",
+  "local": true,
+  "windows": ["main"],
+  "permissions": [
+    "allow-native-access-configuration",
+    "allow-begin-native-authentication",
+    "allow-finish-native-authentication",
+    "allow-cancel-native-authentication"
+  ]
+}

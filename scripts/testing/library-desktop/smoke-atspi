@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+binary=${1:?Supply the extracted package binary}
+output=${2:?Supply the output directory}
+run_key=${3:?Supply a fresh run key}
+mode=${4:-preferences}
+[[ "$run_key" =~ ^[a-zA-Z0-9_-]+$ ]] || exit 2
+[[ "$mode" == preferences || "$mode" == auth ]] || exit 2
+profile_dir="/research/runtime/$run_key"
+[[ ! -e "$profile_dir" ]] || { echo "Refusing to reuse a profile" >&2; exit 2; }
+mkdir -p "$profile_dir"/{home,run,data,config,cache} "$output"
+chown -R native-test:native-test "$profile_dir" "$output"
+chmod 700 "$profile_dir/run"
+gcc -O2 -Wall -Wextra -Werror \
+  /research/inputs/workspace/scripts/testing/library-desktop/accessibility.c \
+  -o "$profile_dir/accessibility" $(pkg-config --cflags --libs gtk+-3.0 atspi-2) -lxdo -lX11
+exec runuser -u native-test -- env -i \
+  PATH=/opt/node/bin:/usr/bin:/bin HOME="$profile_dir/home" LANG=C.UTF-8 \
+  XDG_DATA_HOME="$profile_dir/data" XDG_CONFIG_HOME="$profile_dir/config" \
+  XDG_CACHE_HOME="$profile_dir/cache" XDG_RUNTIME_DIR="$profile_dir/run" \
+  LIBGL_ALWAYS_SOFTWARE=1 GDK_BACKEND=x11 GTK_MODULES=gail:atk-bridge \
+  KITTIES_NATIVE_TEST_MODE="$mode" \
+  KITTIES_ACCESSIBILITY_HELPER="$profile_dir/accessibility" \
+  dbus-run-session -- xvfb-run -a -s '-screen 0 1280x960x24 -nolisten tcp' \
+  /bin/bash /research/inputs/workspace/scripts/testing/library-desktop/atspi-session "$binary" "$output"
