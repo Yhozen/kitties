@@ -1,5 +1,10 @@
 # Research and implementation gates
 
+The beta.84 observations below are historical. The current dependency family,
+retained workflow patch and remote state-store migration constraints are in
+[Alchemy upgrade guidance](../ALCHEMY_UPGRADE.md). The old crypto patch and
+historical test commands are not the current setup.
+
 Checked 2026-11-01. Package-source facts below were inspected in the exact npm tarballs,
 not inferred from product marketing. Deployment probes remain pending until their outputs are
 recorded. An available API is not evidence that our integration works.

@@ -11,6 +11,7 @@ pnpm test
 pnpm test --project protocol --project web
 pnpm test:watch
 pnpm test:coverage
+pnpm test:workflows # Linux: real local workerd and persistent SQLite
 pnpm build
 pnpm --filter @kitties/kittyd check
 ```
@@ -35,6 +36,23 @@ The node projects do not claim to exercise Cloudflare Durable Object persistence
 real providers, browser rendering, or the Bun guest runtime. Add integration
 coverage at those boundaries as features require it; do not fake a whole Worker
 and call it an integration test.
+
+`pnpm test:workflows` is the separate Linux runtime check for the pinned Alchemy
+workflow patch. Its owned fixtures bundle with the official Worker builder and
+run in native workerd against isolated persistent storage. They exercise typed
+activity failure handling, callback progress and parking, durable clocks,
+immutable bounded exports, process termination/restart and purge deduplication.
+The controller awaits observable persisted milestones with deadlines; it does
+not retry assertions. It terminates only its own workerd child through Linux
+`/proc` process discovery. No credentials or remote deployment state are loaded;
+the fixture's outbound network is limited to loopback.
+
+Each run writes its result and diagnostic logs under gitignored
+`.context/workflow-check/`. This proves local storage and scheduling behavior,
+not cloud placement, PITR, or a deployed application. The bootstrap has one
+version-pinned dependency on the runtime's internal `Paths` module; revalidate
+that boundary when upgrading Alchemy. See [patch notes](../patches/README.md)
+and [upgrade guidance](ALCHEMY_UPGRADE.md).
 
 Ordinary tests import `describe`, `test` and `expect` from `vite-plus/test`.
 Effect/property tests use unaliased `it` from `@effect/vitest`; the lint rules
@@ -84,8 +102,9 @@ exercised protocol/client modules have per-file coverage floors. Overall
 coverage remains a report, not an artificial project-wide target. Raise floors
 as meaningful coverage grows rather than adding tests to satisfy a percentage.
 
-CI runs checks, coverage/tests, builds and guest type checks. It uploads HTML,
-LCOV, JSON summary and JUnit reports for 14 days, including failed test runs.
+CI runs checks, coverage/tests, local workflow recovery, builds and guest type
+checks. It uploads HTML, LCOV, JSON summary, JUnit and workflow runtime reports
+for 14 days, including failed test runs.
 Local reports live in gitignored `coverage/` and `test-results/` directories.
 
 Foldkit's upstream tests are not copied into this repository. New tests belong

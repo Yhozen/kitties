@@ -9,7 +9,8 @@
     "build": "tsc --noEmit -p ../../tsconfig.json"
   },
   "dependencies": {
-    "@alchemy.run/cloudflare": "2.0.0-beta.84",
+    "@alchemy.run/cloudflare": "2.0.0-beta.85",
+    "@alchemy.run/domain": "2.0.0-beta.85",
     "@block65/webcrypto-web-push": "2.0.0",
     "@effect/ai-anthropic": "4.1.1",
     "@effect/ai-openai": "4.1.1",
@@ -19,7 +20,7 @@
     "@kitties/api": "workspace:*",
     "@kitties/domain": "workspace:*",
     "@kitties/protocol": "workspace:*",
-    "alchemy": "2.0.0-beta.84",
+    "alchemy": "2.0.0-beta.85",
     "effect": "4.1.1",
     "jose": "6.2.14"
   }

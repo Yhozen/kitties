@@ -25,6 +25,22 @@ for APIs compatible with the pinned version. Prefer this installed guidance to
 examples for other Effect versions. Use Schema at untrusted boundaries, contextual
 services and Layers for dependencies, and tagged errors and matching for control flow.
 
+## Alchemy Domain
+
+Before defining a Domain model or integration, read the
+[installed Domain skill](packages/domain/node_modules/@alchemy.run/domain/skills/alchemy-domain/SKILL.md)
+and its linked references, then verify signatures against that package's source
+and declarations. The package supplies the guide; do not install another Effect
+setup or copy framework source into this repository.
+
+Follow the [cross-platform plan](docs/CROSS_PLATFORM_PLAN.md). Domain owns the
+authoritative library behavior; Foldkit owns local interaction state. Use the
+official `@alchemy.run/domain/Foldkit` adapter and
+`@alchemy.run/cloudflare/Domain` host. Keep Domain declarations independent of
+Cloudflare and device implementations. Preserve the coordinated Alchemy pins
+and workflow patches; remote state-store upgrades and application cutover need
+their documented validation and deployment authorization.
+
 ## Lint policy
 
 The generic anti-slop rules and all optional Effect rules are enabled at error

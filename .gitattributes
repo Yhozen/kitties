@@ -7,3 +7,6 @@ Makefile text eol=lf
 
 # Binaries must never be touched by the line-ending conversion.
 *.png binary
+
+# Unified diffs require empty context lines, including at the end of a hunk.
+patches/*.patch whitespace=-blank-at-eol,-blank-at-eof

@@ -5,9 +5,16 @@
   "exports": {
     ".": "./src/index.ts",
     "./entities": "./src/entities.ts",
-    "./recovery": "./src/recovery.ts"
+    "./recovery": "./src/recovery.ts",
+    "./Library/*": "./src/Library/*.ts",
+    "./Library.model": "./src/Library.model.ts",
+    "./LibraryApi.api": "./src/LibraryApi.api.ts",
+    "./LibraryImport.api": "./src/LibraryImport.api.ts",
+    "./LibraryActor.context": "./src/LibraryActor.context.ts",
+    "./LibrarySession.middleware": "./src/LibrarySession.middleware.ts"
   },
   "dependencies": {
+    "@alchemy.run/domain": "2.0.0-beta.85",
     "effect": "4.1.1"
   }
 }

@@ -258,7 +258,7 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
       ).pipe(
         Layer.provideMerge(RecoveryGuard.layer),
         Layer.provideMerge(ChatDOLive),
-        Layer.provideMerge(Cloudflare.Workflows.DurableObjectEngine),
+        Layer.provideMerge(Cloudflare.Workflows.layerDurableObjectEngine()),
       ),
     ),
   ),
