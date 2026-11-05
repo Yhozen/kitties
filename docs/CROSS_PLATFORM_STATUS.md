@@ -21,9 +21,9 @@ Each draft targets the preceding branch; none is merged.
 | [51](https://github.com/Yhozen/kitties/pull/51) | Migration, turn snapshots and durable recovery journal |
 | [52](https://github.com/Yhozen/kitties/pull/52) | Production native host, recovery coordinator and authenticated HTTP |
 | [53](https://github.com/Yhozen/kitties/pull/53) | Shared Foldkit screen, connection lifecycle and device services |
+| [54](https://github.com/Yhozen/kitties/pull/54) | Native host, packaged local-issuer proof, strict cancellation probe and operational gates |
 
-The desktop host, native tests and maintained packaging/issuer gates are in the
-following stack layer. The plan's provider proof has not passed; draft UI work
+The plan's real-provider proof has not passed; draft UI work
 must not be interpreted as permission to release or enable cutover.
 
 ## Reproducible checks
@@ -64,7 +64,7 @@ resource, state and PKCE checks remain. Fixtures do not mount in the application
 | --- | --- |
 | Exact backend snapshot | Frozen install, Vite+ check, 225 tests in 20 files; 12 native recovery/Home cases and four local Worker bundles pass. |
 | Exact shared-client snapshot | Frozen install, Vite+ check, 324 tests in 31 files with coverage floors; all three recursive builds pass. |
-| Complete repository | Frozen install and Vite+ formatting/lint/types pass with 0 errors and 629 advisory warnings; all 329 tests in 32 files pass with coverage floors intact. |
+| Complete repository | Frozen install and Vite+ formatting/lint/types pass with 0 errors and 629 advisory warnings; all 329 tests in 32 files pass with coverage floors intact; all three recursive builds and guest typecheck pass. |
 | Native crate | 19 actual tests pass: fixed Store/ACL, public OAuth callback protocol, exact HTTP scopes, redirects/cookies and cancellation before headers. |
 | Browser built assets | Five cases pass: commands and source barriers, another tab's live view, acknowledged Preact/Foldkit preferences, mobile/keyboard and expiry/reconnect. |
 | Packaged Linux, no configuration | Four cases pass: shared UI, fail-closed sign-in, es/light native save and a new process loading the record. |
