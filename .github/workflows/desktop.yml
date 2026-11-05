@@ -44,4 +44,27 @@ jobs:
         run: cargo build --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
       - name: Native IPC and persistence tests
         run: cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
+      - name: Inspect Windows loader failure
+        if: failure() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .context/native-loader | Out-Null
+          $installation = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
+          $dumpbin = Get-ChildItem "$installation\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe" | Sort-Object FullName -Descending | Select-Object -First 1
+          Get-ChildItem apps/desktop/src-tauri/target/debug/deps/kitties_desktop-*.exe | ForEach-Object {
+            & $dumpbin.FullName /imports $_.FullName | Out-File ".context/native-loader/$($_.Name).imports.txt"
+          }
+          Get-ChildItem apps/desktop/src-tauri/target/debug -Recurse -Include *.dll | Get-FileHash | Format-List | Out-File .context/native-loader/dll-hashes.txt
+      - name: Windows loader artifacts
+        if: failure() && runner.os == 'Windows'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-native-loader
+          path: |
+            .context/native-loader/
+            apps/desktop/src-tauri/target/debug/deps/kitties_desktop-*.exe
+            apps/desktop/src-tauri/target/debug/*.dll
+            apps/desktop/src-tauri/target/debug/deps/*.dll
+          include-hidden-files: true
+          retention-days: 14
     # Native executables/tests are not packaged runtime, provider login or signing proof.
