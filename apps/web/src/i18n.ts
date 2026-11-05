@@ -1,5 +1,6 @@
 import es from "./i18n/es";
 import pt from "./i18n/pt";
+import { changeBrowserPreferences, readBrowserPreferences } from "./browser-preferences.ts";
 
 // THE PAGE'S LANGUAGE.
 //
@@ -16,12 +17,11 @@ export const LANGS: { id: Lang; label: string }[] = [
   { id: "pt", label: "Português" },
 ];
 
-const KEY = "kitties.lang";
 const dictionaries: Record<Lang, Record<string, string>> = { en: {}, es, pt };
 
 function saved(): string {
   try {
-    return localStorage.getItem(KEY) || "";
+    return readBrowserPreferences().language;
   } catch {
     return "";
   }
@@ -55,12 +55,8 @@ export function currentLang(): Lang {
 }
 
 // setLang keeps the person's choice and draws the page again in it.
-export function setLang(next: Lang): void {
-  try {
-    localStorage.setItem(KEY, next);
-  } catch {
-    /* kept for this visit only */
-  }
+export async function setLang(next: Lang): Promise<void> {
+  await changeBrowserPreferences({ language: next });
   lang = next;
   const url = new URL(location.href);
   url.searchParams.delete("lang");

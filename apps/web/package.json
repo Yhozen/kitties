@@ -11,6 +11,7 @@
     "@effect/platform-browser": "4.1.1",
     "@foldkit/ui": "0.170.0",
     "@kitties/api": "workspace:*",
+    "@kitties/device": "workspace:*",
     "@kitties/domain": "workspace:*",
     "@kitties/protocol": "workspace:*",
     "effect": "4.1.1",

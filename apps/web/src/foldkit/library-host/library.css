@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+@source "../library";
+@source ".";
+
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  background: #0a0a0f;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+.library-host {
+  color-scheme: dark;
+  color: #eeeef5;
+  background: #0a0a0f;
+}
+
+.library-host[data-theme="light"] {
+  color-scheme: light;
+  color: #21202c;
+  background: #faf9fd;
+}
+
+@media (prefers-color-scheme: light) {
+  .library-host[data-theme="system"] {
+    color-scheme: light;
+    color: #21202c;
+    background: #faf9fd;
+  }
+}
+
+.library-host :is(input, textarea, select) {
+  background-color: Canvas;
+  color: CanvasText;
+}
+
+.library-host :focus-visible {
+  outline: 2px solid #a78bfa;
+  outline-offset: 4px;
+}
+
+.library-host pre {
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .library-host * {
+    transition: none;
+  }
+}

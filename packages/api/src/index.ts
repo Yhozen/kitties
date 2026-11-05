@@ -29,7 +29,6 @@ import {
   MemoryNoteInput,
   MemoryProfileInput,
   FeedbackInput,
-  SkillInput,
   SkillView,
   VaultView,
   HelpView,
@@ -212,19 +211,6 @@ export const Api = HttpApi.make("Kitties").add(
       success: MemoryView,
     }),
     HttpApiEndpoint.get("skills", "/v1/skills", { success: Schema.Array(SkillView) }),
-    HttpApiEndpoint.put("saveSkill", "/v1/skills/:id", {
-      params: { id: Id },
-      payload: SkillInput,
-      success: SkillView,
-    }),
-    HttpApiEndpoint.post("acceptSkill", "/v1/skills/:id/accept", {
-      params: { id: Id },
-      success: SkillView,
-    }),
-    HttpApiEndpoint.delete("removeSkill", "/v1/skills/:id", {
-      params: { id: Id },
-      success: Schema.Void.pipe(HttpApiSchema.status(204)),
-    }),
     HttpApiEndpoint.get("vault", "/v1/vault", { success: Schema.Array(VaultView) }),
     HttpApiEndpoint.put("saveSecret", "/v1/vault/:id", {
       params: { id: Id },
