@@ -1,14 +1,19 @@
 import { DatabaseSync } from "node:sqlite";
 import { it } from "@effect/vitest";
-import { Context, Effect, Layer, Schema } from "effect";
+import { Context, Data, Effect, Layer, Schema } from "effect";
 import { expect } from "vite-plus/test";
 import { GlobalRecoveryAuthority } from "./library-recovery-authority.ts";
 import {
   LibraryRecoveryError,
   LibraryRecoveryState,
+  LibraryRestoreIntent,
+  type LibraryRestoreSource,
   type LibraryObjectRef,
 } from "./library-recovery-records.ts";
 import { LibraryRecoveryStore, type LibraryControlDatabase } from "./library-recovery-store.ts";
+
+const codeDigest = "a".repeat(64);
+const RestoreSources = Data.taggedEnum<LibraryRestoreSource>();
 
 const fixture = Effect.gen(function* () {
   const sql = yield* Effect.acquireRelease(
@@ -133,6 +138,170 @@ const publicationMarkers = (f: Effect.Success<typeof fixture>) =>
   f.database.query(
     "SELECT id,body FROM library_journal WHERE kind='publication-complete' ORDER BY id",
   );
+
+it.effect("restore intent and destructive authority commit atomically before image work", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    yield* ready(f.store);
+
+    const intent = LibraryRestoreIntent.make({
+      setId: "restore",
+      codeDigest,
+      source: RestoreSources.Retained({ archiveId: "archive", manifestDigest: "c".repeat(64) }),
+    });
+
+    yield* f.failCommit;
+    expect(yield* Effect.flip(f.store.beginRestore("restore", intent))).toEqual(
+      new LibraryRecoveryError({ reason: "storage" }),
+    );
+    expect(f.control()).toEqual({ epoch: 0, operation_id: null, mode: "ready" });
+    expect(yield* f.store.status).toMatchObject({ phase: "ready", operationId: null });
+    expect(yield* f.store.restoreIntent("restore")).toBeNull();
+    expect(f.database.query("SELECT id,review FROM recovery_runs ORDER BY id")).toEqual([
+      { id: "future", review: 0 },
+      { id: "old", review: 0 },
+    ]);
+    yield* f.store.beginRestore("restore", intent);
+    const acquired = { epoch: 100, operation_id: "restore", mode: "recovering" };
+    expect(f.control()).toEqual(acquired);
+    expect(f.database.query("SELECT id,review FROM recovery_runs ORDER BY id")).toEqual([
+      { id: "future", review: 0 },
+      { id: "old", review: 1 },
+    ]);
+    expect(
+      yield* Effect.flip(
+        f.store.beginRestore("restore", { ...intent, source: RestoreSources.Native() }),
+      ),
+    ).toEqual(new LibraryRecoveryError({ reason: "conflict" }));
+    expect(yield* f.store.restoreIntent("restore")).toEqual(intent);
+    expect(f.control()).toEqual(acquired);
+    expect(yield* f.store.beginRestore("restore", intent)).toMatchObject({ phase: "frozen" });
+    expect(f.control()).toEqual(acquired);
+    expect(yield* Effect.flip(f.store.beginCapture("capture", codeDigest))).toEqual(
+      new LibraryRecoveryError({ reason: "fenced" }),
+    );
+  }),
+);
+
+it.effect("capture quiesces Library without changing the global epoch or workflow review", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    const ordinal = yield* ready(f.store);
+    const control = f.control();
+    yield* f.store.beginCapture("backup", codeDigest);
+    expect(f.control()).toEqual(control);
+    expect(yield* Effect.flip(f.beginGlobal("backup"))).toEqual(
+      new LibraryRecoveryError({ reason: "conflict" }),
+    );
+    expect(yield* Effect.flip(f.beginGlobal("home"))).toEqual(
+      new LibraryRecoveryError({ reason: "fenced" }),
+    );
+    expect(yield* Effect.flip(f.completeGlobal("backup"))).toEqual(
+      new LibraryRecoveryError({ reason: "conflict" }),
+    );
+    expect(yield* Effect.flip(f.store.prepareRestore("backup", "backup"))).toEqual(
+      new LibraryRecoveryError({ reason: "fenced" }),
+    );
+    yield* f.store.acknowledgeFreeze("backup", ordinal, "running", null);
+    yield* f.store.acknowledgeFreeze("backup", ordinal, "running", "held");
+    yield* f.store.recordImage("backup", ordinal, {
+      digest: "b".repeat(64),
+      kvCount: 1,
+      sqlCount: 1,
+    });
+    yield* f.store.seal("backup", 7, "a".repeat(64));
+    yield* f.store.beginCaptureResume("backup");
+    expect(yield* Effect.flip(f.beginGlobal("home"))).toEqual(
+      new LibraryRecoveryError({ reason: "fenced" }),
+    );
+    yield* f.store.acknowledgeResumed("backup", ordinal, "release", null);
+    yield* f.store.acknowledgeResumed("backup", ordinal, "release", "fresh");
+    const complete = yield* f.store.completeCapture("backup");
+    expect(complete).toMatchObject({
+      phase: "ready",
+      epoch: 1,
+      lineage: "library-1",
+      nextLineage: 2,
+    });
+    expect(f.control()).toEqual({ epoch: 0, operation_id: null, mode: "ready" });
+    expect(f.database.query("SELECT id,review FROM recovery_runs ORDER BY id")).toEqual([
+      { id: "future", review: 0 },
+      { id: "old", review: 0 },
+    ]);
+    yield* f.beginGlobal("home");
+    expect(yield* f.store.completeCapture("backup")).toEqual(complete);
+    expect(f.control()).toEqual({ epoch: 100, operation_id: "home", mode: "recovering" });
+    expect(yield* Effect.flip(f.beginGlobal("backup"))).toEqual(
+      new LibraryRecoveryError({ reason: "conflict" }),
+    );
+    expect(yield* Effect.flip(f.completeGlobal("backup"))).toEqual(
+      new LibraryRecoveryError({ reason: "conflict" }),
+    );
+  }),
+);
+
+it.effect("retains destructive identities across completion so capture cannot adopt them", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    yield* ready(f.store);
+    yield* f.beginGlobal("home-first");
+    yield* f.completeGlobal("home-first");
+    yield* f.beginGlobal("home-second");
+    yield* f.completeGlobal("home-second");
+    const completed = f.control();
+    expect(yield* Effect.flip(f.store.beginCapture("home-first", codeDigest))).toEqual(
+      new LibraryRecoveryError({ reason: "conflict" }),
+    );
+    expect(yield* Effect.flip(f.store.beginFreeze("home-first"))).toEqual(
+      new LibraryRecoveryError({ reason: "conflict" }),
+    );
+    expect(f.control()).toEqual(completed);
+    yield* f.store.beginCapture("backup", codeDigest);
+    expect(f.control()).toEqual(completed);
+    expect(yield* Effect.flip(f.store.beginFreeze("backup"))).toEqual(
+      new LibraryRecoveryError({ reason: "conflict" }),
+    );
+  }),
+);
+
+it.effect("capture acquisition rolls back and cannot overtake a destructive lease", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    yield* ready(f.store);
+    yield* f.failCommit;
+    expect(yield* Effect.flip(f.store.beginCapture("backup", codeDigest))).toEqual(
+      new LibraryRecoveryError({ reason: "storage" }),
+    );
+    expect(yield* f.store.status).toMatchObject({ phase: "ready", operationId: null });
+    yield* f.beginGlobal("home");
+    expect(yield* Effect.flip(f.store.beginCapture("backup", codeDigest))).toEqual(
+      new LibraryRecoveryError({ reason: "fenced" }),
+    );
+    yield* f.completeGlobal("home");
+    expect(yield* f.store.beginCapture("backup", codeDigest)).toMatchObject({
+      phase: "frozen",
+      operationKind: "capture",
+    });
+  }),
+);
+
+it.effect(
+  "a later destructive begin reserves the known pre-journal owner before replacing it",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture;
+      yield* ready(f.store);
+      f.database.query(
+        "UPDATE recovery_control SET epoch=50,operation_id='historical',mode='ready' WHERE id=1",
+      );
+      yield* f.beginGlobal("next");
+      yield* f.completeGlobal("next");
+      expect(yield* Effect.flip(f.store.beginCapture("historical", codeDigest))).toEqual(
+        new LibraryRecoveryError({ reason: "conflict" }),
+      );
+      expect(f.control()).toEqual({ epoch: 100, operation_id: "next", mode: "ready" });
+    }),
+);
 
 it.effect("read and journal setup stay available before global authority exists", () =>
   Effect.gen(function* () {

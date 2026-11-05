@@ -18,6 +18,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import {
+  LibraryExportAuthorization,
   LibraryLineage,
   LibraryObjectClass,
   LibraryObjectRef,
@@ -46,6 +47,11 @@ export class LibraryRecoveryControl extends Context.Service<
       captureId: string,
       ordinal: number,
     ) => Effect.Effect<LibraryObjectImage, LibraryRecoveryError>;
+    readonly authorizeExport: (
+      grantId: string,
+      captureId: string,
+      ordinal: number,
+    ) => Effect.Effect<LibraryExportAuthorization, LibraryRecoveryError>;
     readonly resolve: (epoch: number) => Effect.Effect<string, LibraryRecoveryError>;
     readonly register: (
       ref: LibraryObjectRef,
@@ -223,7 +229,32 @@ export const libraryRecoveryHooksLayer = (rollout: LibraryBackfillScope) =>
 
                     return yield* control
                       .authorizeCapture(operationId, captureId, source.identity.ordinal)
-                      .pipe(Effect.mapError(() => new LibraryImageError({ reason: "conflict" })));
+                      .pipe(
+                        Effect.mapError(
+                          (error) =>
+                            new LibraryImageError({
+                              reason: error.reason === "storage" ? "storage" : "conflict",
+                            }),
+                        ),
+                      );
+                  }),
+                authorizeExport: (grantId, captureId) =>
+                  Effect.gen(function* () {
+                    const source = yield* inspect;
+
+                    if (source.identity === null)
+                      return yield* new LibraryImageError({ reason: "conflict" });
+
+                    return yield* control
+                      .authorizeExport(grantId, captureId, source.identity.ordinal)
+                      .pipe(
+                        Effect.mapError(
+                          (error) =>
+                            new LibraryImageError({
+                              reason: error.reason === "storage" ? "storage" : "conflict",
+                            }),
+                        ),
+                      );
                   }),
                 storage: {
                   sql: raw.sql,

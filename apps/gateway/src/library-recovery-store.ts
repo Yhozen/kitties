@@ -1,7 +1,9 @@
 import type * as Cloudflare from "@cloudflare/workers-types";
 import * as Context from "effect/Context";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Struct from "effect/Struct";
 import type {
@@ -10,6 +12,10 @@ import type {
 } from "./library-recovery-authority.ts";
 import {
   LibraryLineage,
+  LibraryCaptureOperation,
+  LibraryRestoreIntent,
+  LibraryExportGrant,
+  LibraryExportAuthorization,
   LibraryObjectClass,
   LibraryObjectImage,
   LibraryObjectRef,
@@ -46,7 +52,15 @@ const Count = Schema.Struct({ count: RecoveryOrdinal });
 const Ordinal = Schema.Struct({ ordinal: RecoveryOrdinal });
 const SessionId = Schema.String.check(Schema.isPattern(/^[a-zA-Z0-9_-]{1,128}$/));
 const FreezeAck = Schema.Struct({ before: SessionId, after: Schema.NullOr(SessionId) });
-const Operation = Schema.Struct({ setId: Schema.NullOr(RecoveryOperationId) });
+
+const RestoreOperation = Schema.Struct({
+  setId: Schema.NullOr(RecoveryOperationId),
+  kind: Schema.optionalKey(Schema.Literal("restore")),
+  intent: Schema.optionalKey(LibraryRestoreIntent),
+});
+
+const Operation = Schema.Union([LibraryCaptureOperation, RestoreOperation]);
+const sameRestoreIntent = Schema.toEquivalence(LibraryRestoreIntent);
 
 const increment = (value: number) => {
   if (value >= Number.MAX_SAFE_INTEGER) throw new LibraryRecoveryError({ reason: "exhausted" });
@@ -123,10 +137,26 @@ const makeLibraryRecoveryStore = (
       lineage,
     )?.phase ?? fail("invalid");
 
-  const ownedOperation = (operationId: string) => {
+  const ownedOperation = (
+    operationId: string,
+    kind: "restore" | "capture" | "either" = "restore",
+  ) => {
     const state = current();
 
     if (state.operationId !== operationId) return fail("conflict");
+
+    const operation = read(
+      Operation,
+      "SELECT body FROM library_journal WHERE kind='operation' AND id=?",
+      operationId,
+    );
+
+    if (
+      operation === undefined ||
+      (operation.kind ?? "restore") !== (state.operationKind ?? "restore") ||
+      (kind !== "either" && (operation.kind ?? "restore") !== kind)
+    )
+      return fail("fenced");
 
     return state;
   };
@@ -198,6 +228,9 @@ const makeLibraryRecoveryStore = (
           "CREATE TABLE IF NOT EXISTS library_images (set_id TEXT NOT NULL,ordinal INTEGER NOT NULL,body TEXT NOT NULL,PRIMARY KEY(set_id,ordinal))",
         );
         query(
+          "CREATE TABLE IF NOT EXISTS library_resumes (operation_id TEXT NOT NULL,ordinal INTEGER NOT NULL,body TEXT NOT NULL,PRIMARY KEY(operation_id,ordinal))",
+        );
+        query(
           "CREATE TABLE IF NOT EXISTS library_loads (operation_id TEXT NOT NULL,source_ordinal INTEGER NOT NULL,destination_ordinal INTEGER NOT NULL,body TEXT NOT NULL,active INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(operation_id,source_ordinal),UNIQUE(destination_ordinal))",
         );
       },
@@ -212,6 +245,21 @@ const makeLibraryRecoveryStore = (
             "SELECT body FROM library_journal WHERE kind='set' AND id=?",
             id,
           ) ?? null,
+        { kind: "read" },
+      ),
+    captureCompletion: (id: string) =>
+      attempt(
+        () => {
+          if (!Schema.is(RecoveryOperationId)(id)) return fail("invalid");
+
+          return (
+            read(
+              LibraryRecoveryState,
+              "SELECT body FROM library_journal WHERE kind='capture-complete' AND id=?",
+              id,
+            ) ?? null
+          );
+        },
         { kind: "read" },
       ),
     publication: (id: string, setId: string, codeDigest: string) =>
@@ -296,6 +344,76 @@ const makeLibraryRecoveryStore = (
         },
         { kind: "operation", operationId },
       ),
+    grantExport: (grantId: string, captureId: string) =>
+      attempt(
+        () => {
+          if (!Schema.is(LibraryExportGrant)({ grantId, captureId })) return fail("invalid");
+
+          const completed = read(
+            LibraryRecoveryState,
+            "SELECT body FROM library_journal WHERE kind='capture-complete' AND id=?",
+            captureId,
+          );
+
+          const captured = read(
+            LibraryRecoverySet,
+            "SELECT body FROM library_journal WHERE kind='set' AND id=?",
+            captureId,
+          );
+
+          if (completed === undefined || captured === undefined) return fail("incomplete");
+
+          immutable("export-grant", grantId, JSON.stringify({ grantId, captureId }));
+
+          return captured;
+        },
+        { kind: "read" },
+      ),
+    authorizeExport: (grantId: string, captureId: string, ordinal: number) =>
+      attempt(
+        () => {
+          if (
+            !Schema.is(LibraryExportGrant)({ grantId, captureId }) ||
+            !Schema.is(RecoveryOrdinal)(ordinal)
+          )
+            return fail("invalid");
+
+          const grant = read(
+            LibraryExportGrant,
+            "SELECT body FROM library_journal WHERE kind='export-grant' AND id=?",
+            grantId,
+          );
+
+          const captured = read(
+            LibraryRecoverySet,
+            "SELECT body FROM library_journal WHERE kind='set' AND id=?",
+            captureId,
+          );
+
+          if (
+            grant?.captureId !== captureId ||
+            captured === undefined ||
+            captured.sourceLineage !== refAt(ordinal).lineage
+          )
+            return fail("fenced");
+
+          const image =
+            read(
+              LibraryObjectImage,
+              "SELECT body FROM library_images WHERE set_id=? AND ordinal=?",
+              captureId,
+              ordinal,
+            ) ?? fail("incomplete");
+
+          return LibraryExportAuthorization.make({
+            captureId,
+            ordinal,
+            source: refAt(ordinal),
+            image,
+          });
+        },
+        { kind: "read" },
+      ),
     progress: (operationId: string, ordinal: number) =>
       attempt(
         () => ({
@@ -377,7 +495,17 @@ const makeLibraryRecoveryStore = (
             ref.lineage === state.stagingLineage &&
             ["staging", "activating"].includes(phase);
 
-          if (!active && !staging) return fail("fenced");
+          const resuming =
+            operationId !== null &&
+            state.operationId === operationId &&
+            state.operationKind === "capture" &&
+            state.phase === "resuming" &&
+            phase === "resuming" &&
+            ref.lineage === state.lineage;
+
+          if (!active && !staging && !resuming) return fail("fenced");
+
+          if (operationId !== null) ownedOperation(operationId, resuming ? "capture" : "restore");
 
           const matches = query(
             "SELECT ordinal,body FROM library_objects WHERE (class_name=? AND native_id=?) OR (lineage=? AND class_name=? AND logical_name=?)",
@@ -408,7 +536,7 @@ const makeLibraryRecoveryStore = (
             return previous.ordinal;
           }
 
-          if (phase === "activating") return fail("fenced");
+          if (phase === "activating" || resuming) return fail("fenced");
 
           query(
             "INSERT INTO library_objects(class_name,native_id,lineage,logical_name,body) VALUES (?,?,?,?,?)",
@@ -421,7 +549,7 @@ const makeLibraryRecoveryStore = (
 
           return row(Ordinal, "SELECT last_insert_rowid() AS ordinal")!.ordinal;
         },
-        operationId === null ? { kind: "normal" } : { kind: "operation", operationId },
+        operationId === null ? { kind: "normal" } : { kind: "freeze-operation", operationId },
       ),
     lookup: (className: string, nativeId: string) =>
       attempt(
@@ -467,13 +595,304 @@ const makeLibraryRecoveryStore = (
         },
         { kind: "read" },
       ),
+    captureInventory: (captureId: string, after = 0) =>
+      attempt(
+        () => {
+          if (!Schema.is(RecoveryOperationId)(captureId) || !Schema.is(RecoveryOrdinal)(after))
+            return fail("invalid");
+
+          const captured =
+            read(
+              LibraryRecoverySet,
+              "SELECT body FROM library_journal WHERE kind='set' AND id=?",
+              captureId,
+            ) ?? fail("incomplete");
+
+          const phase = phaseOf(captured.sourceLineage);
+
+          if (
+            captured.objectCount !==
+            count(
+              "SELECT COUNT(*) AS count FROM library_images i JOIN library_objects o ON o.ordinal=i.ordinal WHERE i.set_id=? AND o.lineage=?",
+              captureId,
+              captured.sourceLineage,
+            )
+          )
+            return fail("incomplete");
+
+          return query(
+            "SELECT o.ordinal,o.body FROM library_images i JOIN library_objects o ON o.ordinal=i.ordinal WHERE i.set_id=? AND o.lineage=? AND o.ordinal>? ORDER BY o.ordinal LIMIT 64",
+            captureId,
+            captured.sourceLineage,
+            after,
+          ).map((value): RegisteredLibraryObject => {
+            const item = Schema.decodeUnknownSync(
+              Schema.Struct({ ordinal: RecoveryOrdinal, body: Schema.String }),
+            )(value);
+
+            return {
+              ...Schema.decodeUnknownSync(Schema.fromJsonString(LibraryObjectRef))(item.body),
+              ordinal: item.ordinal,
+              phase,
+            };
+          });
+        },
+        { kind: "read" },
+      ),
+    beginCapture: (operationId: string, codeDigest: string) =>
+      attempt(
+        () => {
+          if (
+            !Schema.is(RecoveryOperationId)(operationId) ||
+            !Schema.is(RecoveryDigest)(codeDigest)
+          )
+            return fail("invalid");
+          const state = current();
+
+          if (state.operationId === operationId) {
+            const operation = read(
+              Operation,
+              "SELECT body FROM library_journal WHERE kind='operation' AND id=?",
+              operationId,
+            );
+
+            if (operation?.kind !== "capture" || operation.codeDigest !== codeDigest)
+              return fail("conflict");
+
+            return ownedOperation(operationId, "capture");
+          }
+
+          if (state.phase !== "ready") return fail("fenced");
+
+          if (
+            read(
+              Operation,
+              "SELECT body FROM library_journal WHERE kind='operation' AND id=?",
+              operationId,
+            ) !== undefined
+          )
+            return fail("conflict");
+
+          immutable(
+            "operation",
+            operationId,
+            JSON.stringify(
+              LibraryCaptureOperation.make({ kind: "capture", setId: null, codeDigest }),
+            ),
+          );
+          query("UPDATE library_lineages SET phase='frozen' WHERE lineage=?", state.lineage);
+
+          return save({ ...state, operationId, operationKind: "capture", phase: "frozen" });
+        },
+        { kind: "capture-begin", operationId },
+      ),
+    beginCaptureResume: (operationId: string) =>
+      attempt(
+        () => {
+          const state = ownedOperation(operationId, "capture");
+
+          if (state.phase === "resuming") return state;
+
+          if (state.phase !== "frozen") return fail("fenced");
+
+          const captured = read(
+            LibraryRecoverySet,
+            "SELECT body FROM library_journal WHERE kind='set' AND id=?",
+            operationId,
+          );
+
+          if (captured === undefined) return fail("incomplete");
+
+          if (
+            captured.sourceLineage !== state.lineage ||
+            captured.inventoryId !== state.inventoryId ||
+            captured.objectCount !==
+              count("SELECT COUNT(*) AS count FROM library_objects WHERE lineage=?", state.lineage)
+          )
+            return fail("conflict");
+
+          query("UPDATE library_lineages SET phase='resuming' WHERE lineage=?", state.lineage);
+
+          return save({ ...state, phase: "resuming" });
+        },
+        { kind: "capture-operation", operationId },
+      ),
+    acknowledgeResumed: (
+      operationId: string,
+      ordinal: number,
+      before: string,
+      after: string | null,
+    ) =>
+      attempt(
+        () => {
+          const state = ownedOperation(operationId, "capture");
+
+          if (state.phase !== "resuming" || refAt(ordinal).lineage !== state.lineage)
+            return fail("fenced");
+
+          if (!Schema.is(FreezeAck)({ before, after }) || before === after) return fail("invalid");
+
+          const previous = read(
+            FreezeAck,
+            "SELECT body FROM library_resumes WHERE operation_id=? AND ordinal=?",
+            operationId,
+            ordinal,
+          );
+
+          if (previous === undefined && after !== null) return fail("incomplete");
+
+          if (previous !== undefined && previous.before !== before) return fail("conflict");
+
+          if (previous?.after != null) return;
+
+          query(
+            "INSERT OR REPLACE INTO library_resumes VALUES (?,?,?)",
+            operationId,
+            ordinal,
+            JSON.stringify({ before, after }),
+          );
+        },
+        { kind: "capture-operation", operationId },
+      ),
+    resumeProgress: (operationId: string, ordinal: number) =>
+      attempt(
+        () => {
+          if (!Schema.is(RecoveryOperationId)(operationId) || !Schema.is(RecoveryOrdinal)(ordinal))
+            return fail("invalid");
+
+          return (
+            read(
+              FreezeAck,
+              "SELECT body FROM library_resumes WHERE operation_id=? AND ordinal=?",
+              operationId,
+              ordinal,
+            ) ?? null
+          );
+        },
+        { kind: "read" },
+      ),
+    completeCapture: (operationId: string) =>
+      attempt(
+        () => {
+          if (!Schema.is(RecoveryOperationId)(operationId)) return fail("invalid");
+
+          const completed = read(
+            LibraryRecoveryState,
+            "SELECT body FROM library_journal WHERE kind='capture-complete' AND id=?",
+            operationId,
+          );
+
+          // A stale retry only returns its historical result; it cannot release a later lease.
+          if (completed !== undefined) return completed;
+
+          authority.authorize({ kind: "capture-operation", operationId });
+          const state = ownedOperation(operationId, "capture");
+
+          if (state.phase !== "resuming") return fail("fenced");
+
+          const captured = read(
+            LibraryRecoverySet,
+            "SELECT body FROM library_journal WHERE kind='set' AND id=?",
+            operationId,
+          );
+
+          if (
+            captured === undefined ||
+            captured.objectCount !==
+              count(
+                "SELECT COUNT(*) AS count FROM library_resumes WHERE operation_id=? AND json_extract(body,'$.after') IS NOT NULL",
+                operationId,
+              )
+          )
+            return fail("incomplete");
+
+          query("UPDATE library_lineages SET phase='active' WHERE lineage=?", state.lineage);
+
+          const reopened = save({
+            ...Struct.omit(state, ["operationKind"]),
+            phase: "ready",
+            operationId: null,
+          });
+
+          immutable("capture-complete", operationId, JSON.stringify(reopened));
+
+          return reopened;
+        },
+        { kind: "read" },
+      ),
+    restoreIntent: (operationId: string) =>
+      attempt(
+        () => {
+          if (!Schema.is(RecoveryOperationId)(operationId)) return fail("invalid");
+
+          const operation = read(
+            Operation,
+            "SELECT body FROM library_journal WHERE kind='operation' AND id=?",
+            operationId,
+          );
+
+          if (operation?.kind === "capture") return fail("conflict");
+
+          if (operation?.intent === undefined) return null;
+
+          if (operation.setId !== operation.intent.setId) return fail("conflict");
+
+          return operation.intent;
+        },
+        { kind: "read" },
+      ),
+    beginRestore: (operationId: string, input: LibraryRestoreIntent) =>
+      attempt(
+        () => {
+          if (!Schema.is(RecoveryOperationId)(operationId)) return fail("invalid");
+
+          const decoded = Schema.decodeUnknownOption(LibraryRestoreIntent, {
+            onExcessProperty: "error",
+          })(input);
+
+          if (Option.isNone(decoded)) return fail("invalid");
+
+          const intent = decoded.value;
+
+          const operation = read(
+            Operation,
+            "SELECT body FROM library_journal WHERE kind='operation' AND id=?",
+            operationId,
+          );
+
+          if (operation !== undefined) {
+            if (
+              operation.kind === "capture" ||
+              operation.intent === undefined ||
+              operation.setId !== intent.setId ||
+              !sameRestoreIntent(operation.intent, intent)
+            )
+              return fail("conflict");
+
+            return ownedOperation(operationId);
+          }
+
+          const state = current();
+
+          if (state.phase !== "ready") return fail("fenced");
+          immutable(
+            "operation",
+            operationId,
+            JSON.stringify({ kind: "restore", setId: intent.setId, intent }),
+          );
+          query("UPDATE library_lineages SET phase='frozen' WHERE lineage=?", state.lineage);
+
+          return save({ ...state, operationId, operationKind: "restore", phase: "frozen" });
+        },
+        { kind: "begin", operationId },
+      ),
     beginFreeze: (operationId: string) =>
       attempt(
         () => {
           if (!Schema.is(RecoveryOperationId)(operationId)) return fail("invalid");
           const state = current();
 
-          if (state.operationId === operationId) return state;
+          if (state.operationId === operationId) return ownedOperation(operationId);
 
           if (state.phase !== "ready") return fail("fenced");
 
@@ -485,10 +904,10 @@ const makeLibraryRecoveryStore = (
             )
           )
             return fail("conflict");
-          immutable("operation", operationId, JSON.stringify({ setId: null }));
+          immutable("operation", operationId, JSON.stringify({ kind: "restore", setId: null }));
           query("UPDATE library_lineages SET phase='frozen' WHERE lineage=?", state.lineage);
 
-          return save({ ...state, operationId, phase: "frozen" });
+          return save({ ...state, operationId, operationKind: "restore", phase: "frozen" });
         },
         { kind: "begin", operationId },
       ),
@@ -500,7 +919,7 @@ const makeLibraryRecoveryStore = (
     ) =>
       attempt(
         () => {
-          const state = ownedOperation(operationId);
+          const state = ownedOperation(operationId, "either");
           const ref = refAt(ordinal);
 
           if (state.phase !== "frozen" || ref.lineage !== state.lineage) return fail("fenced");
@@ -529,12 +948,12 @@ const makeLibraryRecoveryStore = (
             JSON.stringify({ before, after }),
           );
         },
-        { kind: "operation", operationId },
+        { kind: "freeze-operation", operationId },
       ),
     recordImage: (operationId: string, ordinal: number, image: LibraryObjectImage) =>
       attempt(
         () => {
-          const state = ownedOperation(operationId);
+          const state = ownedOperation(operationId, "either");
           const ref = refAt(ordinal);
 
           const ack = read(
@@ -560,17 +979,43 @@ const makeLibraryRecoveryStore = (
           if (previous && previous.body !== body) return fail("conflict");
           query("INSERT OR IGNORE INTO library_images VALUES (?,?,?)", operationId, ordinal, body);
         },
-        { kind: "operation", operationId },
+        { kind: "freeze-operation", operationId },
       ),
-    seal: (operationId: string, allocatorFloor: number, codeDigest: string) =>
-      attempt(
+    seal: Effect.fnUntraced(function* (
+      operationId: string,
+      allocatorFloor: number,
+      codeDigest: string,
+    ): Effect.fn.Return<LibraryRecoverySet, LibraryRecoveryError> {
+      const capturedAt = yield* Clock.currentTimeMillis;
+
+      return yield* attempt(
         () => {
-          const state = ownedOperation(operationId);
+          const state = ownedOperation(operationId, "either");
+
+          const operation = read(
+            Operation,
+            "SELECT body FROM library_journal WHERE kind='operation' AND id=?",
+            operationId,
+          );
 
           if (state.phase !== "frozen") return fail("fenced");
 
-          if (!Schema.is(RecoveryOrdinal)(allocatorFloor) || !Schema.is(RecoveryDigest)(codeDigest))
+          if (
+            !Schema.is(RecoveryOrdinal)(allocatorFloor) ||
+            !Schema.is(RecoveryDigest)(codeDigest) ||
+            !Schema.is(RecoveryOrdinal)(capturedAt)
+          )
             return fail("invalid");
+
+          if (operation?.kind === "capture" && operation.codeDigest !== codeDigest)
+            return fail("conflict");
+
+          if (
+            operation?.kind !== "capture" &&
+            operation?.intent !== undefined &&
+            operation.intent.codeDigest !== codeDigest
+          )
+            return fail("conflict");
 
           const objectCount = count(
             "SELECT COUNT(*) AS count FROM library_objects WHERE lineage=?",
@@ -585,6 +1030,12 @@ const makeLibraryRecoveryStore = (
           if (objectCount === 0 || objectCount !== imageCount) return fail("incomplete");
           const floor = Math.max(state.allocatorFloor, allocatorFloor);
 
+          const previous = read(
+            LibraryRecoverySet,
+            "SELECT body FROM library_journal WHERE kind='set' AND id=?",
+            operationId,
+          );
+
           const captured = LibraryRecoverySet.make({
             id: operationId,
             sourceLineage: state.lineage,
@@ -592,22 +1043,31 @@ const makeLibraryRecoveryStore = (
             allocatorFloor: floor,
             objectCount,
             codeDigest,
+            capturedAt: previous?.capturedAt ?? capturedAt,
           });
 
-          immutable("set", operationId, JSON.stringify(captured));
+          const retained =
+            previous !== undefined &&
+            previous.capturedAt === undefined &&
+            state.operationKind !== "capture"
+              ? Struct.omit(captured, ["capturedAt"])
+              : captured;
+
+          immutable("set", operationId, JSON.stringify(retained));
           save({ ...state, allocatorFloor: floor });
 
-          return captured;
+          return retained;
         },
-        { kind: "operation", operationId },
-      ),
+        { kind: "freeze-operation", operationId },
+      );
+    }),
     prepareRestore: (operationId: string, setId: string) =>
       attempt(
         () => {
           const state = ownedOperation(operationId);
 
           const operation = read(
-            Operation,
+            RestoreOperation,
             "SELECT body FROM library_journal WHERE kind='operation' AND id=?",
             operationId,
           )!;
@@ -646,7 +1106,7 @@ const makeLibraryRecoveryStore = (
           );
           query(
             "UPDATE library_journal SET body=? WHERE kind='operation' AND id=?",
-            JSON.stringify({ setId }),
+            JSON.stringify({ ...operation, kind: "restore", setId }),
             operationId,
           );
 

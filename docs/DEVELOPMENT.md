@@ -95,3 +95,9 @@ assets before `pnpm --filter @kitties/desktop package`. See the
 and [staging authentication gate](LIBRARY_STAGING_AUTH.md) for compiled origins.
 No configuration means an unavailable Library connection with usable local
 preferences. No deployment or production migration runs on application startup.
+
+`pnpm test:library-archive` exercises capture, source resume and encrypted retained
+restore in isolated local workerd/R2 storage, including deliberate process death.
+See [Library archives](LIBRARY_ARCHIVES.md) for the permanent journal, operation
+identity, code-digest configuration and retention limits. Production cutover
+remains disabled.

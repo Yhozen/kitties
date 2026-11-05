@@ -4,8 +4,8 @@ The real skill-library slice runs through Alchemy Domain and the shared Foldkit
 assets in Chromium and a normal release Tauri Debian package. Native preferences
 survive process restart. A local HTTPS issuer proves the packaged system-browser
 OAuth flow, commands, live views, expiry and reconnection. **The overall release
-gate is incomplete:** live Cloudflare Access, prompt idle cancellation, complete
-backup/reset/purge integration and other desktop platforms remain open. No merge,
+gate is incomplete:** live Cloudflare Access, prompt idle cancellation,
+reset/purge integration and other desktop GUI platforms remain open. No merge,
 deployment, production migration or provider configuration was performed.
 
 ## Review stack
@@ -40,6 +40,7 @@ pnpm test:coverage
 pnpm build
 pnpm --filter @kitties/kittyd check
 pnpm test:library
+pnpm test:library-archive
 pnpm test:library-bundle
 pnpm test:library-browser
 pnpm test:library-browser development
@@ -65,15 +66,17 @@ resource, state and PKCE checks remain. Fixtures do not mount in the application
 | --- | --- |
 | Exact backend snapshot | Frozen install, Vite+ check, 225 tests in 20 files; 12 native recovery/Home cases and four local Worker bundles pass. |
 | Exact shared-client snapshot | Frozen install, Vite+ check, 324 tests in 31 files with coverage floors; all three recursive builds pass. |
-| Complete repository | Frozen install and Vite+ formatting/lint/types pass with 0 errors and 629 advisory warnings; all 329 tests in 32 files pass with coverage floors intact; all three recursive builds and guest typecheck pass. |
+| Pre-archive repository snapshot | Effect CI `41960681861` at `7624c92` passes frozen install, Vite+ formatting/lint/types (0 errors, 633 advisory warnings), all 336 tests in 32 files with coverage floors, local workflow/recovery/browser gates, all three recursive builds and guest typecheck. Archive additions require separate final validation. |
+| Archive repository validation | Vite+ formatting/lint/types pass with 0 errors and 689 advisory warnings; all 381 tests in 36 files pass with coverage floors. Three recursive builds, guest typecheck, four gateway bundles, 12 native Library/Home cases and eight native workflow cases pass. |
 | Native crate | 19 actual tests pass: fixed Store/ACL, public OAuth callback protocol, exact HTTP scopes, redirects/cookies and cancellation before headers. |
 | Browser production and development | Five cases pass in each mode; development requires the actual Vite client and source entry. Cases cover commands and source barriers, another tab's live view, acknowledged Preact/Foldkit preferences, mobile/keyboard and expiry/reconnect. |
 | Packaged Linux, no configuration | Four cases pass: shared UI, fail-closed sign-in, es/light native save and a new process loading the record. |
 | Tauri development | Five cases pass using official CLI `dev --no-watch`, real Vite, stock incognito/CSP, native preferences and a new process. |
 | Packaged Linux, local issuer | Eleven cases pass: real external browser Deny/Allow and loopback callback, native trust/handshake, proposal/review/accept/remove, peer catalogue and selected-detail updates, expiry, same-authority reauthentication, credentials absent after relaunch, committed response loss with stable-intent retry, and valid-token Domain command denial. |
+| Library retained archives | Four native workerd/R2 scenarios pass: capture/rearm crashes preserve workflow permission and pending callbacks; lost upload acknowledgement reuses the encrypted winner; retained restore works after all local image buffers are removed; same-ID replay preserves later writes and the allocator floor. |
 | Workerd prompt idle abort | Two strict failures remain. A plain-JS control sees no abort/cancel until a body chunk is written. Absolute expiry passes separately. |
 | Native plugin prompt idle-body cancel | Stock 2.8.3: one control passes, two strict regressions fail. Resource-table removal does not settle a pending read or close its socket until output/EOF. |
-| Platform CI | The original macOS, Windows and Linux `cargo check --locked --tests` matrix passed; Linux also ran native tests. The expanded executable-build and native-test matrix for all three is pending. |
+| Platform CI | Run `41960681826` at `7624c92` built the actual executables on macOS, Windows and Ubuntu. Native tests pass: 19 on macOS and Ubuntu, 18 on Windows (the filesystem-permission case is Unix-only). The Windows test target now receives the standard Common Controls v6 manifest through the pinned resource library's supported API. |
 | Real Access / other OS GUI runtime | Not proven; Linux runtime evidence does not establish macOS/Windows runtime or signing. |
 
 The package proof uses the actual extracted Debian binary, shipped incognito
@@ -121,6 +124,18 @@ Evidence lives in gitignored `.context/`; commands above recreate it. Key runs:
   `reply-loss-native-proof.json` (six cases).
 - Stock/candidate cancellation: `.context/native-http-cancel-probe.md`,
   `.context/native-http-cancel-candidate/`, `.context/native-http-cancel-promotion/evidence/`.
+- Platform CI: `.context/library-desktop/native-matrix-fixed.json` and
+  `windows-build-test-fixed.log`; failures and diagnosis remain in
+  `macos-plist-investigation.md` and `windows-manifest-investigation.md`.
+- Retained archive: `.context/library-archive-check/1793849256632-d8d0dedd/results.json`
+  and `HANDOFF.md`; four passing native scenarios and seven clean owned process
+  groups. The generated-bundle destructive-capture mutant fails in
+  `1793849311001-bf7e5b43/`; `restoration.json` proves exact bundle/source restoration.
+- Archive repository checks: `.context/library-archive-final-{check,coverage,build,guest,bundle,library,workflows}.log`.
+  Focused regressions preserve capture/restore identity before I/O, refuse expired
+  archives before freeze, cancel stalled R2 bodies, and retain expected HTTP refusal
+  meanings. Natural red/green proof covers the stale freeze token found by the
+  native run; earlier failed runs remain under `library-archive-check/`.
 - Mutation logs cover Domain, migration/recovery, snapshot coherence, leaf/host,
   connection classification/lifecycle, device/native ACL and fixture OAuth.
   Each targeted bug failed an independent assertion and original bytes were restored.
@@ -132,9 +147,12 @@ The isolated client build reproduces both exactly.
 
 ## Requirements still incomplete
 
-`KITTIES_LIBRARY_CUTOVER_ENABLED` remains false. Local sealed-set restore preserves
-raw receipts, projections, pending delivery and allocator floors, but retained
-export upload/retention, owner reset and purge do not cover every Domain store.
+`KITTIES_LIBRARY_CUTOVER_ENABLED` remains false. Capture and encrypted retained
+restore preserve raw receipts, projections, pending delivery and allocator floors;
+see [Library archives](LIBRARY_ARCHIVES.md). The permanent archive/recovery journal
+must survive. Local R2 does not establish cloud lock/lifecycle enforcement.
+Owner reset, administrative-buffer pruning and retired-object erasure remain open.
+Authoritative live Domain event/deduplication history has no supported compaction API.
 Arbitrary independent per-object PITR is unsupported. An old Worker that reopens
 legacy writes is not a safe rollback after new Domain writes.
 

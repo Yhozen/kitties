@@ -6,11 +6,13 @@ import * as Schema from "effect/Schema";
 import { RecoveryDO } from "./recovery-store.ts";
 import type { LibraryRecoveryStore } from "./library-recovery-store.ts";
 import {
+  LibraryExportAuthorization,
   LibraryLineage,
   LibraryObjectImage,
   LibraryRecoveryError,
   LibraryRecoverySet,
   LibraryRecoveryState,
+  LibraryRestoreIntent,
   RecoveryOperationId,
   RecoveryOrdinal,
   RegisteredLibraryObject,
@@ -109,6 +111,34 @@ export class LibraryControl extends Context.Service<
             root().libraryAuthorizeCapture(operationId, captureId, ordinal),
           ),
         progress: (id, ordinal) => call(Progress, () => root().libraryProgress(id, ordinal)),
+        captureInventory: (id, after) =>
+          call(Schema.mutable(Schema.Array(RegisteredLibraryObject)), () =>
+            root().libraryCaptureInventory(id, after),
+          ),
+        beginCapture: (id, digest) =>
+          call(LibraryRecoveryState, () => root().libraryBeginCapture(id, digest)),
+        beginCaptureResume: (id) =>
+          call(LibraryRecoveryState, () => root().libraryBeginCaptureResume(id)),
+        acknowledgeResumed: (id, ordinal, before, after) =>
+          call(Schema.Undefined, () =>
+            root().libraryAcknowledgeResumed(id, ordinal, before, after),
+          ),
+        resumeProgress: (id, ordinal) =>
+          call(Progress.fields.frozen, () => root().libraryResumeProgress(id, ordinal)),
+        completeCapture: (id) =>
+          call(LibraryRecoveryState, () => root().libraryCompleteCapture(id)),
+        captureCompletion: (id) =>
+          call(Schema.NullOr(LibraryRecoveryState), () => root().libraryCaptureCompletion(id)),
+        grantExport: (grantId, captureId) =>
+          call(LibraryRecoverySet, () => root().libraryGrantExport(grantId, captureId)),
+        authorizeExport: (grantId, captureId, ordinal) =>
+          call(LibraryExportAuthorization, () =>
+            root().libraryAuthorizeExport(grantId, captureId, ordinal),
+          ),
+        restoreIntent: (id) =>
+          call(Schema.NullOr(LibraryRestoreIntent), () => root().libraryRestoreIntent(id)),
+        beginRestore: (id, intent) =>
+          call(LibraryRecoveryState, () => root().libraryBeginRestore(id, intent)),
         beginFreeze: (id) => call(LibraryRecoveryState, () => root().libraryBeginFreeze(id)),
         acknowledgeFreeze: (id, ordinal, before, after) =>
           call(Schema.Undefined, () => root().libraryAcknowledgeFreeze(id, ordinal, before, after)),
@@ -157,6 +187,7 @@ export const LibraryControlAdapters = Layer.effectContext(
       register: (ref, operationId) => control.register(ref, operationId),
       lookup: control.lookup,
       authorizeCapture: control.authorizeCapture,
+      authorizeExport: control.authorizeExport,
     }).pipe(
       Context.add(LibraryMigrationControl, {
         status: control.status,

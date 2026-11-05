@@ -11,7 +11,15 @@ import {
 
 export type LibraryRecoveryAccess =
   | { readonly kind: "read" | "normal" }
-  | { readonly kind: "begin" | "operation"; readonly operationId: string };
+  | {
+      readonly kind:
+        | "begin"
+        | "operation"
+        | "capture-begin"
+        | "capture-operation"
+        | "freeze-operation";
+      readonly operationId: string;
+    };
 
 /** Called synchronously inside the journal's SQL transaction, before its body. */
 export interface LibraryRecoveryAuthority {
@@ -26,6 +34,12 @@ const GlobalControl = Schema.Struct({
 
 const LibraryBody = Schema.Struct({ body: Schema.String });
 const CompletedPublication = Schema.Struct({ libraryEpoch: RecoveryOrdinal });
+
+const OperationKind = Schema.Struct({
+  kind: Schema.optionalKey(Schema.Literals(["capture", "restore"])),
+});
+
+const GlobalOperation = Schema.Struct({ epoch: RecoveryOrdinal });
 
 /** All three operations require the caller's shared SQL transaction. */
 const makeLibraryRecoveryAuthority = (database: LibraryControlDatabase, now: () => number) => {
@@ -52,6 +66,32 @@ const makeLibraryRecoveryAuthority = (database: LibraryControlDatabase, now: () 
   const validateOperation = (operationId: string) => {
     if (!Schema.is(RecoveryOperationId)(operationId))
       throw new LibraryRecoveryError({ reason: "invalid" });
+  };
+
+  const operationKind = (operationId: string) => {
+    const row = database.query(
+      "SELECT body FROM library_journal WHERE kind='operation' AND id=?",
+      operationId,
+    )[0];
+
+    return row === undefined
+      ? undefined
+      : (Schema.decodeUnknownSync(Schema.fromJsonString(OperationKind))(
+          Schema.decodeUnknownSync(LibraryBody)(row).body,
+        ).kind ?? "restore");
+  };
+
+  const globalOperation = (operationId: string) => {
+    const row = database.query(
+      "SELECT body FROM library_journal WHERE kind='global-operation' AND id=?",
+      operationId,
+    )[0];
+
+    return row === undefined
+      ? undefined
+      : Schema.decodeUnknownSync(Schema.fromJsonString(GlobalOperation))(
+          Schema.decodeUnknownSync(LibraryBody)(row).body,
+        );
   };
 
   const publication = (operationId: string) => {
@@ -83,6 +123,31 @@ const makeLibraryRecoveryAuthority = (database: LibraryControlDatabase, now: () 
   const beginGlobal = (operationId: string) => {
     const current = control();
     const unfinished = library();
+
+    // Capture identities can never acquire or release a destructive recovery fence.
+    if (operationKind(operationId) === "capture")
+      throw new LibraryRecoveryError({ reason: "conflict" });
+
+    if (unfinished?.operationKind === "capture" && unfinished.phase !== "ready")
+      throw new LibraryRecoveryError({ reason: "fenced" });
+
+    // Preserve the last known pre-journal destructive identity before overwriting CURRENT.
+    if (current.operation_id !== null && globalOperation(current.operation_id) === undefined)
+      database.query(
+        "INSERT INTO library_journal(kind,id,body) VALUES ('global-operation',?,?)",
+        current.operation_id,
+        JSON.stringify({ epoch: current.epoch }),
+      );
+
+    const reserved = globalOperation(operationId);
+
+    if (
+      reserved !== undefined &&
+      (current.mode !== "recovering" ||
+        current.operation_id !== operationId ||
+        current.epoch !== reserved.epoch)
+    )
+      throw new LibraryRecoveryError({ reason: "conflict" });
 
     // A published Library identity cannot become a later legacy recovery incarnation.
     if (publication(operationId) !== undefined || completedPublication(operationId) !== undefined)
@@ -120,6 +185,11 @@ const makeLibraryRecoveryAuthority = (database: LibraryControlDatabase, now: () 
       operationId,
     );
     database.query("UPDATE recovery_runs SET review=1 WHERE epoch<?", epoch);
+    database.query(
+      "INSERT INTO library_journal(kind,id,body) VALUES ('global-operation',?,?)",
+      operationId,
+      JSON.stringify({ epoch }),
+    );
 
     return { epoch, operation_id: operationId, mode: "recovering" as const };
   };
@@ -127,6 +197,9 @@ const makeLibraryRecoveryAuthority = (database: LibraryControlDatabase, now: () 
   const completeGlobal = (operationId: string) => {
     const current = control();
     const unfinished = library();
+
+    if (operationKind(operationId) === "capture")
+      throw new LibraryRecoveryError({ reason: "conflict" });
 
     if (
       current.operation_id !== operationId ||
@@ -190,11 +263,58 @@ const makeLibraryRecoveryAuthority = (database: LibraryControlDatabase, now: () 
         beginGlobal(access.operationId);
 
         return;
+      case "capture-begin": {
+        validateOperation(access.operationId);
+        const current = control();
+
+        if (current.mode !== "ready") throw new LibraryRecoveryError({ reason: "fenced" });
+
+        if (
+          current.operation_id === access.operationId ||
+          globalOperation(access.operationId) !== undefined
+        )
+          throw new LibraryRecoveryError({ reason: "conflict" });
+
+        return;
+      }
+
+      case "freeze-operation":
+      case "capture-operation": {
+        validateOperation(access.operationId);
+        const state = library();
+        const kind = operationKind(access.operationId);
+
+        if (
+          state?.operationId !== access.operationId ||
+          state.phase === "ready" ||
+          state.phase === "importing" ||
+          (state.operationKind ?? "restore") !== kind
+        )
+          throw new LibraryRecoveryError({ reason: "fenced" });
+
+        if (kind === "capture") {
+          if (control().mode !== "ready") throw new LibraryRecoveryError({ reason: "fenced" });
+
+          return;
+        }
+
+        if (access.kind === "capture-operation")
+          throw new LibraryRecoveryError({ reason: "fenced" });
+
+        authorize({ kind: "operation", operationId: access.operationId });
+
+        return;
+      }
+
       case "operation": {
         validateOperation(access.operationId);
         const current = control();
 
-        if (current.mode !== "recovering" || current.operation_id !== access.operationId)
+        if (
+          operationKind(access.operationId) === "capture" ||
+          current.mode !== "recovering" ||
+          current.operation_id !== access.operationId
+        )
           throw new LibraryRecoveryError({ reason: "fenced" });
 
         return;

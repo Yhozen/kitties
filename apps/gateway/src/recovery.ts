@@ -1,3 +1,7 @@
+import {
+  LibraryArchiveOperations,
+  LibraryRetainedRestoreRequest,
+} from "./library-archive-operations.ts";
 import * as Match from "effect/Match";
 import { stored, ExecutionRecord } from "./stored-records.ts";
 import * as Context from "effect/Context";
@@ -15,10 +19,12 @@ import { Export, Restore, Purge } from "./recovery-definition.ts";
 import { readBody } from "./request.ts";
 import { LibraryControl } from "./library-control.ts";
 import {
+  LibraryCaptureRequest,
   LibraryRecoveryCoordinator,
   LibraryRestoreRequest,
 } from "./library-recovery-coordinator.ts";
-import { RecoveryOperationId } from "./library-recovery-records.ts";
+import { RecoveryDigest, RecoveryOperationId } from "./library-recovery-records.ts";
+import { libraryRecoveryFailures } from "./library-recovery-http.ts";
 
 const json = <Value>(body: Value, status = 200) =>
   HttpServerResponse.fromWeb(
@@ -30,10 +36,12 @@ const makeRecovery = Effect.gen(function* () {
   const env = (yield* Cloudflare.WorkerEnvironment) as {
     KITTIES_KEK: string;
     KITTIES_LIBRARY_CUTOVER_ENABLED: string;
+    KITTIES_LIBRARY_CODE_DIGEST: string;
   };
 
   const libraryControl = yield* LibraryControl;
   const libraryRecovery = yield* LibraryRecoveryCoordinator;
+  const libraryArchives = yield* LibraryArchiveOperations;
   const engine = yield* WorkflowEngine.WorkflowEngine;
 
   const homes = yield* HomeDO,
@@ -79,6 +87,9 @@ const makeRecovery = Effect.gen(function* () {
           if (env.KITTIES_LIBRARY_CUTOVER_ENABLED !== "true")
             return json({ code: "LIBRARY_CUTOVER_DISABLED", params: {} }, 409);
 
+          if (!Schema.is(RecoveryDigest)(env.KITTIES_LIBRARY_CODE_DIGEST))
+            return json({ code: "LIBRARY_CODE_UNAVAILABLE", params: {} }, 409);
+
           if (path === "/v1/recovery/library/import") {
             const body = yield* readBody(
               request,
@@ -91,7 +102,28 @@ const makeRecovery = Effect.gen(function* () {
           if (path === "/v1/recovery/library/restore") {
             const body = yield* readBody(request, LibraryRestoreRequest);
 
+            if (body.codeDigest !== env.KITTIES_LIBRARY_CODE_DIGEST)
+              return json({ code: "LIBRARY_CODE_CONFLICT", params: {} }, 409);
+
             return json(yield* libraryRecovery.restore(body));
+          }
+
+          if (path === "/v1/recovery/library/export") {
+            const body = yield* readBody(request, LibraryCaptureRequest);
+
+            if (body.codeDigest !== env.KITTIES_LIBRARY_CODE_DIGEST)
+              return json({ code: "LIBRARY_CODE_CONFLICT", params: {} }, 409);
+
+            return json(yield* libraryArchives.export(body));
+          }
+
+          if (path === "/v1/recovery/library/restore-retained") {
+            const body = yield* readBody(request, LibraryRetainedRestoreRequest);
+
+            if (body.codeDigest !== env.KITTIES_LIBRARY_CODE_DIGEST)
+              return json({ code: "LIBRARY_CODE_CONFLICT", params: {} }, 409);
+
+            return json(yield* libraryArchives.restore(body));
           }
         }
 
@@ -250,7 +282,7 @@ const makeRecovery = Effect.gen(function* () {
         }
 
         return json({ code: "NOT_FOUND", params: {} }, 404);
-      }),
+      }).pipe(Effect.catchTags(libraryRecoveryFailures)),
     discover,
     actor,
     tick: () =>

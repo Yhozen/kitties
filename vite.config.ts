@@ -227,6 +227,10 @@ export default defineConfig({
   run: {
     tasks: {
       verify: { command: "vp check && vp test run", cache: true },
+      "library-archive-check": {
+        command: "node scripts/testing/library-archive/run.mjs",
+        cache: false,
+      },
       "library-check": { command: "node scripts/testing/library/run.mjs", cache: false },
       "library-bundle-check": {
         command: "node scripts/testing/library/bundle-gateway.mjs",

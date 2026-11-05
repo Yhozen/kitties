@@ -8,7 +8,10 @@ import * as Effect from "effect/Effect";
 import * as Match from "effect/Match";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
+import * as Struct from "effect/Struct";
 import {
+  LibraryExportAuthorization,
+  LibraryObjectRef,
   LibraryObjectImage,
   LibraryRecoveryState,
   RecoveryDigest,
@@ -61,6 +64,12 @@ export const LibraryAdminRequest = Schema.Union([
     operationId: RecoveryOperationId,
   }),
   Schema.Struct({ _tag: Schema.Literal("Activate"), operationId: RecoveryOperationId }),
+  Schema.Struct({ _tag: Schema.Literal("ResumeCapture"), operationId: RecoveryOperationId }),
+  Schema.Struct({
+    _tag: Schema.Literal("VerifyResumed"),
+    operationId: RecoveryOperationId,
+    before: Nonce,
+  }),
   Schema.Struct({
     _tag: Schema.Literal("VerifyFrozen"),
     operationId: RecoveryOperationId,
@@ -75,6 +84,13 @@ export const LibraryAdminRequest = Schema.Union([
     _tag: Schema.Literal("ReadPart"),
     captureId: RecoveryOperationId,
     operationId: RecoveryOperationId,
+    row: Positive,
+    part: RecoveryOrdinal.check(Schema.isLessThan(512)),
+  }),
+  Schema.Struct({
+    _tag: Schema.Literal("ExportPart"),
+    grantId: RecoveryOperationId,
+    captureId: RecoveryOperationId,
     row: Positive,
     part: RecoveryOrdinal.check(Schema.isLessThan(512)),
   }),
@@ -105,6 +121,7 @@ const Guard = Schema.Struct({
   alarm: Schema.NullOr(RecoveryOrdinal),
   verified: Schema.NullOr(RecoveryDigest),
   activating: Schema.NullOr(Nonce),
+  resuming: Schema.optionalKey(Schema.NullOr(Nonce)),
 });
 
 type Guard = typeof Guard.Type;
@@ -164,6 +181,7 @@ const ScheduledRow = Schema.Struct({
 export const LibraryAdminStatus = Schema.Struct({
   nonce: Nonce,
   activating: Schema.NullOr(Nonce),
+  resuming: Schema.NullOr(Nonce),
   before: Schema.NullOr(Nonce),
   initialized: Schema.Boolean,
   outboxPending: Schema.Boolean,
@@ -238,6 +256,11 @@ export interface LibraryObjectEnvironment {
     operationId: string,
     captureId: string,
   ) => Effect.Effect<LibraryObjectImage, LibraryImageError>;
+  /** Absent until the host wires the control journal's immutable-set grant. */
+  readonly authorizeExport?: (
+    grantId: string,
+    captureId: string,
+  ) => Effect.Effect<LibraryExportAuthorization, LibraryImageError>;
   readonly closeSockets: () => void;
   readonly evict: () => void;
 }
@@ -333,9 +356,17 @@ const makeLibraryObjectAdmin = (environment: LibraryObjectEnvironment) =>
       (identity.phase === "active" ||
         identity.phase === "importing" ||
         (identity.phase === "activating" &&
+          recovery?.operationKind !== "capture" &&
           guard().verified !== null &&
           guard().activating !== null &&
-          recovery?.operationId === guard().operationId)) &&
+          recovery?.operationId === guard().operationId) ||
+        (identity.phase === "resuming" &&
+          recovery?.operationKind === "capture" &&
+          recovery.phase === "resuming" &&
+          recovery.lineage === identity.lineage &&
+          recovery.operationId === guard().operationId &&
+          guard().verified !== null &&
+          guard().resuming != null)) &&
       guard().mode === "active";
 
     const hold = Effect.gen(function* () {
@@ -359,7 +390,17 @@ const makeLibraryObjectAdmin = (environment: LibraryObjectEnvironment) =>
           if (table !== "alchemy_alarm_schema") sql.exec(`DELETE FROM ${table}`);
         }
 
-        saveGuard({ ...guard(), mode: "frozen", held: true, alarm });
+        const current = guard();
+
+        saveGuard({
+          ...current,
+          // Active service has outlived its old freeze proof. An already frozen
+          // guard must retain its original proof across constructor holds.
+          before: current.mode === "active" ? null : current.before,
+          mode: "frozen",
+          held: true,
+          alarm,
+        });
       });
       yield* storage.clearAlarm;
     });
@@ -369,6 +410,7 @@ const makeLibraryObjectAdmin = (environment: LibraryObjectEnvironment) =>
     const status = () => ({
       nonce,
       activating: guard().activating,
+      resuming: guard().resuming ?? null,
       before: guard().before,
       initialized,
       outboxPending: [...storage.kv.list({ prefix: "outbox:", limit: 1 })].length > 0,
@@ -405,6 +447,14 @@ const makeLibraryObjectAdmin = (environment: LibraryObjectEnvironment) =>
     const frozen = (operationId: string) =>
       own(operationId) && !initialized && guard().held && guard().mode === "frozen";
 
+    const restoreOwned = (operationId: string) =>
+      own(operationId) && recovery?.operationKind !== "capture";
+
+    const captureOwned = (operationId: string) =>
+      own(operationId) &&
+      recovery?.operationKind === "capture" &&
+      identity?.lineage === recovery.lineage;
+
     const emptyJournal = (
       digest: string,
       mode: Journal["mode"],
@@ -432,6 +482,63 @@ const makeLibraryObjectAdmin = (environment: LibraryObjectEnvironment) =>
       left.digest === right.digest &&
       left.kvCount === right.kvCount &&
       left.sqlCount === right.sqlCount;
+
+    const readCapturedPart = (
+      captureId: string,
+      rowNumber: number,
+      partNumber: number,
+      expected: LibraryObjectImage | null,
+    ) => {
+      const value = journal(captureId);
+
+      if (value?.stage !== 5 || value.mode !== "capture") return fail("incomplete");
+
+      if (expected !== null && !sameImage(manifest(value), expected)) return fail("conflict");
+
+      const row =
+        read(
+          StoredRow,
+          "SELECT kind,key,digest,body FROM library_admin_rows WHERE id=? AND row_number=?",
+          captureId,
+          rowNumber,
+        ) ?? fail("invalid");
+
+      const parts = Math.ceil(row.body.length / LIBRARY_IMAGE_PART_CHARS);
+
+      if (partNumber >= parts) return fail("invalid");
+
+      const result = Reply.Part({
+        value: LibraryImagePart.make({
+          row: rowNumber,
+          kind: row.kind,
+          key: row.key,
+          digest: row.digest,
+          part: partNumber,
+          parts,
+          chars: row.body.length,
+          chunk: row.body.slice(
+            partNumber * LIBRARY_IMAGE_PART_CHARS,
+            (partNumber + 1) * LIBRARY_IMAGE_PART_CHARS,
+          ),
+        }),
+      });
+
+      if (libraryImageBytes(JSON.stringify(result)) > LIBRARY_IMAGE_RESPONSE_BYTES)
+        return fail("limit");
+
+      return result;
+    };
+
+    const releaseHeld = () => {
+      storage.kv.delete("outbox-lease");
+      storage.kv.delete("bf:q-lease");
+
+      for (const table of tables) {
+        sql.exec(`DELETE FROM ${table}`);
+        sql.exec(`INSERT INTO ${table} SELECT * FROM library_admin_hold_${table}`);
+        sql.exec(`DELETE FROM library_admin_hold_${table}`);
+      }
+    };
 
     const append = (
       id: string,
@@ -621,6 +728,8 @@ const makeLibraryObjectAdmin = (environment: LibraryObjectEnvironment) =>
                 operationId: input.operationId,
                 before:
                   current.operationId === input.operationId ? (current.before ?? nonce) : nonce,
+                resuming:
+                  current.operationId === input.operationId ? (current.resuming ?? null) : null,
               }),
             );
 
@@ -632,7 +741,9 @@ const makeLibraryObjectAdmin = (environment: LibraryObjectEnvironment) =>
             if (
               !own(input.operationId) ||
               guard().operationId !== input.operationId ||
-              (guard().mode !== "frozen" && guard().activating === null)
+              (guard().mode !== "frozen" &&
+                guard().activating === null &&
+                !(captureOwned(input.operationId) && guard().resuming != null))
             )
               return Reply.Rejected({ reason: "fenced" });
             environment.evict();
@@ -673,50 +784,36 @@ const makeLibraryObjectAdmin = (environment: LibraryObjectEnvironment) =>
                 ? null
                 : yield* environment.authorizeCapture(input.operationId, input.captureId);
 
-            const value = journal(input.captureId);
+            return readCapturedPart(input.captureId, input.row, input.part, authorized);
+          }),
+        ),
+        Match.tag("ExportPart", (input) =>
+          Effect.gen(function* () {
+            if (identity === null || environment.authorizeExport === undefined)
+              return Reply.Rejected({ reason: "fenced" });
 
-            if (value?.stage !== 5 || value.mode !== "capture") return fail("incomplete");
+            const source = identity;
+            const authorized = yield* environment.authorizeExport(input.grantId, input.captureId);
 
-            if (authorized !== null && !sameImage(manifest(value), authorized))
-              return fail("conflict");
+            if (
+              authorized.captureId !== input.captureId ||
+              authorized.ordinal !== source.ordinal ||
+              Struct.keys(LibraryObjectRef.fields).some(
+                (key) => authorized.source[key] !== source[key],
+              )
+            )
+              return Reply.Rejected({ reason: "fenced" });
 
-            const row =
-              read(
-                StoredRow,
-                "SELECT kind,key,digest,body FROM library_admin_rows WHERE id=? AND row_number=?",
-                input.captureId,
-                input.row,
-              ) ?? fail("invalid");
-
-            const parts = Math.ceil(row.body.length / LIBRARY_IMAGE_PART_CHARS);
-
-            if (input.part >= parts) return fail("invalid");
-
-            const part = LibraryImagePart.make({
-              row: input.row,
-              kind: row.kind,
-              key: row.key,
-              digest: row.digest,
-              part: input.part,
-              parts,
-              chars: row.body.length,
-              chunk: row.body.slice(
-                input.part * LIBRARY_IMAGE_PART_CHARS,
-                (input.part + 1) * LIBRARY_IMAGE_PART_CHARS,
-              ),
-            });
-
-            const result = Reply.Part({ value: part });
-
-            if (libraryImageBytes(JSON.stringify(result)) > LIBRARY_IMAGE_RESPONSE_BYTES)
-              return fail("limit");
-
-            return result;
+            return readCapturedPart(input.captureId, input.row, input.part, authorized.image);
           }),
         ),
         Match.tag("BeginLoad", (input) =>
           Effect.gen(function* () {
-            if (!frozen(input.operationId) || identity?.phase !== "staging")
+            if (
+              !restoreOwned(input.operationId) ||
+              !frozen(input.operationId) ||
+              identity?.phase !== "staging"
+            )
               return Reply.Rejected({ reason: "fenced" });
             const previous = journal(input.operationId);
 
@@ -743,7 +840,11 @@ const makeLibraryObjectAdmin = (environment: LibraryObjectEnvironment) =>
         ),
         Match.tag("LoadPart", (input) =>
           Effect.gen(function* () {
-            if (!frozen(input.operationId) || identity?.phase !== "staging")
+            if (
+              !restoreOwned(input.operationId) ||
+              !frozen(input.operationId) ||
+              identity?.phase !== "staging"
+            )
               return Reply.Rejected({ reason: "fenced" });
             const value = journal(input.operationId) ?? fail("incomplete");
 
@@ -866,7 +967,11 @@ const makeLibraryObjectAdmin = (environment: LibraryObjectEnvironment) =>
         ),
         Match.tag("VerifyImage", (input) =>
           Effect.gen(function* () {
-            if (!frozen(input.operationId) || identity?.phase !== "staging")
+            if (
+              !restoreOwned(input.operationId) ||
+              !frozen(input.operationId) ||
+              identity?.phase !== "staging"
+            )
               return Reply.Rejected({ reason: "fenced" });
             const loaded = journal(input.operationId) ?? fail("incomplete");
 
@@ -895,7 +1000,7 @@ const makeLibraryObjectAdmin = (environment: LibraryObjectEnvironment) =>
         Match.tag("Activate", (input) =>
           Effect.sync(() => {
             if (
-              own(input.operationId) &&
+              restoreOwned(input.operationId) &&
               guard().operationId === input.operationId &&
               guard().mode === "active" &&
               guard().activating !== null
@@ -903,6 +1008,7 @@ const makeLibraryObjectAdmin = (environment: LibraryObjectEnvironment) =>
               return Reply.Status({ value: status() });
 
             if (
+              !restoreOwned(input.operationId) ||
               !frozen(input.operationId) ||
               identity?.phase !== "activating" ||
               !journal(input.operationId)?.verified ||
@@ -910,14 +1016,7 @@ const makeLibraryObjectAdmin = (environment: LibraryObjectEnvironment) =>
             )
               return Reply.Rejected({ reason: "fenced" });
             storage.transaction(() => {
-              storage.kv.delete("outbox-lease");
-              storage.kv.delete("bf:q-lease");
-
-              for (const table of tables) {
-                sql.exec(`DELETE FROM ${table}`);
-                sql.exec(`INSERT INTO ${table} SELECT * FROM library_admin_hold_${table}`);
-                sql.exec(`DELETE FROM library_admin_hold_${table}`);
-              }
+              releaseHeld();
 
               saveGuard({ ...guard(), mode: "active", held: false, activating: nonce });
             });
@@ -930,7 +1029,54 @@ const makeLibraryObjectAdmin = (environment: LibraryObjectEnvironment) =>
             initialized &&
             guard().activating === input.before &&
             nonce !== input.before &&
-            own(input.operationId)
+            restoreOwned(input.operationId)
+              ? Reply.Status({ value: status() })
+              : Reply.Rejected({ reason: "fenced" }),
+          ),
+        ),
+        Match.tag("ResumeCapture", (input) =>
+          Effect.sync(() => {
+            if (
+              !captureOwned(input.operationId) ||
+              recovery?.phase !== "resuming" ||
+              identity?.phase !== "resuming" ||
+              guard().operationId !== input.operationId
+            )
+              return Reply.Rejected({ reason: "fenced" });
+
+            if (guard().mode === "active" && guard().resuming != null)
+              return Reply.Status({ value: status() });
+
+            if (!frozen(input.operationId)) return Reply.Rejected({ reason: "fenced" });
+            const captured = journal(input.operationId);
+
+            if (captured?.mode !== "capture" || captured.stage !== 5) return fail("incomplete");
+
+            storage.transaction(() => {
+              releaseHeld();
+              saveGuard({
+                ...guard(),
+                mode: "active",
+                held: false,
+                verified: captured.digest,
+                activating: null,
+                resuming: nonce,
+              });
+            });
+
+            return Reply.Status({ value: status() });
+          }),
+        ),
+        Match.tag("VerifyResumed", (input) =>
+          Effect.sync(() =>
+            initialized &&
+            captureOwned(input.operationId) &&
+            recovery?.phase === "resuming" &&
+            identity?.phase === "resuming" &&
+            guard().operationId === input.operationId &&
+            guard().mode === "active" &&
+            guard().resuming === input.before &&
+            nonce !== input.before
               ? Reply.Status({ value: status() })
               : Reply.Rejected({ reason: "fenced" }),
           ),
