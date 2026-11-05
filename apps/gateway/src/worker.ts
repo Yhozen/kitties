@@ -112,6 +112,9 @@ const props = Effect.gen(function* () {
       KITTIES_LIBRARY_CUTOVER_ENABLED: yield* Config.String("KITTIES_LIBRARY_CUTOVER_ENABLED").pipe(
         Config.withDefault("false"),
       ),
+      KITTIES_LIBRARY_CODE_DIGEST: yield* Config.String("KITTIES_LIBRARY_CODE_DIGEST").pipe(
+        Config.withDefault(""),
+      ),
       STAGE: stage,
       KITTIES_KEK: kek,
       BOAT_DEV_API_KEY: boatKey,

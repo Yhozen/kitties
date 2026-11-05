@@ -1,3 +1,5 @@
+import { LibraryRetainedArchiveJournal } from "./library-retained-archive-store.ts";
+import { libraryArchiveReply } from "./library-archive-wire.ts";
 import { libraryControlReply } from "./library-control-wire.ts";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Effect from "effect/Effect";
@@ -20,6 +22,11 @@ export class RecoveryDO extends Cloudflare.DurableObject<RecoveryDO>()(
 
       const library = yield* LibraryRecoveryStore.pipe(
         Effect.provide(LibraryRecoveryStore.layer(database, authority)),
+        Effect.orDie,
+      );
+
+      const archive = yield* LibraryRetainedArchiveJournal.pipe(
+        Effect.provide(LibraryRetainedArchiveJournal.layer(database)),
         Effect.orDie,
       );
 
@@ -47,6 +54,37 @@ export class RecoveryDO extends Cloudflare.DurableObject<RecoveryDO>()(
             .toArray()[0]!;
 
         return {
+          libraryArchiveSetup: () => libraryArchiveReply(archive.setup),
+          libraryArchiveBegin: (...args: Parameters<typeof archive.begin>) =>
+            libraryArchiveReply(archive.begin(...args)),
+          libraryArchiveStatus: (...args: Parameters<typeof archive.status>) =>
+            libraryArchiveReply(archive.status(...args)),
+          libraryArchiveObject: (...args: Parameters<typeof archive.object>) =>
+            libraryArchiveReply(archive.object(...args)),
+          libraryArchiveObjects: (...args: Parameters<typeof archive.objects>) =>
+            libraryArchiveReply(archive.objects(...args)),
+          libraryArchiveRecordObject: (...args: Parameters<typeof archive.recordObject>) =>
+            libraryArchiveReply(archive.recordObject(...args)),
+          libraryArchivePart: (...args: Parameters<typeof archive.part>) =>
+            libraryArchiveReply(archive.part(...args)),
+          libraryArchiveRecordPart: (...args: Parameters<typeof archive.recordPart>) =>
+            libraryArchiveReply(archive.recordPart(...args)),
+          libraryArchiveCompleteObject: (...args: Parameters<typeof archive.completeObject>) =>
+            libraryArchiveReply(archive.completeObject(...args)),
+          libraryArchivePage: (...args: Parameters<typeof archive.page>) =>
+            libraryArchiveReply(archive.page(...args)),
+          libraryArchiveRecordPage: (...args: Parameters<typeof archive.recordPage>) =>
+            libraryArchiveReply(archive.recordPage(...args)),
+          libraryArchiveCommit: (...args: Parameters<typeof archive.commit>) =>
+            libraryArchiveReply(archive.commit(...args)),
+          libraryArchivePinRestore: (...args: Parameters<typeof archive.pinRestore>) =>
+            libraryArchiveReply(archive.pinRestore(...args)),
+          libraryArchiveRestorePin: (...args: Parameters<typeof archive.restorePin>) =>
+            libraryArchiveReply(archive.restorePin(...args)),
+          libraryArchiveFinishRestore: (...args: Parameters<typeof archive.finishRestore>) =>
+            libraryArchiveReply(archive.finishRestore(...args)),
+          libraryArchivePins: (...args: Parameters<typeof archive.pins>) =>
+            libraryArchiveReply(archive.pins(...args)),
           libraryCompletePublication: (id: string) =>
             libraryControlReply(
               Effect.try({
@@ -92,6 +130,28 @@ export class RecoveryDO extends Cloudflare.DurableObject<RecoveryDO>()(
             libraryControlReply(library.authorizeCapture(...args)),
           libraryProgress: (...args: Parameters<typeof library.progress>) =>
             libraryControlReply(library.progress(...args)),
+          libraryCaptureInventory: (...args: Parameters<typeof library.captureInventory>) =>
+            libraryControlReply(library.captureInventory(...args)),
+          libraryBeginCapture: (...args: Parameters<typeof library.beginCapture>) =>
+            libraryControlReply(library.beginCapture(...args)),
+          libraryBeginCaptureResume: (...args: Parameters<typeof library.beginCaptureResume>) =>
+            libraryControlReply(library.beginCaptureResume(...args)),
+          libraryAcknowledgeResumed: (...args: Parameters<typeof library.acknowledgeResumed>) =>
+            libraryControlReply(library.acknowledgeResumed(...args)),
+          libraryResumeProgress: (...args: Parameters<typeof library.resumeProgress>) =>
+            libraryControlReply(library.resumeProgress(...args)),
+          libraryCompleteCapture: (...args: Parameters<typeof library.completeCapture>) =>
+            libraryControlReply(library.completeCapture(...args)),
+          libraryCaptureCompletion: (...args: Parameters<typeof library.captureCompletion>) =>
+            libraryControlReply(library.captureCompletion(...args)),
+          libraryGrantExport: (...args: Parameters<typeof library.grantExport>) =>
+            libraryControlReply(library.grantExport(...args)),
+          libraryAuthorizeExport: (...args: Parameters<typeof library.authorizeExport>) =>
+            libraryControlReply(library.authorizeExport(...args)),
+          libraryRestoreIntent: (...args: Parameters<typeof library.restoreIntent>) =>
+            libraryControlReply(library.restoreIntent(...args)),
+          libraryBeginRestore: (...args: Parameters<typeof library.beginRestore>) =>
+            libraryControlReply(library.beginRestore(...args)),
           libraryBeginFreeze: (...args: Parameters<typeof library.beginFreeze>) =>
             libraryControlReply(library.beginFreeze(...args)),
           libraryAcknowledgeFreeze: (...args: Parameters<typeof library.acknowledgeFreeze>) =>

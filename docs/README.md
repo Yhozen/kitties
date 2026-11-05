@@ -15,6 +15,7 @@ implementations were retired after production smoke and recovery checks passed.
 | [Development](DEVELOPMENT.md) | Install, check, test and build |
 | [Deployment](DEPLOY.md) | Infrastructure, application publishing and rollback |
 | [Recovery](effect/RECOVERY.md) | PITR, retained exports and Mac key escrow |
+| [Library archives](LIBRARY_ARCHIVES.md) | Capture-only backups, encrypted retained restore and verified limits |
 | [Effect plan and evidence](effect/README.md) | Ten phases, accepted limits and measured acceptance |
 
 `effect/CURRENT-SYSTEM.md` and the backing research preserve the pre-rewrite design with pinned

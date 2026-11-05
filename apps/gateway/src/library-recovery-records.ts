@@ -29,14 +29,44 @@ export const LibraryRecoveryState = Schema.Struct({
   epoch: RecoveryOrdinal,
   lineage: LibraryLineage,
   nextLineage: RecoveryOrdinal,
-  phase: Schema.Literals(["importing", "ready", "frozen", "staging", "activating"]),
+  phase: Schema.Literals(["importing", "ready", "frozen", "staging", "activating", "resuming"]),
   inventoryId: RecoveryOperationId,
   operationId: Schema.NullOr(RecoveryOperationId),
+  /** Missing only on historical restore records; never grants capture authority. */
+  operationKind: Schema.optionalKey(Schema.Literals(["capture", "restore"])),
   stagingLineage: Schema.NullOr(LibraryLineage),
   allocatorFloor: RecoveryOrdinal,
 });
 
 export type LibraryRecoveryState = typeof LibraryRecoveryState.Type;
+
+/** Capture intent is immutable before any object is frozen or partially copied. */
+export const LibraryCaptureOperation = Schema.Struct({
+  kind: Schema.Literal("capture"),
+  setId: Schema.Null,
+  codeDigest: RecoveryDigest,
+});
+
+export type LibraryCaptureOperation = typeof LibraryCaptureOperation.Type;
+
+export const LibraryRestoreSource = Schema.Union([
+  Schema.TaggedStruct("Native", {}),
+  Schema.TaggedStruct("Retained", {
+    archiveId: RecoveryOperationId,
+    manifestDigest: RecoveryDigest,
+  }),
+]);
+
+export type LibraryRestoreSource = typeof LibraryRestoreSource.Type;
+
+/** Bound before destructive recovery; transport retries cannot replace its source. */
+export const LibraryRestoreIntent = Schema.Struct({
+  setId: RecoveryOperationId,
+  codeDigest: RecoveryDigest,
+  source: LibraryRestoreSource,
+});
+
+export type LibraryRestoreIntent = typeof LibraryRestoreIntent.Type;
 
 export const LibraryLineagePhase = Schema.Literals([
   "importing",
@@ -44,6 +74,7 @@ export const LibraryLineagePhase = Schema.Literals([
   "frozen",
   "staging",
   "activating",
+  "resuming",
   "retired",
 ]);
 
@@ -70,9 +101,27 @@ export const LibraryRecoverySet = Schema.Struct({
   allocatorFloor: RecoveryOrdinal,
   objectCount: RecoveryOrdinal,
   codeDigest: RecoveryDigest,
+  /** Server clock at first seal. Historical restore sets may omit it. */
+  capturedAt: Schema.optionalKey(RecoveryOrdinal),
 });
 
 export type LibraryRecoverySet = typeof LibraryRecoverySet.Type;
+
+export const LibraryExportGrant = Schema.Struct({
+  grantId: RecoveryOperationId,
+  captureId: RecoveryOperationId,
+});
+
+export type LibraryExportGrant = typeof LibraryExportGrant.Type;
+
+export const LibraryExportAuthorization = Schema.Struct({
+  captureId: RecoveryOperationId,
+  ordinal: RecoveryOrdinal,
+  source: LibraryObjectRef,
+  image: LibraryObjectImage,
+});
+
+export type LibraryExportAuthorization = typeof LibraryExportAuthorization.Type;
 
 export class LibraryRecoveryError extends Schema.TaggedError<
   LibraryRecoveryError,

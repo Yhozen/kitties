@@ -1,5 +1,6 @@
 import * as Data from "effect/Data";
 import * as Predicate from "effect/Predicate";
+import * as Option from "effect/Option";
 import { Library } from "@kitties/domain/Library/Library.aggregate";
 import { AdvanceLibraryAllocatorFloor } from "@kitties/domain/Library/AdvanceLibraryAllocatorFloor.command";
 import { LibraryRecoveryActor } from "@kitties/domain/Library/LibraryRecoveryActor.context";
@@ -10,16 +11,43 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { LibraryControl } from "./library-control.ts";
 import { LibraryObjectAdministration, withLibraryRecoveryPin } from "./library-recovery-host.ts";
-import type { LibraryAdminRequest } from "./library-object-admin.ts";
+import { LibraryImagePart, type LibraryAdminRequest } from "./library-object-admin.ts";
 import {
   LibraryObjectRef,
+  LibraryObjectImage,
+  LibraryRecoverySet,
   LibraryRecoveryError,
   LibraryRecoveryState,
+  LibraryRestoreIntent,
+  LibraryRestoreSource,
   RecoveryDigest,
   RecoveryOperationId,
   RegisteredLibraryObject,
 } from "./library-recovery-records.ts";
 import { LIBRARY_OWNER } from "./library-session.ts";
+
+export const LibraryCaptureRequest = Schema.Struct({
+  operationId: RecoveryOperationId,
+  codeDigest: RecoveryDigest,
+});
+
+export type LibraryCaptureRequest = typeof LibraryCaptureRequest.Type;
+
+/** Server-only retained source. Providing it replaces native reads for the entire restore. */
+export class LibraryRestoreParts extends Context.Service<
+  LibraryRestoreParts,
+  {
+    readonly identity: { readonly archiveId: string; readonly manifestDigest: string };
+    readonly read: (request: {
+      readonly operationId: string;
+      readonly captureId: string;
+      readonly source: RegisteredLibraryObject;
+      readonly image: LibraryObjectImage;
+      readonly row: number;
+      readonly part: number;
+    }) => Effect.Effect<LibraryImagePart, LibraryRecoveryError>;
+  }
+>()("@kitties/gateway/LibraryRestoreParts") {}
 
 export const LibraryRestoreRequest = Schema.Struct({
   operationId: RecoveryOperationId,
@@ -37,6 +65,8 @@ export const LibraryRecoveryPolicy = Context.Reference<{
 });
 
 const Admin = Data.taggedEnum<LibraryAdminRequest>();
+const Source = Data.taggedEnum<LibraryRestoreSource>();
+const sameIntent = Schema.toEquivalence(LibraryRestoreIntent);
 
 const unavailable = () => new LibraryRecoveryError({ reason: "storage" });
 const incomplete = () => new LibraryRecoveryError({ reason: "incomplete" });
@@ -45,6 +75,9 @@ const incomplete = () => new LibraryRecoveryError({ reason: "incomplete" });
 export class LibraryRecoveryCoordinator extends Context.Service<
   LibraryRecoveryCoordinator,
   {
+    readonly capture: (
+      request: LibraryCaptureRequest,
+    ) => Effect.Effect<LibraryRecoverySet, LibraryRecoveryError>;
     readonly restore: (
       request: LibraryRestoreRequest,
     ) => Effect.Effect<LibraryRecoveryState, LibraryRecoveryError>;
@@ -103,6 +136,154 @@ export class LibraryRecoveryCoordinator extends Context.Service<
         }
       });
 
+      const captureFrozen = Effect.fnUntraced(function* (
+        state: LibraryRecoveryState,
+        operationId: string,
+        codeDigest: string,
+      ) {
+        // Close and evict every known writer before reading any object's image.
+        yield* eachObject(state.lineage, (object) =>
+          Effect.gen(function* () {
+            const progress = yield* control.progress(operationId, object.ordinal);
+
+            if (progress.frozen?.after !== null && progress.frozen?.after !== undefined) return;
+            const frozen = yield* status(object, Admin.Freeze({ operationId }));
+
+            if (frozen.before === null) return yield* incomplete();
+            yield* control.acknowledgeFreeze(operationId, object.ordinal, frozen.before, null);
+            // abort may lose its own RPC acknowledgement. The fresh-constructor
+            // proof, rather than the transport outcome, establishes completion.
+            yield* call(object, Admin.Evict({ operationId })).pipe(Effect.exit);
+
+            const verified = yield* status(
+              object,
+              Admin.VerifyFrozen({ operationId, before: frozen.before }),
+            );
+
+            yield* control.acknowledgeFreeze(
+              operationId,
+              object.ordinal,
+              frozen.before,
+              verified.nonce,
+            );
+          }),
+        );
+
+        let floor: number | undefined;
+        yield* eachObject(state.lineage, (object) =>
+          Effect.gen(function* () {
+            if (
+              object.className === "LibraryModel.LibraryAggregate" &&
+              object.logicalName === "owner"
+            ) {
+              const reply = yield* call(object, Admin.ReadAllocatorFloor({ operationId }));
+
+              if (!Predicate.isTagged(reply, "AllocatorFloor")) return yield* incomplete();
+              floor = reply.value;
+            }
+
+            if ((yield* control.image(operationId, object.ordinal)) !== null) return;
+
+            while (true) {
+              const reply = yield* call(object, Admin.CaptureStep({ operationId }));
+
+              if (!Predicate.isTagged(reply, "Progress")) return yield* incomplete();
+
+              if (reply.value.done) {
+                if (reply.value.image === null) return yield* incomplete();
+                yield* control.recordImage(operationId, object.ordinal, reply.value.image);
+
+                return;
+              }
+            }
+          }),
+        );
+
+        if (floor === undefined) return yield* incomplete();
+
+        return yield* control.seal(operationId, floor, codeDigest);
+      });
+
+      const eachCaptured = Effect.fnUntraced(function* <E, R>(
+        captureId: string,
+        visit: (object: RegisteredLibraryObject) => Effect.Effect<void, E, R>,
+      ) {
+        let after = 0;
+
+        while (true) {
+          const page = yield* control.captureInventory(captureId, after);
+
+          if (page.length === 0) return;
+
+          for (const object of page) {
+            if (object.ordinal <= after) return yield* incomplete();
+            yield* visit(object);
+            after = object.ordinal;
+          }
+        }
+      });
+
+      const capture = Effect.fnUntraced(
+        function* (unverified: LibraryCaptureRequest) {
+          const { operationId, codeDigest } = yield* Schema.decodeUnknownEffect(
+            LibraryCaptureRequest,
+          )(unverified).pipe(
+            Effect.mapError(() => new LibraryRecoveryError({ reason: "invalid" })),
+          );
+
+          const completed = yield* control.captureCompletion(operationId);
+
+          if (completed === null) {
+            const state = yield* control.beginCapture(operationId, codeDigest);
+
+            if (state.phase === "frozen") yield* captureFrozen(state, operationId, codeDigest);
+          }
+
+          const captured = yield* control.recoverySet(operationId);
+
+          if (captured === null || captured.codeDigest !== codeDigest)
+            return yield* new LibraryRecoveryError({ reason: "conflict" });
+
+          if (completed !== null) return captured;
+          yield* control.beginCaptureResume(operationId);
+          yield* eachCaptured(operationId, (object) =>
+            Effect.gen(function* () {
+              const progress = yield* control.resumeProgress(operationId, object.ordinal);
+
+              if (progress?.after != null) return;
+              const resumed = yield* status(object, Admin.ResumeCapture({ operationId }));
+
+              if (resumed.resuming === null) return yield* incomplete();
+              yield* control.acknowledgeResumed(
+                operationId,
+                object.ordinal,
+                resumed.resuming,
+                null,
+              );
+
+              if (!resumed.initialized || resumed.nonce === resumed.resuming)
+                yield* call(object, Admin.Evict({ operationId })).pipe(Effect.exit);
+
+              const verified = yield* status(
+                object,
+                Admin.VerifyResumed({ operationId, before: resumed.resuming }),
+              );
+
+              yield* control.acknowledgeResumed(
+                operationId,
+                object.ordinal,
+                resumed.resuming,
+                verified.nonce,
+              );
+            }),
+          );
+          yield* control.completeCapture(operationId);
+
+          return captured;
+        },
+        Effect.timeoutOrElse({ duration: policy.totalMs, orElse: unavailable }),
+      );
+
       const restore = Effect.fnUntraced(
         function* (unverified: LibraryRestoreRequest) {
           const request = yield* Schema.decodeUnknownEffect(LibraryRestoreRequest)(unverified).pipe(
@@ -110,9 +291,24 @@ export class LibraryRecoveryCoordinator extends Context.Service<
           );
 
           const { operationId, setId, codeDigest } = request;
+          const partsSource = yield* Effect.serviceOption(LibraryRestoreParts);
+
+          const intent = yield* Schema.decodeUnknownEffect(LibraryRestoreIntent)({
+            setId,
+            codeDigest,
+            source: Option.isSome(partsSource)
+              ? Source.Retained(partsSource.value.identity)
+              : Source.Native(),
+          }).pipe(Effect.mapError(() => new LibraryRecoveryError({ reason: "invalid" })));
+
+          const recorded = yield* control.restoreIntent(operationId);
+
+          if (recorded !== null && !sameIntent(recorded, intent))
+            return yield* new LibraryRecoveryError({ reason: "conflict" });
           const published = yield* control.publication(operationId, setId, codeDigest);
 
           if (published !== null) {
+            if (recorded === null) return yield* new LibraryRecoveryError({ reason: "conflict" });
             yield* control.completePublication(operationId);
 
             return published;
@@ -125,70 +321,9 @@ export class LibraryRecoveryCoordinator extends Context.Service<
               return yield* new LibraryRecoveryError({ reason: "conflict" });
           }
 
-          let state = yield* control.beginFreeze(operationId);
+          let state = yield* control.beginRestore(operationId, intent);
 
-          if (state.phase === "frozen") {
-            // Close and evict every known writer before reading any object's image.
-            yield* eachObject(state.lineage, (object) =>
-              Effect.gen(function* () {
-                const progress = yield* control.progress(operationId, object.ordinal);
-
-                if (progress.frozen?.after !== null && progress.frozen?.after !== undefined) return;
-                const frozen = yield* status(object, Admin.Freeze({ operationId }));
-
-                if (frozen.before === null) return yield* incomplete();
-                yield* control.acknowledgeFreeze(operationId, object.ordinal, frozen.before, null);
-                // abort may lose its own RPC acknowledgement. The fresh-constructor
-                // proof, rather than the transport outcome, establishes completion.
-                yield* call(object, Admin.Evict({ operationId })).pipe(Effect.exit);
-
-                const verified = yield* status(
-                  object,
-                  Admin.VerifyFrozen({ operationId, before: frozen.before }),
-                );
-
-                yield* control.acknowledgeFreeze(
-                  operationId,
-                  object.ordinal,
-                  frozen.before,
-                  verified.nonce,
-                );
-              }),
-            );
-
-            let floor: number | undefined;
-            yield* eachObject(state.lineage, (object) =>
-              Effect.gen(function* () {
-                if (
-                  object.className === "LibraryModel.LibraryAggregate" &&
-                  object.logicalName === "owner"
-                ) {
-                  const reply = yield* call(object, Admin.ReadAllocatorFloor({ operationId }));
-
-                  if (!Predicate.isTagged(reply, "AllocatorFloor")) return yield* incomplete();
-                  floor = reply.value;
-                }
-
-                if ((yield* control.image(operationId, object.ordinal)) !== null) return;
-
-                while (true) {
-                  const reply = yield* call(object, Admin.CaptureStep({ operationId }));
-
-                  if (!Predicate.isTagged(reply, "Progress")) return yield* incomplete();
-
-                  if (reply.value.done) {
-                    if (reply.value.image === null) return yield* incomplete();
-                    yield* control.recordImage(operationId, object.ordinal, reply.value.image);
-
-                    return;
-                  }
-                }
-              }),
-            );
-
-            if (floor === undefined) return yield* incomplete();
-            yield* control.seal(operationId, floor, codeDigest);
-          }
+          if (state.phase === "frozen") yield* captureFrozen(state, operationId, codeDigest);
 
           const selected = yield* control.recoverySet(setId);
 
@@ -200,7 +335,7 @@ export class LibraryRecoveryCoordinator extends Context.Service<
           if (destinationLineage === null) return yield* incomplete();
 
           if (state.phase === "staging") {
-            yield* eachObject(selected.sourceLineage, (source) =>
+            yield* eachCaptured(setId, (source) =>
               Effect.gen(function* () {
                 if ((yield* control.progress(operationId, source.ordinal)).loaded !== null) return;
                 const image = yield* control.authorizeCapture(operationId, setId, source.ordinal);
@@ -218,19 +353,39 @@ export class LibraryRecoveryCoordinator extends Context.Service<
                   let parts = 1;
 
                   for (let part = 0; part < parts; part++) {
-                    const reply = yield* call(
-                      source,
-                      Admin.ReadPart({ operationId, captureId: setId, row, part }),
+                    const value = yield* (
+                      Option.isSome(partsSource)
+                        ? partsSource.value.read({
+                            operationId,
+                            captureId: setId,
+                            source,
+                            image,
+                            row,
+                            part,
+                          })
+                        : call(
+                            source,
+                            Admin.ReadPart({ operationId, captureId: setId, row, part }),
+                          ).pipe(
+                            Effect.flatMap((reply) =>
+                              Predicate.isTagged(reply, "Part")
+                                ? Effect.succeed(reply.value)
+                                : incomplete(),
+                            ),
+                          )
+                    ).pipe(
+                      Effect.catchDefect(unavailable),
+                      Effect.timeoutOrElse({ duration: policy.callMs, orElse: unavailable }),
+                      Effect.flatMap((value) =>
+                        Schema.decodeUnknownEffect(LibraryImagePart)(value).pipe(
+                          Effect.mapError(() => new LibraryRecoveryError({ reason: "incomplete" })),
+                        ),
+                      ),
                     );
 
-                    if (
-                      !Predicate.isTagged(reply, "Part") ||
-                      reply.value.row !== row ||
-                      reply.value.part !== part
-                    )
-                      return yield* incomplete();
-                    parts = reply.value.parts;
-                    yield* call(destination, Admin.LoadPart({ operationId, value: reply.value }));
+                    if (value.row !== row || value.part !== part) return yield* incomplete();
+                    parts = value.parts;
+                    yield* call(destination, Admin.LoadPart({ operationId, value }));
                   }
                 }
 
@@ -251,7 +406,7 @@ export class LibraryRecoveryCoordinator extends Context.Service<
           }
 
           state = yield* control.beginActivation(operationId);
-          yield* eachObject(selected.sourceLineage, (source) =>
+          yield* eachCaptured(setId, (source) =>
             Effect.gen(function* () {
               const progress = yield* control.progress(operationId, source.ordinal);
 
@@ -319,7 +474,7 @@ export class LibraryRecoveryCoordinator extends Context.Service<
         Effect.timeoutOrElse({ duration: policy.totalMs, orElse: unavailable }),
       );
 
-      return { restore };
+      return { capture, restore };
     }),
   );
 }

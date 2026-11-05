@@ -34,6 +34,9 @@ jobs:
       - name: Local Library recovery and Home migration
         run: pnpm test:library
         timeout-minutes: 5
+      - name: Local Library capture and retained archive recovery
+        run: pnpm test:library-archive
+        timeout-minutes: 5
       - name: Test reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -46,6 +49,8 @@ jobs:
             .context/workflow-check/*/*.stderr.log
             .context/library-check/*/results.json
             .context/library-check/*/*.stderr.log
+            .context/library-archive-check/*/results.json
+            .context/library-archive-check/*/host-*.stderr.log
           include-hidden-files: true
           retention-days: 14
       - run: pnpm build

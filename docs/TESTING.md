@@ -19,6 +19,7 @@ pnpm test:watch
 pnpm test:coverage
 pnpm test:workflows # Linux: real local workerd and persistent SQLite
 pnpm test:library # real local recovery coordinator and Home import/restart
+pnpm test:library-archive # capture/rearm and retained R2 restore through process crashes
 pnpm test:library-bundle # every declared gateway object and native Workflow export
 pnpm test:library-browser # built assets, Chromium and local HTTPS fixture
 pnpm test:library-http # includes strict known-failing idle-abort gates

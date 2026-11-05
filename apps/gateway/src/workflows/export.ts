@@ -1,3 +1,7 @@
+import { LibraryArchiveOperations } from "../library-archive-operations.ts";
+import { LibraryControl } from "../library-control.ts";
+import { RecoveryDigest } from "../library-recovery-records.ts";
+import { LibraryArchiveStatus } from "../library-retained-archive-store.ts";
 import { guardedActivities } from "../recovery-guard.ts";
 import { workflowActor } from "../workflow-admin.ts";
 import { WorkflowEngine } from "effect/workflow";
@@ -27,6 +31,8 @@ export const ExportLive = Workflows.layer(
   Export,
   Effect.gen(function* () {
     const engine = yield* WorkflowEngine.WorkflowEngine;
+    const library = yield* LibraryArchiveOperations;
+    const libraryControl = yield* LibraryControl;
 
     const roots = yield* RecoveryDO,
       homes = yield* HomeDO,
@@ -37,6 +43,7 @@ export const ExportLive = Workflows.layer(
     const env = (yield* Cloudflare.WorkerEnvironment) as {
       EXPORTS: cf.R2Bucket;
       KITTIES_KEK: string;
+      KITTIES_LIBRARY_CODE_DIGEST: string;
     };
 
     const actor = (kind: string, name: string) =>
@@ -80,6 +87,25 @@ export const ExportLive = Workflows.layer(
           }
 
           return JSON.stringify(snapshots);
+        }),
+      });
+
+      const libraryArchive = yield* activity({
+        name: "library-archive",
+        success: Schema.NullOr(LibraryArchiveStatus),
+        error: Schema.String,
+        execute: Effect.gen(function* () {
+          const state = yield* libraryControl.status.pipe(Effect.mapError(storage));
+
+          if (state === null) return null;
+
+          const codeDigest = yield* Schema.decodeUnknownEffect(RecoveryDigest)(
+            env.KITTIES_LIBRARY_CODE_DIGEST,
+          ).pipe(Effect.mapError(storage));
+
+          return yield* library
+            .export({ operationId: id, codeDigest })
+            .pipe(Effect.mapError(storage));
         }),
       });
 
@@ -176,7 +202,14 @@ export const ExportLive = Workflows.layer(
                 seal(
                   env.KITTIES_KEK,
                   aad,
-                  JSON.stringify({ version: 1, id, snapshots, parts, at: Date.now() }),
+                  JSON.stringify({
+                    version: 1,
+                    id,
+                    snapshots,
+                    parts,
+                    libraryArchive,
+                    at: Date.now(),
+                  }),
                 ),
               catch: storage,
             });
@@ -202,6 +235,7 @@ export const ExportLive = Workflows.layer(
                 prefix,
                 parts,
                 objects: snapshots.length,
+                libraryArchive: libraryArchive?.header.archiveId ?? null,
                 retentionDays: 90,
                 lockedDays: 30,
               }),

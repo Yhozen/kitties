@@ -1,3 +1,5 @@
+import { LibraryArchiveLive, LibraryArchiveJournalLive } from "./library-archive.ts";
+import { LibraryArchiveOperations } from "./library-archive-operations.ts";
 import * as DomainCloudflare from "@alchemy.run/cloudflare/Domain";
 import { LibraryModel } from "@kitties/domain/Library.model";
 import * as Config from "effect/Config";
@@ -41,11 +43,17 @@ const LibraryHosted = LibraryModel.layer(Layer.empty).pipe(
 );
 
 /** One memoized host and hook identity shared by HTTP, Home and recovery callers. */
-export const LibraryBackend = Layer.mergeAll(
+const LibraryServices = Layer.mergeAll(
   LibrarySnapshot.layer,
   LibraryCatalogue.layer,
   LibraryRecoveryCoordinator.layer,
+  LibraryArchiveLive,
+  LibraryArchiveJournalLive,
 ).pipe(
   Layer.provide(LibrarySnapshotSource.layer),
   Layer.provideMerge(Layer.mergeAll(LibraryHosted, LibraryControlLive, LibraryRecoveryHooksLive)),
+);
+
+export const LibraryBackend = LibraryArchiveOperations.layer.pipe(
+  Layer.provideMerge(LibraryServices),
 );
