@@ -37,6 +37,7 @@ export class SkillDetail extends Domain.View("SkillDetail", {
     SkillAccepted: ({ event }) => skillDetailKey(event.libraryId, event.skillId),
     SkillRemoved: ({ event }) => skillDetailKey(event.libraryId, event.skillId),
     LibraryImportFinalized: () => undefined,
+    LibraryAllocatorFloorAdvanced: () => undefined,
   },
   evolve: {
     SkillProposed: (_state, event) => ({

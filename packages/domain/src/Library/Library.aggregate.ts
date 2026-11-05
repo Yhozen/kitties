@@ -1,10 +1,17 @@
 import * as Domain from "@alchemy.run/domain";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { LibraryActor } from "../LibraryActor.context.ts";
 import { LibrarySession } from "../LibrarySession.middleware.ts";
 import { AcceptSkill, SkillAccepted } from "./AcceptSkill.command.ts";
+import {
+  AdvanceLibraryAllocatorFloor,
+  LibraryAllocatorFloorAdvanced,
+  LibraryRecoveryForbidden,
+} from "./AdvanceLibraryAllocatorFloor.command.ts";
+import { LibraryRecoveryActor } from "./LibraryRecoveryActor.context.ts";
 import { FinalizeLibraryImport, LibraryImportFinalized } from "./FinalizeLibraryImport.command.ts";
 import { ImportSkill, SkillImported } from "./ImportSkill.command.ts";
 import { LibraryId } from "./Library.id.ts";
@@ -88,8 +95,42 @@ export class Library extends Domain.Aggregate("Library", {
   id: LibraryId,
   state: LibraryState,
   initial: initialLibrary,
-  commands: [ProposeSkill, AcceptSkill, RemoveSkill, ImportSkill, FinalizeLibraryImport],
+  commands: [
+    ProposeSkill,
+    AcceptSkill,
+    RemoveSkill,
+    ImportSkill,
+    FinalizeLibraryImport,
+    AdvanceLibraryAllocatorFloor,
+  ],
   decide: {
+    AdvanceLibraryAllocatorFloor: Effect.fnUntraced(function* (state, command, { id, version }) {
+      const actor = yield* Effect.serviceOption(LibraryRecoveryActor);
+
+      if (Option.isNone(actor)) {
+        return yield* new LibraryRecoveryForbidden();
+      }
+
+      if (actor.value.libraryId !== id) {
+        return yield* new LibraryNotOwner();
+      }
+
+      if (!Schema.is(FinalizedImport)(state.importProgress)) {
+        return yield* new LibraryImportRequired();
+      }
+
+      const highWaterAfter = Math.max(state.highWater, command.floor);
+
+      if (highWaterAfter === state.highWater) return [];
+
+      if (version >= Number.MAX_SAFE_INTEGER) {
+        return yield* new LibraryVersionExhausted();
+      }
+
+      return [
+        new LibraryAllocatorFloorAdvanced({ libraryId: id, highWaterAfter, revision: version + 1 }),
+      ];
+    }),
     ProposeSkill: Effect.fnUntraced(function* (state, command, { id, now, version }) {
       yield* requireOwner(id);
 
@@ -312,6 +353,11 @@ export class Library extends Domain.Aggregate("Library", {
     }),
   },
   evolve: {
+    LibraryAllocatorFloorAdvanced: (state, event) => ({
+      ...state,
+      highWater: event.highWaterAfter,
+      catalogueRevision: event.revision,
+    }),
     SkillProposed: (state, event) =>
       proposalState(state, event.skill, event.proposalRevision, event.highWaterAfter),
     SkillImported: (state, event) => ({
