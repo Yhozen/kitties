@@ -9,15 +9,30 @@ const makeStorageAdmin = (
   kek: string,
   tables: readonly string[],
 ) => {
-  const sql = state.raw.storage.sql;
-  sql.exec(
-    "CREATE TABLE IF NOT EXISTS admin_exports (id TEXT NOT NULL,table_name TEXT NOT NULL,row_number INTEGER NOT NULL,body TEXT NOT NULL,at INTEGER NOT NULL,PRIMARY KEY(id,table_name,row_number))",
-  );
-  sql.exec("CREATE TABLE IF NOT EXISTS admin_captures (id TEXT PRIMARY KEY,body TEXT NOT NULL)");
+  // Plan-time constructors receive storage-less state, so administration tables are created on first use.
+  let prepared = false;
+
+  const database = () => {
+    const sql = state.raw.storage.sql;
+
+    if (!prepared) {
+      sql.exec(
+        "CREATE TABLE IF NOT EXISTS admin_exports (id TEXT NOT NULL,table_name TEXT NOT NULL,row_number INTEGER NOT NULL,body TEXT NOT NULL,at INTEGER NOT NULL,PRIMARY KEY(id,table_name,row_number))",
+      );
+      sql.exec(
+        "CREATE TABLE IF NOT EXISTS admin_captures (id TEXT PRIMARY KEY,body TEXT NOT NULL)",
+      );
+      prepared = true;
+    }
+
+    return sql;
+  };
 
   return {
     adminContains: (value: string) =>
       Effect.sync(() => {
+        const sql = database();
+
         if (!value || value.length > 8192) throw Error("INVALID_AUDIT_VALUE");
 
         for (const table of tables) {
@@ -57,6 +72,8 @@ const makeStorageAdmin = (
     adminCapture: (id: string) =>
       Effect.sync(() =>
         state.raw.storage.transactionSync(() => {
+          const sql = database();
+
           if (!/^[a-zA-Z0-9_-]{1,128}$/.test(id)) throw Error("INVALID_EXPORT_ID");
 
           const saved = sql
@@ -111,7 +128,7 @@ const makeStorageAdmin = (
     adminExportPart: (id: string, table: string, row: number, part: number, aad: string) =>
       Effect.tryPromise({
         try: async () => {
-          const value = sql
+          const value = database()
             .exec<{ chunk: string; length: number }>(
               "SELECT substr(body,?,32768) AS chunk,length(body) AS length FROM admin_exports WHERE id=? AND table_name=? AND row_number=?",
               part * 32768 + 1,
@@ -135,6 +152,8 @@ const makeStorageAdmin = (
       }),
     adminPurge: (before: number) =>
       Effect.sync(() => {
+        const sql = database();
+
         sql.exec(
           "DELETE FROM admin_captures WHERE id IN (SELECT DISTINCT id FROM admin_exports WHERE at<?)",
           before,

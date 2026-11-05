@@ -229,6 +229,14 @@ export const libraryAuthenticationLayer = (configuration: LibraryAccessConfigura
     }),
   );
 
+/** Alchemy plan-phase composition: bindings are absent, so every request is refused. */
+export const planLibraryAuthenticationLayer = Layer.succeed(
+  LibraryAuthentication,
+  LibraryAuthentication.of({
+    verify: () => Effect.fail(new LibrarySessionDenied({ reason: "configuration" })),
+  }),
+);
+
 /** Explicit local composition only: no request flag/header activates this layer. */
 export const localLibraryAuthenticationLayer = (publicUrl: string, expiresAt: number) =>
   Layer.effect(

@@ -11,6 +11,7 @@ import { DurableObjectState } from "@alchemy.run/cloudflare/Workers/DurableObjec
 import { ensureAlarmTables } from "@alchemy.run/cloudflare/Workers/DurableObjectAlarmStorage";
 import { task } from "@alchemy.run/cloudflare/Workflows/Workflow";
 import type { CallbackFactory, CallbackOptions } from "alchemy/Callback";
+import { ALCHEMY_PHASE } from "alchemy";
 import { RuntimeContext } from "alchemy/RuntimeContext";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -214,6 +215,12 @@ export const libraryRecoveryHooksLayer = (rollout: LibraryBackfillScope) =>
       const objectHook: RecoveryHooksService["object"] = (object, next) =>
         Effect.gen(function* () {
           const className = objectDescriptor(object);
+
+          // Alchemy evaluates constructors against a mock state during plan to discover bindings.
+          // Bundling folds the runtime flag to true, removing this branch from deployed Workers.
+          if (!globalThis.__ALCHEMY_RUNTIME__ && (yield* ALCHEMY_PHASE) === "plan")
+            return yield* next;
+
           const state = yield* DurableObjectState;
           const nativeId = state.id.toString();
 

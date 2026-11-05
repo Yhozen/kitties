@@ -59,6 +59,26 @@ class changes require Alchemy instead. The manual `effect-deploy.yml` workflow u
 restricted publisher. Its secret and account variable are configured; GitHub only permits dispatch
 after that workflow is on the default branch. A direct restricted-token publish has been verified.
 
+## Beta.85 production deployment (2026-11-05)
+
+The owner authorized the state-store upgrade and deployment. `alchemy state bootstrap
+--backend cloudflare` adopted `alchemy-state-store` at contract v8 with every existing
+stack preserved. `alchemy deploy --stage prod` then created the four Library Domain
+classes and their backfill Workflow, unbound the retired probe classes and updated
+all four Workers. Use Node 26 and map `KITTIES_DEPLOYMENT_PROD` to `KITTIES_DEPLOYMENT`.
+
+Beta.85 evaluates Worker and Durable Object constructors during plan with storage-less
+state and no bindings. Constructors must defer storage access and binding decoding to
+runtime. Plan-only branches check `!globalThis.__ALCHEMY_RUNTIME__`, which bundling
+folds away.
+
+`LibraryModel.DomainBackfillRun` intentionally fails with `LibraryRecoveryError` until
+the Library recovery authority exists. Every deploy reports that failure after the
+Workers update. To initialize the authority, set `KITTIES_LIBRARY_CUTOVER_ENABLED=true`
+and a `KITTIES_LIBRARY_CODE_DIGEST`. Redeploy, then POST `{ "inventoryId": ... }` to
+`/v1/recovery/library/import` as the Access-authenticated owner. Redeploy again so the
+backfill completes.
+
 ## Production verification and rollback
 
 After deploy, authenticate through Access and verify `/v1/health`, `/v1/session`, the web app, a
