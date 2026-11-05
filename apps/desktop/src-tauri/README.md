@@ -46,6 +46,14 @@ cargo check --locked --tests
 cargo test --locked
 ```
 
+Windows links the standard Common Controls v6 manifest into both the application
+and native test executables using pinned `embed-resource`'s
+`compile_for_everything`. Tauri still generates icons/version resources and
+command ACLs; its binary-only manifest is disabled to avoid duplicate resources.
+Without the test manifest, Windows cannot resolve `TaskDialogIndirect` and exits
+before any tests run. The macOS test context uses Tauri's `test = true` option so
+the production and test contexts do not both embed the application plist.
+
 Run filesystem permission tests as a non-root user. The cloud VM's prepared
 Ubuntu environment supports the actual crate through private namespaces:
 
