@@ -7,6 +7,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync }
 import { createServer as httpServer, request as httpRequest } from "node:http";
 import { createServer as httpsServer } from "node:https";
 import { dirname, join, resolve } from "node:path";
+import { Transform } from "node:stream";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -32,6 +33,14 @@ const safeHeaders = {
 
 const string = Schema.String.check(Schema.isMaxLength(4096));
 const opaque = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{43}$/));
+const CommandTag = Schema.Literals(["ProposeSkill", "AcceptSkill", "RemoveSkill"]);
+
+const RequestId = Schema.Union([
+  Schema.String.check(Schema.isMaxLength(128)),
+  Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+]);
+
+const Version = Schema.Int.check(Schema.isGreaterThan(0));
 
 const Registration = Schema.Struct({
   client_name: Schema.Literal("Kitties Desktop"),
@@ -100,6 +109,11 @@ const ControlInput = Schema.Union([
     ]),
     payload: Schema.Json,
   }),
+  Schema.Struct({
+    action: Schema.Literal("dropNextCommandReply"),
+    tag: CommandTag,
+    armMs: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 30000 })),
+  }),
 ]);
 
 const NativeSession = Schema.Struct({ key: Schema.String, expiresAt: Schema.Int });
@@ -112,8 +126,9 @@ const RequestFrame = Schema.TaggedStruct("Request", {
 });
 
 const CommandObservation = Schema.Struct({
-  id: Schema.String,
-  tag: Schema.Literals(["ProposeSkill", "AcceptSkill", "RemoveSkill"]),
+  _tag: Schema.Literal("Request"),
+  id: RequestId,
+  tag: CommandTag,
   payload: Schema.Struct({
     target: Schema.Literal("owner"),
     commandId: Schema.String.check(Schema.isPattern(/^library:1:[A-Za-z0-9_.:-]{1,128}$/)),
@@ -121,18 +136,40 @@ const CommandObservation = Schema.Struct({
   }),
 });
 
-const ReceiptObservation = Schema.TaggedStruct("Exit", {
-  requestId: Schema.String,
-  exit: Schema.Struct({
-    value: Schema.Struct({
-      stream: Schema.Literal("Library/owner"),
-      version: Schema.Int,
-      reply: Schema.Struct({
-        skillId: Schema.String,
-        proposalRevision: Schema.optional(Schema.Int),
-      }),
-    }),
+const ProposalReceipt = Schema.Struct({
+  stream: Schema.Literal("Library/owner"),
+  version: Version,
+  reply: Schema.Struct({
+    skillId: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{1,128}$/)),
+    proposalRevision: Version,
   }),
+});
+
+const VoidReceipt = Schema.Struct({
+  stream: Schema.Literal("Library/owner"),
+  version: Version,
+  reply: Schema.Null,
+});
+
+const SuccessObservation = Schema.TaggedStruct("Exit", {
+  requestId: RequestId,
+  exit: Schema.TaggedStruct("Success", { value: Schema.Json }),
+});
+
+const DeniedObservation = Schema.TaggedStruct("Exit", {
+  requestId: RequestId,
+  exit: Schema.TaggedStruct("Failure", {
+    cause: Schema.Tuple([
+      Schema.TaggedStruct("Fail", { error: Schema.TaggedStruct("LibraryUnauthorized", {}) }),
+    ]),
+  }),
+});
+
+const FrameDiagnostic = Schema.Struct({
+  _tag: Schema.optional(Schema.String),
+  id: Schema.optional(Schema.Unknown),
+  requestId: Schema.optional(Schema.Unknown),
+  tag: Schema.optional(Schema.String),
 });
 
 // A bounded observation tap; original chunks still pipe unchanged. Oversize
@@ -170,6 +207,123 @@ const lines = (consume) => {
       oversize = false;
       offset = end + 1;
     }
+  };
+};
+
+// The installed HTTP protocol uses newline-framed objects and numeric request
+// IDs by default. Preserve the ID type: numeric1 and string"1" are distinct.
+export const commandObserver = (record, diagnose = () => {}, received = () => {}) => {
+  const commands = new Map();
+  let requestFrames = 0;
+  let responseFrames = 0;
+  let proof;
+
+  return {
+    commands,
+    requestFrames: () => requestFrames,
+    responseFrames: () => responseFrames,
+    proof: () => proof,
+    request: lines((frame) => {
+      requestFrames++;
+      diagnose("request", frame);
+      const decoded = Schema.decodeUnknownOption(CommandObservation)(frame);
+
+      if (Option.isSome(decoded) && commands.size < 32) {
+        const value = decoded.value;
+
+        const command = {
+          requestId: value.id,
+          tag: value.tag,
+          commandId: value.payload.commandId,
+          inputSha256: digest(JSON.stringify(value.payload.input)),
+        };
+
+        commands.set(value.id, command);
+        record("domain-command", command);
+        received(command);
+      }
+    }),
+    reply: lines((frame) => {
+      responseFrames++;
+      diagnose("reply", frame);
+      const success = Schema.decodeUnknownOption(SuccessObservation)(frame);
+
+      if (Option.isSome(success)) {
+        const command = commands.get(success.value.requestId);
+
+        if (!command) return;
+
+        const receipt = Schema.decodeUnknownOption(
+          command.tag === "ProposeSkill" ? ProposalReceipt : VoidReceipt,
+          { onExcessProperty: "error" },
+        )(success.value.exit.value);
+
+        if (Option.isSome(receipt)) {
+          proof = { ...command, ...receipt.value };
+          record("domain-receipt", proof);
+        }
+
+        return;
+      }
+
+      const denied = Schema.decodeUnknownOption(DeniedObservation)(frame);
+
+      if (Option.isSome(denied)) {
+        const command = commands.get(denied.value.requestId);
+
+        if (command) record("domain-denied", { ...command, error: "LibraryUnauthorized" });
+      }
+    }),
+  };
+};
+
+export const replyLoss = (record, now = Date.now) => {
+  let current = { phase: "idle" };
+  let uses = 0;
+
+  const status = () => {
+    if (current.phase === "armed" && current.expiresAt <= now()) {
+      current = { ...current, phase: "expired" };
+      record("reply-loss-expired", { tag: current.tag });
+    }
+
+    return { ...current };
+  };
+
+  return {
+    status,
+    arm(tag, armMs) {
+      status();
+
+      if (["armed", "claimed"].includes(current.phase) || uses >= 128) return refuse();
+      decode(CommandTag, tag);
+      decode(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 30000 })), armMs);
+      uses++;
+      current = { phase: "armed", tag, expiresAt: now() + armMs };
+      record("reply-loss-armed", { tag, expiresAt: current.expiresAt });
+
+      return { armed: true, tag, expiresAt: current.expiresAt, maxReplyBytes: MAX_BODY };
+    },
+    claim(command) {
+      status();
+
+      if (current.phase !== "armed" || current.tag !== command.tag) return false;
+      current = { ...current, ...command, phase: "claimed" };
+      record("reply-loss-claimed", command);
+
+      return true;
+    },
+    finish(command, phase, reason) {
+      if (
+        current.phase !== "claimed" ||
+        current.requestId !== command.requestId ||
+        current.commandId !== command.commandId
+      )
+        return;
+      current = { ...current, phase };
+
+      if (phase === "passthrough") record("reply-loss-passthrough", { ...command, reason });
+    },
   };
 };
 
@@ -621,6 +775,43 @@ export async function servers({
   let active = 0;
   let controlSessions = 0;
   const streams = new Set();
+  const loss = replyLoss(state.record);
+  let diagnosticsCount = 0;
+
+  const diagnose = (direction, frame) => {
+    if (diagnosticsCount >= 32) return;
+    diagnosticsCount++;
+    const decoded = Schema.decodeUnknownOption(FrameDiagnostic)(frame);
+
+    if (Option.isNone(decoded)) {
+      state.record("rpc-shape", { direction, kind: "other", idKind: "other", tag: "other" });
+
+      return;
+    }
+
+    const value = decoded.value;
+    const id = direction === "request" ? value.id : value.requestId;
+    state.record("rpc-shape", {
+      direction,
+      kind: ["Request", "Exit", "Chunk"].includes(value._tag) ? value._tag : "other",
+      idKind: Schema.is(Schema.Number)(id)
+        ? "number"
+        : Schema.is(Schema.String)(id)
+          ? "string"
+          : "other",
+      tag: [
+        "ProposeSkill",
+        "AcceptSkill",
+        "RemoveSkill",
+        "Library.get",
+        "Library.watch",
+        "SkillDetail.get",
+        "SkillDetail.watch",
+      ].includes(value.tag)
+        ? value.tag
+        : "other",
+    });
+  };
 
   const handle = (handler) => async (request, response) => {
     if (active >= MAX_REQUESTS) return json(response, 503, { error: "capacity" });
@@ -821,32 +1012,13 @@ export async function servers({
       });
 
       let reply;
+      let gate;
+      let holdTimer;
       let requestBytes = 0;
-      const commands = new Map();
+      let selected;
 
-      const observeRequest = lines((frame) => {
-        const decoded = Schema.decodeUnknownOption(CommandObservation)(frame);
-
-        if (Option.isSome(decoded) && commands.size < 32) {
-          const command = decoded.value;
-          commands.set(command.id, { tag: command.tag, commandId: command.payload.commandId });
-          state.record("domain-command", {
-            tag: command.tag,
-            commandId: command.payload.commandId,
-            inputSha256: digest(JSON.stringify(command.payload.input)),
-          });
-        }
-      });
-
-      const observeReply = lines((frame) => {
-        const decoded = Schema.decodeUnknownOption(ReceiptObservation)(frame);
-
-        if (Option.isSome(decoded)) {
-          const receipt = decoded.value;
-          const command = commands.get(receipt.requestId);
-
-          if (command) state.record("domain-receipt", { ...command, ...receipt.exit.value });
-        }
+      const observed = commandObserver(state.record, diagnose, (command) => {
+        if (loss.claim(command)) selected = command;
       });
 
       const close = () => {
@@ -867,8 +1039,79 @@ export async function servers({
           ...safeHeaders,
           "content-type": incoming.headers["content-type"] ?? "application/octet-stream",
         });
-        incoming.pipe(response);
-        incoming.on("data", observeReply);
+
+        let holding =
+          selected !== undefined && observed.requestFrames() === 1 && observed.commands.size === 1;
+
+        let held = [];
+        let heldBytes = 0;
+
+        const passthrough = (reason) => {
+          if (!holding) return;
+          holding = false;
+          loss.finish(selected, "passthrough", reason);
+
+          for (const chunk of held) gate.push(chunk);
+          held = [];
+        };
+
+        if (selected && !holding) loss.finish(selected, "passthrough", "multiple-frames");
+        gate = new Transform({
+          transform(chunk, _, callback) {
+            observed.reply(chunk);
+
+            if (holding) {
+              if (heldBytes + chunk.length > MAX_BODY) {
+                passthrough("size");
+                this.push(chunk);
+              } else {
+                heldBytes += chunk.length;
+                held.push(chunk);
+              }
+            } else this.push(chunk);
+            callback();
+          },
+          flush(callback) {
+            clearTimeout(holdTimer);
+            const proof = observed.proof();
+            let complete = false;
+
+            if (holding) {
+              try {
+                complete = Schema.is(SuccessObservation)(
+                  JSON.parse(Buffer.concat(held).toString("utf8")),
+                );
+              } catch {
+                complete = false;
+              }
+            }
+
+            if (
+              holding &&
+              incoming.statusCode === 200 &&
+              observed.responseFrames() === 1 &&
+              complete &&
+              proof &&
+              proof.requestId === selected.requestId &&
+              proof.commandId === selected.commandId
+            ) {
+              holding = false;
+              held = [];
+              loss.finish(selected, "dropped");
+              state.record("reply-dropped", proof);
+              response.destroy();
+            } else passthrough("no-matching-success");
+            callback();
+          },
+        });
+
+        if (holding) {
+          state.record("reply-loss-withheld", selected);
+          holdTimer = setTimeout(() => passthrough("deadline"), 10000);
+        }
+
+        gate.once("error", () => response.destroy());
+        incoming.pipe(gate).pipe(response);
         incoming.once("error", () => response.destroy());
       });
       proxy.once("error", () => {
@@ -877,6 +1120,10 @@ export async function servers({
       });
       response.once("close", () => {
         clearTimeout(timer);
+        clearTimeout(holdTimer);
+
+        if (selected) loss.finish(selected, "passthrough", "closed");
+        gate?.destroy();
         streams.delete(close);
         session.streams.delete(close);
         proxy.destroy();
@@ -884,7 +1131,7 @@ export async function servers({
       });
       request.on("data", (chunk) => {
         requestBytes += chunk.length;
-        observeRequest(chunk);
+        observed.request(chunk);
 
         if (requestBytes > 1048576) close();
       });
@@ -920,12 +1167,16 @@ export async function servers({
             libraryId: "owner",
             epoch: 1,
             active,
+            replyLoss: loss.status(),
             evidence: state.evidence(),
           };
           break;
         case "nextTokenLifetime":
           state.lifetime(input.ttlSeconds);
           value = { ttlSeconds: input.ttlSeconds };
+          break;
+        case "dropNextCommandReply":
+          value = loss.arm(input.tag, input.armMs);
           break;
         case "revokeAll":
           state.revoke();
@@ -1067,7 +1318,15 @@ async function launchBackend(stateDir, signal) {
     }
   });
   child.on("error", ready.reject);
-  closed.then(() => ready.reject(Error("Backend exited before readiness")));
+  closed.then(
+    () => ready.reject(Error("Backend exited before readiness")),
+    (error) => ready.reject(error),
+  );
+
+  const killGroup = (signal) => {
+    const pid = decode(Schema.Int.check(Schema.isGreaterThan(0)), child.pid);
+    process.kill(-pid, signal);
+  };
 
   const stop = async () => {
     try {
@@ -1078,7 +1337,7 @@ async function launchBackend(stateDir, signal) {
         throw Error("Backend finalizer proof failed");
 
       try {
-        process.kill(-child.pid, 0);
+        killGroup(0);
         throw Error("Backend process group remains");
       } catch (error) {
         if (error.code !== "ESRCH") throw error;
@@ -1087,7 +1346,7 @@ async function launchBackend(stateDir, signal) {
       return { engineVerified, stderrBytes, processGroupClean: true };
     } catch (error) {
       try {
-        process.kill(-child.pid, "SIGKILL");
+        killGroup("SIGKILL");
       } catch (killError) {
         if (killError.code !== "ESRCH") throw new AggregateError([error, killError]);
       }

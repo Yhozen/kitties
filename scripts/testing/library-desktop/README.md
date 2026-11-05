@@ -74,6 +74,24 @@ Outputs include result JSON, app/registry logs, accessible trees and screenshots
 This route proves no-config visible failure and preferences persistence. Raw
 forbidden IPC coverage is the separate actual native Rust IPC suite.
 
+## Actual development runtime
+
+Start the normal web Vite server on localhost:5173 using the app configuration,
+then run against the same immutable inputs and context-only build overlay:
+
+```sh
+scripts/testing/library-desktop/run-linux-env /bin/bash \
+  /research/inputs/workspace/scripts/testing/library-desktop/smoke-dev \
+  /research/logs/development-atspi development-atspi-01
+```
+
+This invokes official `tauri dev --no-watch -- --locked` twice. The controller
+requires the live `/library.html`, `/@vite/client` and shared source entry, then
+checks the actual window, fail-closed unconfigured sign-in, explicit preference
+save and a new process reloading the saved record. It stops its dedicated CLI
+process group, including the native child. Development and packaged results stay
+separate; neither mode substitutes static assets for the development server.
+
 ## Local issuer gate and remaining limits
 
 The accepted local HTTPS fixture uses explicit compiled origins
@@ -90,6 +108,28 @@ injection is permitted. Accessible URL queries/fragments are redacted. Screensho
 must exclude browser authorization/callback address-bar queries. See the fixture
 owner's handoff and `.context/library-desktop/LOCAL_HTTPS_FIXTURE.md` for its
 control/evidence protocol; this gate is still local issuer evidence.
+
+The auth route runs eleven cases, including a real committed response loss and
+retry. Start a fresh fixture with Node 26 (`node
+scripts/testing/library-desktop/fixture.mjs`) before running the auth route; its
+ready event supplies public origins, control URL and CA path. The separate
+loopback control listener accepts strict JSON without Origin or Fetch Metadata.
+`dropNextCommandReply` accepts one public command tag and an `armMs` from 1 to
+30000; it consumes one matching command and drops only a complete successful
+receipt from the real backend. It buffers at most 32 KiB for at most ten seconds;
+nonmatching, rejected and oversized responses pass through. Watches keep streaming.
+The bounded evidence log records command IDs, input hashes and receipts, never
+credentials or skill bodies. Numeric and string RPC IDs remain distinct.
+
+The actual OS UI must show Unknown, retry the original intent despite a newly
+edited draft, and receive the same receipt without another aggregate allocation.
+The final `freeze` control invokes real RecoveryDO authority; a still-valid-token
+command must receive correlated LibraryUnauthorized before aggregate send, with
+its draft retained and mutation controls fenced. Consent denial does not prove
+this command outcome. Freeze is terminal; use a fresh fixture for another run.
+The controller records independent backend reads, receipts, screenshots and
+cleanup. Stop only the identified fixture process with SIGTERM and retain its
+engine/process-group finalizer evidence.
 
 Official WebDriver is retained as an optional diagnostic (`smoke-linux`/`run.mjs`).
 Pinned Wry0.57.1 drops Tauri's automation context on the incognito branch;

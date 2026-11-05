@@ -1,4 +1,4 @@
-// Local production-asset browser proof; authentication is the explicit native fixture.
+// Local browser proof; authentication is the explicit native fixture.
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import { once } from "node:events";
@@ -10,8 +10,12 @@ import { dirname, extname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { chromium } from "playwright";
 import { Schema } from "effect";
+import { createServer as createViteServer } from "vite";
 
 const root = resolve(import.meta.dirname, "../../..");
+const mode = process.argv[2] ?? "production";
+
+assert.ok(["production", "development"].includes(mode), "Use production or development mode");
 
 const directory = join(
   root,
@@ -31,16 +35,18 @@ mkdirSync(nativeDirectory, { recursive: true });
 
 const dist = join(root, "apps/web/dist");
 
-assert.ok(
-  readFileSync(join(dist, "library.html"), "utf8").includes("/assets/library-"),
-  "Build the shared production frontend first",
-);
+if (mode === "production")
+  assert.ok(
+    readFileSync(join(dist, "library.html"), "utf8").includes("/assets/library-"),
+    "Build the shared production frontend first",
+  );
 
 const results = [];
 const events = [];
 const errors = [];
 let browser;
 let server;
+let vite;
 let upstream;
 let failure;
 let hostOutput = "";
@@ -121,8 +127,12 @@ const fixture = async (action, extra = {}) => {
 };
 
 const assertGroupClosed = () => {
+  const pid = host.pid;
+
+  if (pid === undefined) throw Error("Native host did not acquire a process identifier");
+
   try {
-    process.kill(-host.pid, 0);
+    process.kill(-pid, 0);
   } catch (error) {
     if (!Schema.is(Schema.Struct({ code: Schema.Literal("ESRCH") }))(error)) throw error;
     events.push({ event: "process-group-clean", pid: host.pid });
@@ -214,6 +224,23 @@ try {
         return;
       }
 
+      if (vite) {
+        // Other product routes are outside this explicit Library fixture.
+        if (url.pathname.startsWith("/v1/") || url.pathname.startsWith("/guest/")) {
+          response.writeHead(404);
+          response.end();
+
+          return;
+        }
+
+        vite.middlewares(request, response, () => {
+          response.writeHead(404);
+          response.end();
+        });
+
+        return;
+      }
+
       const path = resolve(dist, `.${url.pathname === "/" ? "/index.html" : url.pathname}`);
 
       if (!path.startsWith(dist + "/")) {
@@ -236,6 +263,16 @@ try {
       }
     },
   );
+
+  if (mode === "development") {
+    vite = await createViteServer({
+      root: join(root, "apps/web"),
+      configFile: join(root, "apps/web/vite.config.ts"),
+      server: { middlewareMode: true, ws: { server } },
+    });
+    events.push({ event: "vite-ready", mode: vite.config.mode });
+  }
+
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   origin = `https://127.0.0.1:${server.address().port}`;
@@ -253,6 +290,8 @@ try {
   });
 
   const page = await context.newPage();
+  const loadedPaths = new Set();
+  page.on("request", (request) => loadedPaths.add(new URL(request.url()).pathname));
   page.on("pageerror", (error) => errors.push(String(error)));
   page.setDefaultTimeout(15000);
   await page.goto(origin + "/library.html");
@@ -263,7 +302,16 @@ try {
     await page.evaluate(() => localStorage.getItem("kitties.device-preferences.v1")),
     null,
   );
-  results.push("production assets boot the shared Foldkit screen without writing defaults");
+  assert.equal(
+    loadedPaths.has("/@vite/client"),
+    mode === "development",
+    "Vite client presence must match the selected entry mode",
+  );
+
+  if (mode === "development")
+    assert.equal(loadedPaths.has("/src/foldkit/library-host/entry.ts"), true);
+
+  results.push(`${mode} entry boots the shared Foldkit screen without writing defaults`);
   await page.getByLabel("Name", { exact: true }).fill("Browser instructions");
   await page
     .getByLabel("Instructions", { exact: true })
@@ -334,16 +382,28 @@ try {
   );
   await second.close();
   await context.close();
-  const short = await fixture("issue", { ttlMs: 1600 });
 
   const expiryContext = await browser.newContext({
     ignoreHTTPSErrors: true,
     locale: "en-US",
-    extraHTTPHeaders: { "x-local-session": short.key },
   });
 
   const expiring = await expiryContext.newPage();
   expiring.setDefaultTimeout(15000);
+  // Issue the immutable short credential at the actual handshake. Development
+  // module loading must not spend the session before the first client exists.
+  await expiring.route(
+    origin + "/v1/library/session",
+    async (route) => {
+      const short = await fixture("issue", { ttlMs: 1600 });
+      await expiryContext.setExtraHTTPHeaders({ "x-local-session": short.key });
+      events.push({ event: "short-session-handshake", at: Date.now(), expiresAt: short.expiresAt });
+      await route.continue({
+        headers: { ...route.request().headers(), "x-local-session": short.key },
+      });
+    },
+    { times: 1 },
+  );
   await expiring.goto(origin + "/library.html");
   await expiring
     .getByText("No skills yet. Propose your first instructions below.", { exact: true })
@@ -363,6 +423,17 @@ try {
   process.exitCode = 1;
 } finally {
   await browser?.close();
+
+  if (vite) {
+    try {
+      await deadline(vite.close(), 15000, "Vite shutdown");
+      events.push({ event: "vite-closed" });
+    } catch (error) {
+      failure ??= { error: String(error), stack: error.stack };
+      process.exitCode = 1;
+    }
+  }
+
   server?.closeAllConnections();
 
   if (server?.listening) await new Promise((resolve) => server.close(resolve));
@@ -381,7 +452,7 @@ try {
     assertGroupClosed();
   } catch (error) {
     try {
-      process.kill(-host.pid, "SIGKILL");
+      if (host.pid !== undefined) process.kill(-host.pid, "SIGKILL");
     } catch {
       /* owned group already exited */
     }
@@ -395,7 +466,15 @@ try {
   writeFileSync(
     join(directory, "results.json"),
     JSON.stringify(
-      { verdict: failure ? "FAIL" : "PASS", nativeDirectory, results, failure, errors, events },
+      {
+        verdict: failure ? "FAIL" : "PASS",
+        mode,
+        nativeDirectory,
+        results,
+        failure,
+        errors,
+        events,
+      },
       null,
       2,
     ),

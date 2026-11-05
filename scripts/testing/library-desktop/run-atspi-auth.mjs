@@ -12,6 +12,21 @@ const output = resolve(process.argv[3]);
 const helper = process.env.KITTIES_ACCESSIBILITY_HELPER;
 const cases = [];
 const observations = [];
+
+const Event = Schema.Struct({
+  event: Schema.String,
+  at: Schema.Int,
+  tag: Schema.optional(Schema.String),
+  requestId: Schema.optional(Schema.Union([Schema.String, Schema.Int])),
+  commandId: Schema.optional(Schema.String),
+  inputSha256: Schema.optional(Schema.String),
+  stream: Schema.optional(Schema.String),
+  version: Schema.optional(Schema.Int),
+  reply: Schema.optional(Schema.Json),
+  expiresAt: Schema.optional(Schema.Int),
+  error: Schema.optional(Schema.String),
+});
+
 let app;
 let closed;
 let failure = null;
@@ -85,6 +100,7 @@ const evidence = async () => {
       Schema.Struct({
         counters: Schema.Record(Schema.String, Schema.Int),
         totalIssued: Schema.Int,
+        events: Schema.Array(Event),
       }),
     ),
   )(response.text);
@@ -194,6 +210,49 @@ const fill = (name, value) => {
   os("key", "ctrl+a");
   os("type", value);
 };
+
+const fieldValue = (tree, name) => {
+  const lines = tree.split("\n");
+
+  const index = lines.findIndex((line) => {
+    const match = /^\s*\[(entry|text|embedded)\] (.*)$/.exec(line);
+
+    return match?.[2] === name;
+  });
+
+  assert(index >= 0, `Actual accessible field ${name} must exist`);
+
+  return lines[index + 1]
+    ?.trimStart()
+    .replace(/^TEXT ?/, "")
+    .trimEnd();
+};
+
+const draftValue = (tree) => ({
+  name: fieldValue(tree, "Name"),
+  body: fieldValue(tree, "Instructions"),
+});
+
+const eventAt = (event, predicate) =>
+  until(
+    async () =>
+      (await evidence()).events.find((value) => value.event === event && predicate(value)),
+    event,
+  );
+
+const receiptValue = (event) => ({
+  stream: event.stream,
+  version: event.version,
+  reply: event.reply,
+});
+
+const LibrarySnapshot = Schema.Struct({
+  active: Schema.Array(
+    Schema.Struct({ id: Schema.String, name: Schema.String, status: Schema.String }),
+  ),
+  highWater: Schema.Int,
+  catalogueRevision: Schema.Int,
+});
 
 const successfulValue = (frames) =>
   Schema.decodeUnknownSync(
@@ -313,6 +372,113 @@ try {
   observations.push({ phase: "removed", library: removed });
   cases.push("packaged remove confirms actual Domain removal without optimistic success");
 
+  const originalDraft = {
+    name: "Packaged commit without reply",
+    body: "Original pending command instructions.",
+  };
+
+  const editedDraft = {
+    name: "Next untouched draft",
+    body: "Retain this edited draft after retry.",
+  };
+
+  const beforeLoss = Schema.decodeUnknownSync(LibrarySnapshot)(
+    successfulValue(await control({ action: "inspect" })),
+  );
+
+  assert.equal(beforeLoss.highWater, 2);
+  assert.equal(beforeLoss.catalogueRevision, 6);
+  fill("Name", originalDraft.name);
+  fill("Instructions", originalDraft.body);
+  await control({ action: "dropNextCommandReply", tag: "ProposeSkill", armMs: 15000 });
+  os("action", "push button", "Propose skill");
+
+  const dropped = await eventAt("reply-dropped", (event) => event.tag === "ProposeSkill");
+
+  const originalCommand = await eventAt(
+    "domain-command",
+    (event) => event.commandId === dropped.commandId,
+  );
+
+  const originalReceipt = await eventAt(
+    "domain-receipt",
+    (event) => event.commandId === dropped.commandId,
+  );
+
+  const originalDigest = createHash("sha256")
+    .update(JSON.stringify(originalDraft))
+    .digest("base64url");
+
+  assert.equal(originalCommand.inputSha256, originalDigest);
+  assert.equal(dropped.inputSha256, originalDigest);
+  assert.equal(originalReceipt.version, 7);
+  assert.equal(originalReceipt.stream, "Library/owner");
+  assert.deepEqual(originalReceipt.reply, {
+    skillId: "kitties-skill-0000000000000003",
+    proposalRevision: 7,
+  });
+
+  const unknown = await treeAt("unknown-after-commit", (tree) =>
+    enabled(tree, "Retry same request"),
+  );
+
+  assert(unknown.includes("The result is unknown. Retry the same request"));
+  assert.equal(enabled(unknown, "Propose skill"), false);
+  assert.deepEqual(draftValue(unknown), originalDraft);
+
+  const committed = Schema.decodeUnknownSync(LibrarySnapshot)(
+    successfulValue(await control({ action: "inspect" })),
+  );
+
+  assert.equal(committed.highWater, 3);
+  assert.equal(committed.catalogueRevision, 7);
+  assert.equal(committed.active.filter((skill) => skill.name === originalDraft.name).length, 1);
+  fill("Name", editedDraft.name);
+  fill("Instructions", editedDraft.body);
+  os("action", "push button", "Retry same request");
+
+  const retryCommand = await eventAt(
+    "domain-command",
+    (event) =>
+      event.commandId === dropped.commandId && event.requestId !== originalCommand.requestId,
+  );
+
+  const retryReceipt = await eventAt(
+    "domain-receipt",
+    (event) => event.commandId === dropped.commandId && event.requestId === retryCommand.requestId,
+  );
+
+  assert.equal(retryCommand.inputSha256, originalDigest);
+  assert.deepEqual(receiptValue(retryReceipt), receiptValue(originalReceipt));
+
+  const retried = await treeAt(
+    "original-receipt-retried",
+    (tree) =>
+      tree.includes("Saved to your library.") && !tree.includes("[push button] Retry same request"),
+  );
+
+  assert.deepEqual(draftValue(retried), editedDraft);
+
+  const afterRetry = Schema.decodeUnknownSync(LibrarySnapshot)(
+    successfulValue(await control({ action: "inspect" })),
+  );
+
+  assert.deepEqual(afterRetry, committed);
+  observations.push({
+    phase: "unknown-retry",
+    originalCommand,
+    dropped,
+    originalReceipt,
+    retryCommand,
+    retryReceipt,
+    beforeLoss,
+    committed,
+    afterRetry,
+  });
+  cases.push(
+    "real committed/lost reply stays Unknown; edited-draft retry preserves command ID/input/original receipt and one allocation",
+  );
+
   await control({ action: "revokeAll" });
   const revoked = await treeAt("revoked", (tree) => !enabled(tree, "Propose skill"), false);
 
@@ -349,6 +515,77 @@ try {
   const relaunched = await treeAt("relaunched", (tree) => enabled(tree, "Sign in"));
   assert.equal(relaunched.includes("[push button] Propose skill"), false);
   cases.push("new packaged process has no persisted native credentials");
+
+  await browserDecision(true);
+  await treeAt("before-freeze", (tree) => enabled(tree, "Propose skill"));
+  os("action", "push button", `Review · ${originalDraft.name}`);
+  await treeAt("before-freeze-detail", (tree) => enabled(tree, "Accept"));
+
+  const refusedDraft = {
+    name: "Refuse this frozen command",
+    body: "Keep this exact draft after Domain denial.",
+  };
+
+  fill("Name", refusedDraft.name);
+  fill("Instructions", refusedDraft.body);
+  const beforeDenial = await evidence();
+  const statsBeforeDenial = await control({ action: "stats" });
+  const frozen = await control({ action: "freeze" });
+  os("action", "push button", "Propose skill");
+
+  const domainDenied = await eventAt(
+    "domain-denied",
+    (event) => event.tag === "ProposeSkill" && event.at >= beforeDenial.events.at(-1).at,
+  );
+
+  const refusedCommand = await eventAt(
+    "domain-command",
+    (event) => event.commandId === domainDenied.commandId,
+  );
+
+  const refusedDigest = createHash("sha256")
+    .update(JSON.stringify(refusedDraft))
+    .digest("base64url");
+
+  assert.equal(refusedCommand.inputSha256, refusedDigest);
+  assert.equal(domainDenied.requestId, refusedCommand.requestId);
+  assert.equal(domainDenied.error, "LibraryUnauthorized");
+
+  const priorToken = beforeDenial.events.filter((event) => event.event === "token-issued").at(-1);
+  assert(priorToken);
+  assert(
+    priorToken.expiresAt > domainDenied.at,
+    "Domain refused a command while its native bearer remained valid",
+  );
+
+  const fenced = await treeAt(
+    "domain-command-denied",
+    (tree) =>
+      !enabled(tree, "Propose skill") && !enabled(tree, "Accept") && !enabled(tree, "Remove"),
+    false,
+  );
+
+  assert.deepEqual(draftValue(fenced), refusedDraft);
+  assert.equal(enabled(fenced, "Retry same request"), false);
+
+  const statsAfterDenial = await control({ action: "stats" });
+  assert.equal(
+    Schema.decodeUnknownSync(Schema.Struct({ sends: Schema.Int }))(statsAfterDenial).sends,
+    Schema.decodeUnknownSync(Schema.Struct({ sends: Schema.Int }))(statsBeforeDenial).sends,
+    "middleware denial must precede the actual aggregate send/allocation",
+  );
+  observations.push({
+    phase: "frozen-domain-denial",
+    frozen,
+    domainDenied,
+    refusedCommand,
+    priorToken,
+    statsBeforeDenial,
+    statsAfterDenial,
+  });
+  cases.push(
+    "valid-token packaged Domain command is refused after real Recovery freeze; exact draft retained and all mutations fenced",
+  );
 } catch (cause) {
   failure = cause instanceof Error ? cause.message : String(cause);
 
@@ -374,7 +611,7 @@ try {
     observations,
     failure,
     scope:
-      "Explicit local issuer/real native Domain only; no real Access or pending Unknown replay claim",
+      "Explicit local issuer/real native Domain; no real Access, authority-cutover or prompt idle-body cancellation claim",
   };
 
   writeFileSync(join(output, "result.json"), JSON.stringify(result, null, 2) + "\n");

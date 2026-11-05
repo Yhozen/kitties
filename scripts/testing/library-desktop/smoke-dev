@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# Invoke through run-linux-env (without --runtime) for the context-only source
+# overlay. The CLI writes Cargo features/generated ACLs; real inputs remain RO.
+output=${1:?Supply output directory}
+run_key=${2:?Supply a fresh run key}
+[[ "$run_key" =~ ^[a-zA-Z0-9_-]+$ ]] || exit 2
+chown -R native-test:native-test /research/target /research/cargo-home \
+  /research/inputs/workspace/apps/desktop/src-tauri
+exec /bin/bash /research/inputs/workspace/scripts/testing/library-desktop/smoke-atspi \
+  /research/target/debug/kitties-desktop "$output" "$run_key" development

@@ -21,5 +21,5 @@ DESKTOP
   xdg-mime default kitties-fixture-browser.desktop x-scheme-handler/http
   node /research/inputs/workspace/scripts/testing/library-desktop/run-atspi-auth.mjs "$1" "$2"
 else
-  node /research/inputs/workspace/scripts/testing/library-desktop/run-atspi.mjs "$1" "$2"
+  node /research/inputs/workspace/scripts/testing/library-desktop/run-atspi.mjs "$1" "$2" "$KITTIES_NATIVE_TEST_MODE"
 fi

@@ -8,10 +8,13 @@ import * as Schema from "effect/Schema";
 
 const binary = resolve(process.argv[2]);
 const output = resolve(process.argv[3]);
+const development = process.argv[4] === "development";
+const desktop = "/research/inputs/workspace/apps/desktop";
 const helper = process.env.KITTIES_ACCESSIBILITY_HELPER;
 const store = join(process.env.XDG_DATA_HOME, "app.kitties.desktop/device-preferences.v1.json");
 const expected = { preferences: { version: 1, language: "es", theme: "light" } };
 const cases = [];
+const developmentRequests = [];
 let app;
 let appClosed;
 let failure = null;
@@ -21,7 +24,7 @@ const os = (...args) =>
   execFileSync(helper, args, { encoding: "utf8", timeout: 12000, maxBuffer: 1024 * 1024 });
 
 const until = async (observe, label) => {
-  const end = Date.now() + 20000;
+  const end = Date.now() + (development ? 180000 : 20000);
 
   while (Date.now() < end) {
     const value = observe();
@@ -34,7 +37,17 @@ const until = async (observe, label) => {
 };
 
 const open = () => {
-  app = spawn(binary, [], { detached: true, stdio: ["ignore", "pipe", "pipe"] });
+  app = development
+    ? spawn(
+        process.execPath,
+        ["node_modules/@tauri-apps/cli/tauri.js", "dev", "--no-watch", "--", "--locked"],
+        {
+          cwd: desktop,
+          detached: true,
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      )
+    : spawn(binary, [], { detached: true, stdio: ["ignore", "pipe", "pipe"] });
   app.stdout.on("data", (chunk) => {
     appLog += chunk;
   });
@@ -58,7 +71,10 @@ const close = async () => {
       ? undefined
       : Error("Packaged process terminated before the requested stop");
 
-  closing.kill("SIGTERM");
+  // The official development CLI owns a Cargo/native child. Stop only this
+  // dedicated group so its signal handler cannot wait forever for a live GUI.
+  if (development) process.kill(-closing.pid, "SIGTERM");
+  else closing.kill("SIGTERM");
 
   try {
     await Promise.race([
@@ -110,16 +126,36 @@ const treeAt = async (phase, milestone) => {
 };
 
 try {
+  if (development) {
+    for (const [path, marker] of [
+      ["/library.html", "/src/foldkit/library-host/entry.ts"],
+      ["/@vite/client", "WebSocket"],
+      ["/src/foldkit/library-host/entry.ts", "Runtime.makeApplication"],
+    ]) {
+      const response = await fetch(`http://localhost:5173${path}`, {
+        signal: AbortSignal.timeout(5000),
+      });
+
+      assert.equal(response.status, 200, "actual Vite source request must succeed");
+      const text = await response.text();
+      assert(text.length <= 1024 * 1024);
+      assert(text.includes(marker), `Vite source marker must exist: ${path}`);
+
+      if (path === "/library.html") assert(text.includes('src="/@vite/client"'));
+      developmentRequests.push({ path, sha256: createHash("sha256").update(text).digest("hex") });
+    }
+  }
+
   assert.equal(existsSync(store), false, "fresh profile must have no persisted preferences");
   open();
   const initial = await treeAt("initial", (tree) => tree.includes("Try connecting again."));
-  assert(initial.includes("[document text] Your skill library · Kitties"));
+  assert(initial.includes("[document frame] Your skill library"));
   assert(initial.includes("[push button] Sign in"));
   assert(selected(initial, "English"));
   assert(selected(initial, "Dark"));
   assert.equal(existsSync(store), false, "load must not silently persist defaults");
   cases.push(
-    "real package/shared Library boots without configuration and keeps preferences available",
+    "real native/shared Library boots without configuration and keeps preferences available",
   );
 
   os("action", "push button", "Sign in");
@@ -170,10 +206,19 @@ try {
     tree.includes("Tu biblioteca no está disponible. Intenta conectarte de nuevo."),
   );
 
-  assert(restored.includes("[document text] Tu biblioteca de habilidades · Kitties"));
+  assert(restored.includes("[document frame] Tu biblioteca de habilidades"));
   assert(selected(restored, "Español"));
   assert(selected(restored, "Claro"));
-  cases.push("new packaged process reloads saved preferences from the same private profile");
+  cases.push("new native process reloads saved preferences from the same private profile");
+
+  if (development) {
+    assert(appLog.includes("Running DevCommand"));
+    assert(appLog.includes("--no-default-features"));
+    assert.equal((appLog.match(/Running DevCommand/g) ?? []).length, 2);
+    cases.push(
+      "both launches run official CLI development builds against actual Vite source/HMR entry",
+    );
+  }
 } catch (cause) {
   failure = cause instanceof Error ? cause.message : String(cause);
 } finally {
@@ -187,12 +232,15 @@ try {
 
   const result = {
     status: failure === null ? "PASS" : "FAIL",
+    mode: development ? "tauri-dev-no-watch" : "package",
+    developmentRequests,
     binary,
     binarySha256: createHash("sha256").update(readFileSync(binary)).digest("hex"),
     cases,
     failure,
-    scope:
-      "Actual incognito package; OS accessibility/input; no live Access/provider or raw IPC denial claim",
+    scope: development
+      ? "Official tauri dev --no-watch with stock config/incognito and real localhost5173 Vite; OS UI/native IPC; no packaged/provider claim"
+      : "Actual incognito package; OS accessibility/input; no live Access/provider or raw IPC denial claim",
   };
 
   writeFileSync(join(output, "result.json"), JSON.stringify(result, null, 2) + "\n");

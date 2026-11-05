@@ -42,6 +42,7 @@ pnpm --filter @kitties/kittyd check
 pnpm test:library
 pnpm test:library-bundle
 pnpm test:library-browser
+pnpm test:library-browser development
 # Separate strict gates: currently nonzero on the pinned runtime/plugin.
 pnpm test:library-http
 ```
@@ -66,12 +67,14 @@ resource, state and PKCE checks remain. Fixtures do not mount in the application
 | Exact shared-client snapshot | Frozen install, Vite+ check, 324 tests in 31 files with coverage floors; all three recursive builds pass. |
 | Complete repository | Frozen install and Vite+ formatting/lint/types pass with 0 errors and 629 advisory warnings; all 329 tests in 32 files pass with coverage floors intact; all three recursive builds and guest typecheck pass. |
 | Native crate | 19 actual tests pass: fixed Store/ACL, public OAuth callback protocol, exact HTTP scopes, redirects/cookies and cancellation before headers. |
-| Browser built assets | Five cases pass: commands and source barriers, another tab's live view, acknowledged Preact/Foldkit preferences, mobile/keyboard and expiry/reconnect. |
+| Browser production and development | Five cases pass in each mode; development requires the actual Vite client and source entry. Cases cover commands and source barriers, another tab's live view, acknowledged Preact/Foldkit preferences, mobile/keyboard and expiry/reconnect. |
 | Packaged Linux, no configuration | Four cases pass: shared UI, fail-closed sign-in, es/light native save and a new process loading the record. |
-| Packaged Linux, local issuer | Nine cases pass: real external browser Deny/Allow and loopback callback, native trust/handshake, proposal/review/accept/remove, peer catalogue and selected-detail updates, expiry, same-authority reauthentication and credentials absent after relaunch. |
+| Tauri development | Five cases pass using official CLI `dev --no-watch`, real Vite, stock incognito/CSP, native preferences and a new process. |
+| Packaged Linux, local issuer | Eleven cases pass: real external browser Deny/Allow and loopback callback, native trust/handshake, proposal/review/accept/remove, peer catalogue and selected-detail updates, expiry, same-authority reauthentication, credentials absent after relaunch, committed response loss with stable-intent retry, and valid-token Domain command denial. |
 | Workerd prompt idle abort | Two strict failures remain. A plain-JS control sees no abort/cancel until a body chunk is written. Absolute expiry passes separately. |
 | Native plugin prompt idle-body cancel | Stock 2.8.3: one control passes, two strict regressions fail. Resource-table removal does not settle a pending read or close its socket until output/EOF. |
-| Real Access / other OSes | Not proven. CI compile jobs are configured; Linux runtime evidence does not establish macOS/Windows runtime or signing. |
+| Platform CI | The original macOS, Windows and Linux `cargo check --locked --tests` matrix passed; Linux also ran native tests. The expanded executable-build and native-test matrix for all three is pending. |
+| Real Access / other OS GUI runtime | Not proven; Linux runtime evidence does not establish macOS/Windows runtime or signing. |
 
 The package proof uses the actual extracted Debian binary, shipped incognito
 configuration and unchanged built assets. Pinned Wry loses WebDriver automation
@@ -79,11 +82,15 @@ when creating the ephemeral context; the official WebDriver attempt failed and
 remains recorded. OS accessibility/keyboard input proves the real app instead.
 No framework patch, alternate UI, injected Tauri global or disabled sandbox is used.
 
-The package's command outcomes are checked through independent real catalogue/
-detail reads and peer receipts. The fixture did not record command-ID/receipt tap
-events for the official desktop client, so these runs establish neither packaged
-deduplication nor lost-reply retry. The deterministic official-client tests cover
-those guarantees separately.
+The packaged continuation observes the actual official client's numeric RPC IDs
+and nullable command replies. A one-shot fixture drops a response only after its
+real successful receipt is recorded. The UI reports Unknown; retry preserves the
+original command ID and input digest, returns the same version 7 receipt, and
+leaves independently inspected high-water/revision values unchanged. A separate
+valid-token command after a real recovery freeze returns LibraryUnauthorized,
+retains the draft, fences mutation controls and never reaches aggregate send.
+These observations establish packaged behavior against the explicit local issuer.
+The fixture's 12 tests and five targeted reply-loss mutants also pass.
 
 An isolated candidate fix for the HTTP plugin settles the pending read and closes
 the socket before server output; its three strict cases and all 19 existing native
@@ -101,10 +108,17 @@ Evidence lives in gitignored `.context/`; commands above recreate it. Key runs:
 - Complete repository: `.context/library-complete-{install,check,coverage,build,guest-check}.log`.
 - No-config release: `.context/library-desktop/logs/candidate-atspi/result.json`.
   `candidate.deb` SHA256 `64f3e8e575294be5b7499e583929e5054c7187601d74e383979a6604d5361149`.
-- Explicit local-issuer release: `.context/library-desktop/logs/local-fixture-atspi-final/result.json`;
+- Explicit local-issuer release: `.context/library-desktop/logs/packaged-unknown-denied-1/result.json`;
   `fixture-shutdown.json` confirms engine identity and owned process-group cleanup.
   `local-fixture.deb` SHA256 `16d5ad0c722a70da720aebf53de40ade45cec5de197ebdf5e475e5f692cb3383`;
   extracted binary `449382845c8eab7d7529e9ce1d76f6c5280458ef1400ecdcafd9181ed8d85581`.
+- Development: browser `.context/library-browser-check/1793846586198-240171a4/results.json`;
+  Tauri `.context/library-desktop/logs/development-atspi-3/result.json`.
+  Production browser follow-up: `.context/library-browser-check/1793846641532-7490576c/results.json`.
+- Continuation integrity/commands: `.context/library-desktop/CONTINUATION.md` and
+  `logs/continuation-integrity.json`; unchanged package binary and all 42 snapshot inputs.
+  Fixture protocol/native proof: `local-fixture/REPLY_LOSS_HANDOFF.md` and
+  `reply-loss-native-proof.json` (six cases).
 - Stock/candidate cancellation: `.context/native-http-cancel-probe.md`,
   `.context/native-http-cancel-candidate/`, `.context/native-http-cancel-promotion/evidence/`.
 - Mutation logs cover Domain, migration/recovery, snapshot coherence, leaf/host,
@@ -130,9 +144,9 @@ staging deployment/migration and owner browser sign-in. Current public metadata
 redirects to login. Local issuer success is not proof of that provider contract.
 No external change is authorized by these tests or draft PRs.
 
-Both idle cancellation gates remain blocking. Packaged lost-ack Unknown retry
-and ChangedAuthority cutover are not claimed: those are proven at deterministic
-official client/Domain boundaries, not by this package fixture. Pending intents
+Both idle cancellation gates remain blocking. Packaged ChangedAuthority cutover
+is not claimed; that behavior is proven at deterministic official client/Domain
+boundaries. Pending intents
 are memory-only; there is no offline queue or restart intent recovery. Signed
 distribution, macOS/Windows packages and platform-specific browser/trust behavior
 remain unverified.
