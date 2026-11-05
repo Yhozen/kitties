@@ -1,5 +1,5 @@
 import * as Schema from "effect/Schema";
-import { stored, KittyRecord, NameRecord, GoalRecord, ApprovalRecord } from "./stored-records.ts";
+import { stored, GoalRecord, ApprovalRecord } from "./stored-records.ts";
 import {
   MemoryRecord,
   MemoryCommandRecord,
@@ -18,6 +18,7 @@ import * as Effect from "effect/Effect";
 import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
+import type * as SqlError from "effect/sql/SqlError";
 import { RecoveryDO } from "./recovery-store.ts";
 import { StorageAdmin } from "./storage-admin.ts";
 import { freshMemory, updateMemory } from "./memory.ts";
@@ -26,10 +27,25 @@ import { ChatgptCredentials, type ChatgptCallback } from "./chatgpt-core.ts";
 import { safeChatgptError } from "./chatgpt-errors.ts";
 import { authorization } from "./approval-policy.ts";
 import { HelpStore, type HelpDecision } from "./help-store.ts";
+import { Library } from "@kitties/domain/Library/Library.aggregate";
+import { SkillDetail } from "@kitties/domain/Library/SkillDetail.view";
+import {
+  LibraryLegacyStore,
+  LibraryLegacyError,
+  LibraryMigrationControl,
+  nativeLibraryLegacyDatabase,
+} from "./library-legacy-store.ts";
+import { LibraryMigration } from "./library-migration.ts";
+import { LibrarySnapshot } from "./library-snapshot.ts";
+import { TurnConfiguration } from "./turn-configuration.ts";
 
 const makeActor = Effect.gen(function* () {
   const state = yield* Cloudflare.DurableObjectState;
   const roots = yield* RecoveryDO;
+  const libraries = yield* Library;
+  const details = yield* SkillDetail;
+  const snapshots = yield* LibrarySnapshot;
+  const migrationControl = yield* LibraryMigrationControl;
 
   const register = (kind: string, id: string) =>
     kind === "kitty" || kind === "chat"
@@ -68,11 +84,42 @@ const makeActor = Effect.gen(function* () {
     );
     const raw = state.raw.storage.sql;
     const help = yield* HelpStore.pipe(Effect.provide(HelpStore.layer));
+    const legacyDatabase = nativeLibraryLegacyDatabase(state.raw.storage);
+
+    const homeLibrary = yield* Layer.buildWithScope(
+      Layer.mergeAll(TurnConfiguration.layer(legacyDatabase), LibraryMigration.layer).pipe(
+        Layer.provideMerge(
+          LibraryLegacyStore.layer(legacyDatabase).pipe(
+            Layer.provideMerge(
+              Layer.mergeAll(
+                Layer.succeed(Library, libraries),
+                Layer.succeed(SkillDetail, details),
+                Layer.succeed(LibrarySnapshot, snapshots),
+                Layer.succeed(LibraryMigrationControl, migrationControl),
+              ),
+            ),
+          ),
+        ),
+      ),
+      yield* Effect.scope,
+    ).pipe(Effect.orDie);
+
+    const legacy = Context.get(homeLibrary, LibraryLegacyStore);
+    const migration = Context.get(homeLibrary, LibraryMigration);
+    const turns = Context.get(homeLibrary, TurnConfiguration);
 
     const admin = yield* StorageAdmin.pipe(
       Effect.provide(
         StorageAdmin.layer(
-          ["records", "charges", "connector_effects", "capacity_leases", "webhook_deliveries"],
+          [
+            "records",
+            "charges",
+            "connector_effects",
+            "capacity_leases",
+            "webhook_deliveries",
+            "library_legacy_marker",
+            "library_legacy_inventory",
+          ],
           env.KITTIES_KEK,
         ),
       ),
@@ -130,64 +177,7 @@ const makeActor = Effect.gen(function* () {
 
     const oauthError = () => "OAUTH_AUTHORIZATION_REQUIRED";
 
-    const prepareTurn = (id: string, kittyId: string, health: string) =>
-      Effect.sync(() =>
-        state.raw.storage.transactionSync(() => {
-          const raw = state.raw.storage.sql;
-
-          const get = (kind: string, key: string) =>
-            raw
-              .exec<{ body: string }>("SELECT body FROM records WHERE kind=? AND id=?", kind, key)
-              .toArray()[0]?.body;
-
-          let body = get("turn-config", id);
-
-          if (!body) {
-            const kittyBody = get("kitty", kittyId);
-
-            if (!kittyBody) throw Error("KITTY_NOT_FOUND");
-            const kitty = stored(KittyRecord, kittyBody);
-            const provider = kitty.providerId ? get("provider", kitty.providerId) : undefined;
-            body = JSON.stringify({
-              kitty,
-              team: raw
-                .exec<{ id: string; body: string }>(
-                  "SELECT id,body FROM records WHERE kind='kitty' ORDER BY id",
-                )
-                .toArray()
-                .map((row) => ({
-                  id: row.id,
-                  name: stored(NameRecord, row.body).name,
-                })),
-              desktop: get("desktop-enabled", kittyId) === "true",
-              provider: provider ? JSON.parse(provider) : null,
-              connections: raw
-                .exec<{ body: string }>(
-                  "SELECT body FROM records WHERE kind='connection' ORDER BY id LIMIT 64",
-                )
-                .toArray()
-                .map((row) => JSON.parse(row.body)),
-              memory: get("memory", kittyId) ? JSON.parse(get("memory", kittyId)!) : freshMemory(),
-              skills: raw
-                .exec<{ body: string }>("SELECT body FROM records WHERE kind='skill' ORDER BY id")
-                .toArray()
-                .map((row) => JSON.parse(row.body))
-                .filter((skill) => skill.status === "accepted")
-                .slice(0, 8),
-            });
-            raw.exec("INSERT INTO records VALUES ('turn-config',?,?,?)", id, body, Date.now());
-          }
-
-          raw.exec(
-            "INSERT INTO records VALUES ('run-health',?,?,?) ON CONFLICT(kind,id) DO UPDATE SET body=excluded.body,updated_at=excluded.updated_at",
-            id,
-            health,
-            Date.now(),
-          );
-
-          return stored(TurnKittyRecord, body).kitty.limits?.max_rounds ?? 12;
-        }),
-      );
+    const prepareTurn = turns.prepare;
 
     const turnContext = (id: string, day: string) =>
       Effect.sync(() => {
@@ -215,6 +205,20 @@ const makeActor = Effect.gen(function* () {
 
     return {
       ...admin,
+      libraryLegacyStatus: () => legacy.status,
+      libraryMigrate: (inventoryId: string) =>
+        migration.run(inventoryId).pipe(
+          Effect.tapError((error) =>
+            Effect.logError("Library migration failed").pipe(
+              Effect.annotateLogs({
+                stage: error.stage,
+                reason: error.reason,
+                ordinal: error.ordinal ?? null,
+                rejection: error.rejection ?? null,
+              }),
+            ),
+          ),
+        ),
       chatgptAccounts: () => Effect.tryPromise({ try: chatgpt.accounts, catch: safeChatgptError }),
       chatgptAccount: (id: string) =>
         Effect.tryPromise({ try: () => chatgpt.account(id), catch: safeChatgptError }),
@@ -702,10 +706,16 @@ const makeActor = Effect.gen(function* () {
             );
           }
         }),
-      insert: (kind: string, id: string, body: string) =>
-        sql`INSERT OR IGNORE INTO records VALUES (${kind},${id},${body},${Date.now()})`.pipe(
-          Effect.andThen(register(kind, id)),
-        ),
+      insert: (
+        kind: string,
+        id: string,
+        body: string,
+      ): Effect.Effect<void, SqlError.SqlError | LibraryLegacyError> =>
+        kind === "skill"
+          ? Effect.fail(new LibraryLegacyError({ reason: "invalid" }))
+          : sql`INSERT OR IGNORE INTO records VALUES (${kind},${id},${body},${Date.now()})`.pipe(
+              Effect.andThen(register(kind, id)),
+            ),
       charge: (id: string, day: string, kitty: string, tokens: number, actions: number) =>
         Effect.sync(() => {
           state.raw.storage.sql.exec(
@@ -740,22 +750,38 @@ const makeActor = Effect.gen(function* () {
         sql<{ body: string }>`SELECT body FROM records WHERE kind=${kind} AND id=${id}`.pipe(
           Effect.map((rows) => rows[0]?.body ?? null),
         ),
-      write: (kind: string, id: string, body: string) =>
-        sql`INSERT INTO records (kind,id,body,updated_at) VALUES (${kind},${id},${body},${Date.now()}) ON CONFLICT(kind,id) DO UPDATE SET body=excluded.body, updated_at=excluded.updated_at`.pipe(
-          Effect.andThen(register(kind, id)),
-        ),
+      write: (
+        kind: string,
+        id: string,
+        body: string,
+      ): Effect.Effect<void, SqlError.SqlError | LibraryLegacyError> =>
+        kind === "skill"
+          ? legacy.writeSkill(id, body, Date.now())
+          : sql`INSERT INTO records (kind,id,body,updated_at) VALUES (${kind},${id},${body},${Date.now()}) ON CONFLICT(kind,id) DO UPDATE SET body=excluded.body, updated_at=excluded.updated_at`.pipe(
+              Effect.andThen(register(kind, id)),
+              Effect.asVoid,
+            ),
       list: (kind: string) =>
         sql<{
           id: string;
           body: string;
         }>`SELECT id,body FROM records WHERE kind=${kind} ORDER BY id`,
-      remove: (kind: string, id: string) =>
-        sql`DELETE FROM records WHERE kind=${kind} AND id=${id}`.pipe(Effect.asVoid),
+      remove: (
+        kind: string,
+        id: string,
+      ): Effect.Effect<void, SqlError.SqlError | LibraryLegacyError> =>
+        kind === "skill"
+          ? legacy.removeSkill(id)
+          : sql`DELETE FROM records WHERE kind=${kind} AND id=${id}`.pipe(Effect.asVoid),
     };
   });
 });
 
-export class HomeDO extends Cloudflare.DurableObject<HomeDO>()("HomeDO", makeActor) {}
+type HomeOperations = Effect.Success<Effect.Success<typeof makeActor>>;
+
+export class HomeDO extends Cloudflare.DurableObject<HomeDO, HomeOperations>()("HomeDO") {}
+
+export const HomeDOLive = HomeDO.make(makeActor);
 
 export { KittyDO } from "./kitty.ts";
 

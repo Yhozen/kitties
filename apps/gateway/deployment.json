@@ -13,12 +13,17 @@
       "GoalSlotV1Workflow",
       "HomeDO",
       "KittyDO",
+      "LibraryModel.DomainDirectory",
+      "LibraryModel.LibraryAggregate",
+      "LibraryModel.SkillDetailViewV1",
+      "LibraryModel.SkillDetailViewV1Run",
       "NotifyV1Workflow",
       "PurgeV1Workflow",
       "RecoveryDO",
       "RestoreV1Workflow",
       "TurnV5Workflow"
     ],
+    "workflows": ["LibraryModel.DomainBackfill"],
     "assets": "apps/web/dist"
   },
   "GuestIngress": {

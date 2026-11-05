@@ -13,6 +13,12 @@ import { HomeDO, ChatDO, KittyDO } from "./actors.ts";
 import { RecoveryDO } from "./recovery-store.ts";
 import { Export, Restore, Purge } from "./recovery-definition.ts";
 import { readBody } from "./request.ts";
+import { LibraryControl } from "./library-control.ts";
+import {
+  LibraryRecoveryCoordinator,
+  LibraryRestoreRequest,
+} from "./library-recovery-coordinator.ts";
+import { RecoveryOperationId } from "./library-recovery-records.ts";
 
 const json = <Value>(body: Value, status = 200) =>
   HttpServerResponse.fromWeb(
@@ -21,7 +27,13 @@ const json = <Value>(body: Value, status = 200) =>
 
 const makeRecovery = Effect.gen(function* () {
   // SAFETY: Gateway deployment declares these named bindings in worker.ts; Cloudflare injects their declared values into every bound actor.
-  const env = (yield* Cloudflare.WorkerEnvironment) as { KITTIES_KEK: string };
+  const env = (yield* Cloudflare.WorkerEnvironment) as {
+    KITTIES_KEK: string;
+    KITTIES_LIBRARY_CUTOVER_ENABLED: string;
+  };
+
+  const libraryControl = yield* LibraryControl;
+  const libraryRecovery = yield* LibraryRecoveryCoordinator;
   const engine = yield* WorkflowEngine.WorkflowEngine;
 
   const homes = yield* HomeDO,
@@ -59,6 +71,30 @@ const makeRecovery = Effect.gen(function* () {
         const path = new URL(request.url).pathname;
 
         if (!path.startsWith("/v1/recovery")) return;
+
+        if (path === "/v1/recovery/library" && request.method === "GET")
+          return json({ control: yield* libraryControl.status });
+
+        if (path.startsWith("/v1/recovery/library/") && request.method === "POST") {
+          if (env.KITTIES_LIBRARY_CUTOVER_ENABLED !== "true")
+            return json({ code: "LIBRARY_CUTOVER_DISABLED", params: {} }, 409);
+
+          if (path === "/v1/recovery/library/import") {
+            const body = yield* readBody(
+              request,
+              Schema.Struct({ inventoryId: RecoveryOperationId }),
+            );
+
+            return json(yield* home().libraryMigrate(body.inventoryId));
+          }
+
+          if (path === "/v1/recovery/library/restore") {
+            const body = yield* readBody(request, LibraryRestoreRequest);
+
+            return json(yield* libraryRecovery.restore(body));
+          }
+        }
+
         yield* discover;
 
         if (path === "/v1/recovery" && request.method === "GET")

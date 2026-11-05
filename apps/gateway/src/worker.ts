@@ -17,7 +17,7 @@ import { ExportLive } from "./workflows/export.ts";
 import { RestoreLive } from "./workflows/restore.ts";
 import { RetainedExports, GuestAssets } from "./resources.ts";
 import { Health, Session } from "@kitties/domain";
-import { HomeDO, KittyDO } from "./actors.ts";
+import { HomeDO, HomeDOLive, KittyDO } from "./actors.ts";
 import { ChatDOLive } from "./chat.ts";
 import { DesktopAttemptLive } from "./workflows/desktop.ts";
 import { ComputerOpLive } from "./workflows/computer.ts";
@@ -35,6 +35,11 @@ import { OAuth } from "./oauth.ts";
 import { Application } from "./application.ts";
 import { ownerError } from "./security.ts";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
+import * as Clock from "effect/Clock";
+import { accessJwtLayer } from "./access-jwt.ts";
+import { LibraryBackend } from "./library-backend.ts";
+import { LibraryHttp, libraryHttpLayer } from "./library-http.ts";
+import { libraryAuthenticationLayer, localLibraryAuthenticationLayer } from "./library-session.ts";
 
 const props = Effect.gen(function* () {
   const stage = yield* Stage;
@@ -62,6 +67,7 @@ const props = Effect.gen(function* () {
     domain,
     workersDev: false as const,
     limits: { cpuMs: 300000 },
+    compatibility: { flags: ["enable_request_signal"] },
     observability: {
       enabled: true,
       logs: { enabled: true, invocationLogs: true },
@@ -101,6 +107,9 @@ const props = Effect.gen(function* () {
         ),
       ),
       CHATGPT_ENABLED: yield* Config.String("KITTIES_CHATGPT_ENABLED").pipe(
+        Config.withDefault("false"),
+      ),
+      KITTIES_LIBRARY_CUTOVER_ENABLED: yield* Config.String("KITTIES_LIBRARY_CUTOVER_ENABLED").pipe(
         Config.withDefault("false"),
       ),
       STAGE: stage,
@@ -158,6 +167,35 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
         Response.json(body, { status, headers: { "Cache-Control": "no-store" } }),
       );
 
+    const authentication =
+      env.STAGE === "local"
+        ? localLibraryAuthenticationLayer(
+            env.PUBLIC_URL,
+            (yield* Clock.currentTimeMillis) + 86400000,
+          )
+        : libraryAuthenticationLayer({
+            publicUrl: env.PUBLIC_URL,
+            issuer: env.ACCESS_ISSUER,
+            audience: env.ACCESS_AUDIENCE,
+            ownerEmail: env.ACCESS_EMAIL,
+            nativeOrigins: [
+              "tauri://localhost",
+              "http://tauri.localhost",
+              "https://tauri.localhost",
+            ],
+          }).pipe(Layer.provide(accessJwtLayer()));
+
+    const libraryHttp = yield* LibraryHttp.pipe(
+      Effect.provide(
+        libraryHttpLayer({
+          rpcPath: "/v1/library/rpc",
+          sessionPath: "/v1/library/session",
+          authorityTimeoutMs: 5000,
+        }).pipe(Layer.provide(authentication)),
+      ),
+      Effect.orDie,
+    );
+
     return {
       receiveWebhook,
       finishChatgpt: (callback: ChatgptCallback) =>
@@ -166,6 +204,9 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
         oauth.callback(state, code, issuer),
       fetch: Effect.gen(function* () {
         const request = yield* Cloudflare.Request;
+        const libraryResponse = yield* libraryHttp.route(request);
+
+        if (libraryResponse !== undefined) return libraryResponse;
         const access = yield* Cloudflare.Access.Context;
 
         const nativeIdentity = access
@@ -261,5 +302,6 @@ export default class Gateway extends Cloudflare.Worker<Gateway>()(
         Layer.provideMerge(Cloudflare.Workflows.layerDurableObjectEngine()),
       ),
     ),
+    Effect.provide(HomeDOLive.pipe(Layer.provideMerge(LibraryBackend))),
   ),
 ) {}
