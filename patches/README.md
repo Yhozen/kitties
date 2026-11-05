@@ -1,10 +1,18 @@
-# Pinned Alchemy workflow recovery patch
+# Pinned Alchemy patches
 
 The pnpm patch applies to `@alchemy.run/cloudflare` **2.0.0-beta.85** with
 Alchemy/Domain beta.85 and Effect 4.1.1. It changes the workflow engine's source,
-emitted JavaScript and source map together. Public declarations are unchanged;
+emitted JavaScript and source map together. The workflow declarations are unchanged;
 the application deliberately narrows the administrative extension in
 `apps/gateway/src/workflow-admin.ts`.
+
+The same Cloudflare patch also supplies opt-in Domain recovery hooks, including
+immutable creation-time scope for native backfills. A second patch for
+`@alchemy.run/domain` exposes Effect RPC parse options when constructing an API.
+Both include matching compiler output and declarations. See
+[Domain extension notes](../docs/DOMAIN_PROVIDER_EXTENSIONS.md) for the exact
+contracts, evidence and limitations. Installing these extensions alone neither
+enables the Library backend nor performs a data migration.
 
 ## Guarantees retained
 
