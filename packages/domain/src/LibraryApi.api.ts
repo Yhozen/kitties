@@ -7,4 +7,5 @@ export class LibraryApi extends Domain.Api("LibraryApi", {
   views: ["SkillDetail"],
   aggregates: ["Library"],
   streams: [],
+  parseOptions: { onExcessProperty: "error" },
 }) {}
